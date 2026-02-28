@@ -40,6 +40,8 @@ class _LibraryPageState extends State<LibraryPage> {
           categories: state.categories,
           activeCategory: state.activeCategory,
           isImporting: state.isImporting,
+          emptyMessage: localizations.tr('emptyLibrary'),
+          importingMessage: localizations.tr('importingBook'),
           onCategoryTap: store.setCategory,
           onBookTap: (book) {
             Navigator.of(context).pushNamed(RouteNames.reader, arguments: book.id);

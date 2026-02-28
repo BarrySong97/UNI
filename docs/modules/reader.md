@@ -19,13 +19,14 @@
 1. 根据 `bookId` 打开书籍，读取章节与进度。
 2. 定位到目标章节和字符偏移。
 3. 滚动时更新偏移并节流保存。
-4. 页面销毁或切章时强制 flush 进度。
+4. 页面销毁或切章时强制 flush 进度并写入 SQLite。
 
 ## 关键状态与数据
 - `ReaderState.book / chapter / chapters`
 - `ReaderState.charOffset / percent`
 - `ReaderState.isLoading / isSaving`
 - `ReadingProgressEntity`
+- `reading_progress` 表（`book_id` 主键）
 
 ## 交互与异常
 - 选中文本后支持创建高亮。
@@ -37,6 +38,7 @@
 - 可稳定恢复阅读进度。
 - 滚动更新与保存行为正确。
 - 无选区残留和系统菜单崩溃问题。
+- 应用重启后可恢复上次阅读进度（Android/iOS/macOS）。
 - `flutter analyze` / `flutter test` 通过。
 
 ## 非目标

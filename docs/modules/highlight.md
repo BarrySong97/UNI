@@ -18,7 +18,7 @@
 ## 核心流程
 1. 读取当前选区 start/end。
 2. 生成锚点信息（selectedText/prefix/suffix）。
-3. 写入 repository 并刷新当前列表。
+3. 写入 repository（SQLite）并刷新当前列表。
 4. 渲染时按规则排序并应用样式。
 5. 删除高亮后即时重绘。
 
@@ -27,6 +27,7 @@
 - `HighlightEntity.startOffset/endOffset`
 - `HighlightEntity.selectedText/prefixContext/suffixContext`
 - `HighlightResolverService`
+- `highlights` 表 + `(book_id, chapter_id, start_offset)` 索引
 
 ## 交互与异常
 - 菜单入口 + FAB 双入口创建高亮。
@@ -38,6 +39,7 @@
 - 创建/删除链路可用。
 - 重叠高亮渲染稳定。
 - 列表页可查看并删除。
+- 应用重启后高亮数据仍可读取（Android/iOS/macOS）。
 - `flutter analyze` / `flutter test` 通过。
 
 ## 非目标

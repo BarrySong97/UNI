@@ -54,6 +54,7 @@ class LibraryStore extends ChangeNotifier {
         id: bookId,
         title: imported.title,
         author: imported.author,
+        coverUrl: imported.coverUrl,
         sourceType: imported.sourceType,
         sourcePath: imported.sourcePath,
         createdAt: now,

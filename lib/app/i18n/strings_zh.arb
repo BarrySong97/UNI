@@ -6,6 +6,7 @@
   "highlights": "划线",
   "highlightAction": "标注",
   "importBook": "导入书籍",
+  "importingBook": "正在导入书籍...",
   "importDone": "导入完成",
   "searchComingSoon": "搜索功能开发中",
   "menuComingSoon": "菜单功能开发中"
