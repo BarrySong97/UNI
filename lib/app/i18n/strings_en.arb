@@ -1,0 +1,12 @@
+{
+  "appTitle": "Uni Reader",
+  "libraryTitle": "Library",
+  "emptyLibrary": "No books yet",
+  "openReader": "Open Reader",
+  "highlights": "Highlights",
+  "highlightAction": "Highlight",
+  "importBook": "Import Book",
+  "importDone": "Import finished",
+  "searchComingSoon": "Search coming soon",
+  "menuComingSoon": "Menu coming soon"
+}
