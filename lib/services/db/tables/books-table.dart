@@ -4,6 +4,7 @@ abstract final class BooksTable {
   static const String title = 'title';
   static const String author = 'author';
   static const String coverUrl = 'cover_url';
+  static const String profileBgColor = 'profile_bg_color';
   static const String sourceType = 'source_type';
   static const String sourcePath = 'source_path';
   static const String createdAt = 'created_at';

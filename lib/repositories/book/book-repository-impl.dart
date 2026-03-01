@@ -25,6 +25,11 @@ class BookRepositoryImpl implements BookRepository {
     return _booksDao.upsertBook(BookDto.fromEntity(book));
   }
 
+  @override
+  Future<void> deleteBookById(String bookId) {
+    return _booksDao.deleteBookCascade(bookId);
+  }
+
   Future<void> upsertSeedBook({
     required String id,
     required String title,

@@ -6,4 +6,6 @@ abstract class BookRepository {
   Future<BookEntity?> getBookById(String bookId);
 
   Future<void> upsertBook(BookEntity book);
+
+  Future<void> deleteBookById(String bookId);
 }

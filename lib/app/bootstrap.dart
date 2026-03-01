@@ -10,6 +10,7 @@ import '../services/db/daos/books-dao.dart';
 import '../services/db/daos/chapters-dao.dart';
 import '../services/db/daos/highlights-dao.dart';
 import '../services/db/daos/progress-dao.dart';
+import '../services/library/book-profile-entry-service.dart';
 import '../services/parser/book-import-service.dart';
 import '../stores/highlight/highlight-store.dart';
 import '../stores/library/library-store.dart';
@@ -36,6 +37,9 @@ class AppBootstrap {
     final chapterRepository = ChapterRepositoryImpl(chaptersDao: chaptersDao);
     final progressRepository = ProgressRepositoryImpl(progressDao: progressDao);
     final highlightRepository = HighlightRepositoryImpl(highlightsDao: highlightsDao);
+    final bookProfileEntryService = BookProfileEntryService(
+      progressRepository: progressRepository,
+    );
 
     final appLocale = AppLocaleController();
     await appLocale.initialize();
@@ -45,6 +49,7 @@ class AppBootstrap {
       chapterRepository: chapterRepository,
       progressRepository: progressRepository,
       highlightRepository: highlightRepository,
+      bookProfileEntryService: bookProfileEntryService,
       appLocaleController: appLocale,
     );
 

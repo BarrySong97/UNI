@@ -22,7 +22,7 @@ class AppDatabase {
     final path = p.join(root, 'uni_reader.db');
     final database = await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: (db, _) async {
         await db.execute('''
 CREATE TABLE ${BooksTable.tableName} (
@@ -30,6 +30,7 @@ CREATE TABLE ${BooksTable.tableName} (
   ${BooksTable.title} TEXT NOT NULL,
   ${BooksTable.author} TEXT NOT NULL,
   ${BooksTable.coverUrl} TEXT,
+  ${BooksTable.profileBgColor} TEXT,
   ${BooksTable.sourceType} TEXT NOT NULL,
   ${BooksTable.sourcePath} TEXT,
   ${BooksTable.createdAt} INTEGER NOT NULL,
@@ -78,6 +79,13 @@ CREATE TABLE ${HighlightsTable.tableName} (
           'CREATE INDEX idx_highlights_book_chapter_start ON ${HighlightsTable.tableName} (${HighlightsTable.bookId}, ${HighlightsTable.chapterId}, ${HighlightsTable.startOffset})',
         );
       },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute(
+            'ALTER TABLE ${BooksTable.tableName} ADD COLUMN ${BooksTable.profileBgColor} TEXT',
+          );
+        }
+      },
     );
     return AppDatabase._(_SqfliteBackend(database));
   }
@@ -87,30 +95,43 @@ CREATE TABLE ${HighlightsTable.tableName} (
   Future<BookDto?> getBook(String bookId) => _backend.getBook(bookId);
 
   Future<void> upsertBook(BookDto book) => _backend.upsertBook(book);
+  Future<void> deleteBookCascade(String bookId) =>
+      _backend.deleteBookCascade(bookId);
 
-  Future<void> upsertChapter(ChapterDto chapter) => _backend.upsertChapter(chapter);
+  Future<void> upsertChapter(ChapterDto chapter) =>
+      _backend.upsertChapter(chapter);
 
-  Future<ChapterDto?> getChapter(String chapterId) => _backend.getChapter(chapterId);
+  Future<ChapterDto?> getChapter(String chapterId) =>
+      _backend.getChapter(chapterId);
 
-  Future<List<ChapterDto>> listChaptersByBook(String bookId) => _backend.listChaptersByBook(bookId);
+  Future<List<ChapterDto>> listChaptersByBook(String bookId) =>
+      _backend.listChaptersByBook(bookId);
 
-  Future<ReadingProgressDto?> getProgress(String bookId) => _backend.getProgress(bookId);
+  Future<ReadingProgressDto?> getProgress(String bookId) =>
+      _backend.getProgress(bookId);
 
-  Future<void> upsertProgress(ReadingProgressDto progress) => _backend.upsertProgress(progress);
+  Future<void> upsertProgress(ReadingProgressDto progress) =>
+      _backend.upsertProgress(progress);
 
-  Future<List<HighlightDto>> listHighlights(String bookId, {String? chapterId}) {
+  Future<List<HighlightDto>> listHighlights(
+    String bookId, {
+    String? chapterId,
+  }) {
     return _backend.listHighlights(bookId, chapterId: chapterId);
   }
 
-  Future<void> upsertHighlight(HighlightDto highlight) => _backend.upsertHighlight(highlight);
+  Future<void> upsertHighlight(HighlightDto highlight) =>
+      _backend.upsertHighlight(highlight);
 
-  Future<void> deleteHighlight(String highlightId) => _backend.deleteHighlight(highlightId);
+  Future<void> deleteHighlight(String highlightId) =>
+      _backend.deleteHighlight(highlightId);
 }
 
 abstract class _DatabaseBackend {
   Future<List<BookDto>> listBooks();
   Future<BookDto?> getBook(String bookId);
   Future<void> upsertBook(BookDto book);
+  Future<void> deleteBookCascade(String bookId);
   Future<void> upsertChapter(ChapterDto chapter);
   Future<ChapterDto?> getChapter(String chapterId);
   Future<List<ChapterDto>> listChaptersByBook(String bookId);
@@ -124,11 +145,13 @@ abstract class _DatabaseBackend {
 class _InMemoryBackend implements _DatabaseBackend {
   final Map<String, BookDto> _books = <String, BookDto>{};
   final Map<String, ChapterDto> _chapters = <String, ChapterDto>{};
-  final Map<String, ReadingProgressDto> _progress = <String, ReadingProgressDto>{};
+  final Map<String, ReadingProgressDto> _progress =
+      <String, ReadingProgressDto>{};
   final Map<String, HighlightDto> _highlights = <String, HighlightDto>{};
 
   @override
-  Future<List<BookDto>> listBooks() async => _books.values.toList(growable: false);
+  Future<List<BookDto>> listBooks() async =>
+      _books.values.toList(growable: false);
 
   @override
   Future<BookDto?> getBook(String bookId) async => _books[bookId];
@@ -139,22 +162,34 @@ class _InMemoryBackend implements _DatabaseBackend {
   }
 
   @override
+  Future<void> deleteBookCascade(String bookId) async {
+    _books.remove(bookId);
+    _chapters.removeWhere((_, chapter) => chapter.bookId == bookId);
+    _progress.remove(bookId);
+    _highlights.removeWhere((_, highlight) => highlight.bookId == bookId);
+  }
+
+  @override
   Future<void> upsertChapter(ChapterDto chapter) async {
     _chapters[chapter.id] = chapter;
   }
 
   @override
-  Future<ChapterDto?> getChapter(String chapterId) async => _chapters[chapterId];
+  Future<ChapterDto?> getChapter(String chapterId) async =>
+      _chapters[chapterId];
 
   @override
   Future<List<ChapterDto>> listChaptersByBook(String bookId) async {
-    final list = _chapters.values.where((chapter) => chapter.bookId == bookId).toList(growable: false);
+    final list = _chapters.values
+        .where((chapter) => chapter.bookId == bookId)
+        .toList(growable: false);
     list.sort((a, b) => a.idx.compareTo(b.idx));
     return list;
   }
 
   @override
-  Future<ReadingProgressDto?> getProgress(String bookId) async => _progress[bookId];
+  Future<ReadingProgressDto?> getProgress(String bookId) async =>
+      _progress[bookId];
 
   @override
   Future<void> upsertProgress(ReadingProgressDto progress) async {
@@ -162,9 +197,14 @@ class _InMemoryBackend implements _DatabaseBackend {
   }
 
   @override
-  Future<List<HighlightDto>> listHighlights(String bookId, {String? chapterId}) async {
+  Future<List<HighlightDto>> listHighlights(
+    String bookId, {
+    String? chapterId,
+  }) async {
     final filtered = _highlights.values.where(
-      (item) => item.bookId == bookId && (chapterId == null || item.chapterId == chapterId),
+      (item) =>
+          item.bookId == bookId &&
+          (chapterId == null || item.chapterId == chapterId),
     );
     final list = filtered.toList(growable: false)
       ..sort((a, b) {
@@ -218,36 +258,55 @@ class _SqfliteBackend implements _DatabaseBackend {
 
   @override
   Future<void> upsertBook(BookDto book) {
-    return _database.insert(
-      BooksTable.tableName,
-      <String, Object?>{
-        BooksTable.id: book.id,
-        BooksTable.title: book.title,
-        BooksTable.author: book.author,
-        BooksTable.coverUrl: book.coverUrl,
-        BooksTable.sourceType: book.sourceType,
-        BooksTable.sourcePath: book.sourcePath,
-        BooksTable.createdAt: book.createdAtMillis,
-        BooksTable.updatedAt: book.updatedAtMillis,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    return _database.insert(BooksTable.tableName, <String, Object?>{
+      BooksTable.id: book.id,
+      BooksTable.title: book.title,
+      BooksTable.author: book.author,
+      BooksTable.coverUrl: book.coverUrl,
+      BooksTable.profileBgColor: book.profileBgColor,
+      BooksTable.sourceType: book.sourceType,
+      BooksTable.sourcePath: book.sourcePath,
+      BooksTable.createdAt: book.createdAtMillis,
+      BooksTable.updatedAt: book.updatedAtMillis,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  @override
+  Future<void> deleteBookCascade(String bookId) async {
+    await _database.transaction((txn) async {
+      await txn.delete(
+        HighlightsTable.tableName,
+        where: '${HighlightsTable.bookId} = ?',
+        whereArgs: <Object?>[bookId],
+      );
+      await txn.delete(
+        ReadingProgressTable.tableName,
+        where: '${ReadingProgressTable.bookId} = ?',
+        whereArgs: <Object?>[bookId],
+      );
+      await txn.delete(
+        ChaptersTable.tableName,
+        where: '${ChaptersTable.bookId} = ?',
+        whereArgs: <Object?>[bookId],
+      );
+      await txn.delete(
+        BooksTable.tableName,
+        where: '${BooksTable.id} = ?',
+        whereArgs: <Object?>[bookId],
+      );
+    });
   }
 
   @override
   Future<void> upsertChapter(ChapterDto chapter) {
-    return _database.insert(
-      ChaptersTable.tableName,
-      <String, Object?>{
-        ChaptersTable.id: chapter.id,
-        ChaptersTable.bookId: chapter.bookId,
-        ChaptersTable.idx: chapter.idx,
-        ChaptersTable.title: chapter.title,
-        ChaptersTable.content: chapter.content,
-        ChaptersTable.wordCount: chapter.wordCount,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    return _database.insert(ChaptersTable.tableName, <String, Object?>{
+      ChaptersTable.id: chapter.id,
+      ChaptersTable.bookId: chapter.bookId,
+      ChaptersTable.idx: chapter.idx,
+      ChaptersTable.title: chapter.title,
+      ChaptersTable.content: chapter.content,
+      ChaptersTable.wordCount: chapter.wordCount,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   @override
@@ -291,21 +350,20 @@ class _SqfliteBackend implements _DatabaseBackend {
 
   @override
   Future<void> upsertProgress(ReadingProgressDto progress) {
-    return _database.insert(
-      ReadingProgressTable.tableName,
-      <String, Object?>{
-        ReadingProgressTable.bookId: progress.bookId,
-        ReadingProgressTable.chapterId: progress.chapterId,
-        ReadingProgressTable.charOffset: progress.charOffset,
-        ReadingProgressTable.percent: progress.percent,
-        ReadingProgressTable.updatedAt: progress.updatedAtMillis,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    return _database.insert(ReadingProgressTable.tableName, <String, Object?>{
+      ReadingProgressTable.bookId: progress.bookId,
+      ReadingProgressTable.chapterId: progress.chapterId,
+      ReadingProgressTable.charOffset: progress.charOffset,
+      ReadingProgressTable.percent: progress.percent,
+      ReadingProgressTable.updatedAt: progress.updatedAtMillis,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   @override
-  Future<List<HighlightDto>> listHighlights(String bookId, {String? chapterId}) async {
+  Future<List<HighlightDto>> listHighlights(
+    String bookId, {
+    String? chapterId,
+  }) async {
     final whereParts = <String>['${HighlightsTable.bookId} = ?'];
     final whereArgs = <Object?>[bookId];
     if (chapterId != null) {
@@ -316,31 +374,28 @@ class _SqfliteBackend implements _DatabaseBackend {
       HighlightsTable.tableName,
       where: whereParts.join(' AND '),
       whereArgs: whereArgs,
-      orderBy: '${HighlightsTable.startOffset} ASC, ${HighlightsTable.updatedAt} ASC',
+      orderBy:
+          '${HighlightsTable.startOffset} ASC, ${HighlightsTable.updatedAt} ASC',
     );
     return rows.map(_highlightFromRow).toList(growable: false);
   }
 
   @override
   Future<void> upsertHighlight(HighlightDto highlight) {
-    return _database.insert(
-      HighlightsTable.tableName,
-      <String, Object?>{
-        HighlightsTable.id: highlight.id,
-        HighlightsTable.bookId: highlight.bookId,
-        HighlightsTable.chapterId: highlight.chapterId,
-        HighlightsTable.startOffset: highlight.startOffset,
-        HighlightsTable.endOffset: highlight.endOffset,
-        HighlightsTable.selectedText: highlight.selectedText,
-        HighlightsTable.prefixContext: highlight.prefixContext,
-        HighlightsTable.suffixContext: highlight.suffixContext,
-        HighlightsTable.color: highlight.color,
-        HighlightsTable.note: highlight.note,
-        HighlightsTable.createdAt: highlight.createdAtMillis,
-        HighlightsTable.updatedAt: highlight.updatedAtMillis,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    return _database.insert(HighlightsTable.tableName, <String, Object?>{
+      HighlightsTable.id: highlight.id,
+      HighlightsTable.bookId: highlight.bookId,
+      HighlightsTable.chapterId: highlight.chapterId,
+      HighlightsTable.startOffset: highlight.startOffset,
+      HighlightsTable.endOffset: highlight.endOffset,
+      HighlightsTable.selectedText: highlight.selectedText,
+      HighlightsTable.prefixContext: highlight.prefixContext,
+      HighlightsTable.suffixContext: highlight.suffixContext,
+      HighlightsTable.color: highlight.color,
+      HighlightsTable.note: highlight.note,
+      HighlightsTable.createdAt: highlight.createdAtMillis,
+      HighlightsTable.updatedAt: highlight.updatedAtMillis,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   @override
@@ -358,6 +413,7 @@ class _SqfliteBackend implements _DatabaseBackend {
       title: row[BooksTable.title]! as String,
       author: row[BooksTable.author]! as String,
       coverUrl: row[BooksTable.coverUrl] as String?,
+      profileBgColor: row[BooksTable.profileBgColor] as String?,
       sourceType: row[BooksTable.sourceType]! as String,
       sourcePath: row[BooksTable.sourcePath] as String?,
       createdAtMillis: row[BooksTable.createdAt]! as int,

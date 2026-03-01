@@ -8,6 +8,7 @@
 - 底部导航切换
 - 页面容器管理
 - Tab 状态保留（IndexedStack）
+- 支持业务子路由（如 `/book-detail`）从 tab 页面继续导航
 
 ### Out
 - 模块内部业务逻辑（library/reader/highlight/import）
@@ -18,6 +19,7 @@
 2. 使用 `IndexedStack` 承载 `Library/Discover/Read`。
 3. 点击底部 Tab 更新 `currentIndex`。
 4. 未激活页面状态继续保留。
+5. Library 内部可继续导航到 `Book Profile`（`/book-detail`）与阅读页。
 
 ## 关键状态与数据
 - `MainTabShellPage.currentIndex`

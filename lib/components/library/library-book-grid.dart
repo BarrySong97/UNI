@@ -22,7 +22,7 @@ class LibraryBookGrid extends StatelessWidget {
       itemCount: books.length,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
-        crossAxisSpacing: 16,
+        crossAxisSpacing: 20,
         mainAxisSpacing: 14,
         childAspectRatio: 0.5,
       ),

@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import '../../app/i18n/app-localizations.dart';
 import '../../app/providers/app-providers.dart';
 import '../../app/routes/route-names.dart';
+import '../../services/library/book-profile-entry-service.dart';
 import 'library-page-layout.dart';
 
 class LibraryPage extends StatefulWidget {
@@ -14,6 +15,8 @@ class LibraryPage extends StatefulWidget {
 }
 
 class _LibraryPageState extends State<LibraryPage> {
+  bool _isNavigatingBook = false;
+
   @override
   void initState() {
     super.initState();
@@ -43,9 +46,7 @@ class _LibraryPageState extends State<LibraryPage> {
           emptyMessage: localizations.tr('emptyLibrary'),
           importingMessage: localizations.tr('importingBook'),
           onCategoryTap: store.setCategory,
-          onBookTap: (book) {
-            Navigator.of(context).pushNamed(RouteNames.reader, arguments: book.id);
-          },
+          onBookTap: (book) => _openBookFromLibrary(book.id),
           onImportTap: () => _pickAndImportBook(context),
           onSearchTap: () {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -83,5 +84,29 @@ class _LibraryPageState extends State<LibraryPage> {
 
     final message = store.state.errorMessage ?? store.state.lastImportMessage ?? localizations.tr('importDone');
     messenger.showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _openBookFromLibrary(String bookId) async {
+    if (_isNavigatingBook || !mounted) {
+      return;
+    }
+    _isNavigatingBook = true;
+    try {
+      final providers = AppProvidersScope.of(context);
+      final target = await providers.bookProfileEntryService.resolveEntry(bookId);
+      if (!mounted) {
+        return;
+      }
+      switch (target) {
+        case BookProfileEntryTarget.profile:
+          await Navigator.of(context).pushNamed(RouteNames.bookDetail, arguments: bookId);
+          break;
+        case BookProfileEntryTarget.reader:
+          await Navigator.of(context).pushNamed(RouteNames.reader, arguments: bookId);
+          break;
+      }
+    } finally {
+      _isNavigatingBook = false;
+    }
   }
 }

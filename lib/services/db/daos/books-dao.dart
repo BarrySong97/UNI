@@ -11,4 +11,7 @@ class BooksDao {
   Future<BookDto?> getBookById(String id) => _database.getBook(id);
 
   Future<void> upsertBook(BookDto dto) => _database.upsertBook(dto);
+
+  Future<void> deleteBookCascade(String bookId) =>
+      _database.deleteBookCascade(bookId);
 }

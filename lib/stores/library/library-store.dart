@@ -1,9 +1,11 @@
 import 'package:flutter/foundation.dart';
+import 'dart:convert';
 
 import '../../entities/book-entity.dart';
 import '../../entities/chapter-entity.dart';
 import '../../repositories/book/book-repository.dart';
 import '../../repositories/chapter/chapter-repository.dart';
+import '../../services/library/book-profile-color-service.dart';
 import '../../services/parser/book-import-service.dart';
 import 'library-state.dart';
 
@@ -12,13 +14,17 @@ class LibraryStore extends ChangeNotifier {
     required BookRepository bookRepository,
     required ChapterRepository chapterRepository,
     required BookImportService bookImportService,
-  })  : _bookRepository = bookRepository,
-        _chapterRepository = chapterRepository,
-        _bookImportService = bookImportService;
+    BookProfileColorService? bookProfileColorService,
+  }) : _bookRepository = bookRepository,
+       _chapterRepository = chapterRepository,
+       _bookImportService = bookImportService,
+       _bookProfileColorService =
+           bookProfileColorService ?? const BookProfileColorService();
 
   final BookRepository _bookRepository;
   final ChapterRepository _chapterRepository;
   final BookImportService _bookImportService;
+  final BookProfileColorService _bookProfileColorService;
   LibraryState _state = LibraryState.initial();
 
   LibraryState get state => _state;
@@ -37,24 +43,35 @@ class LibraryStore extends ChangeNotifier {
       );
       notifyListeners();
     } catch (error) {
-      _state = _state.copyWith(isLoading: false, errorMessage: error.toString());
+      _state = _state.copyWith(
+        isLoading: false,
+        errorMessage: error.toString(),
+      );
       notifyListeners();
     }
   }
 
   Future<void> importBookFromPath(String filePath) async {
-    _state = _state.copyWith(isImporting: true, lastImportMessage: null, errorMessage: null);
+    _state = _state.copyWith(
+      isImporting: true,
+      lastImportMessage: null,
+      errorMessage: null,
+    );
     notifyListeners();
 
     try {
       final imported = await _bookImportService.importFromPath(filePath);
       final now = DateTime.now();
       final bookId = 'book_${now.microsecondsSinceEpoch}';
+      final coverBytes = _decodeCoverDataUrl(imported.coverUrl);
+      final profileBgColor = await _bookProfileColorService
+          .resolveProfileBgColorHex(coverBytes);
       final book = BookEntity(
         id: bookId,
         title: imported.title,
         author: imported.author,
         coverUrl: imported.coverUrl,
+        profileBgColor: profileBgColor,
         sourceType: imported.sourceType,
         sourcePath: imported.sourcePath,
         createdAt: now,
@@ -95,6 +112,23 @@ class LibraryStore extends ChangeNotifier {
     }
   }
 
+  Future<void> deleteBookById(String bookId) async {
+    try {
+      await _bookRepository.deleteBookById(bookId);
+      final books = await _bookRepository.getShelfBooks();
+      _state = _state.copyWith(
+        books: books,
+        filteredBooks: _filterByCategory(books, _state.activeCategory),
+        errorMessage: null,
+      );
+      notifyListeners();
+    } catch (error) {
+      _state = _state.copyWith(errorMessage: 'Delete failed: $error');
+      notifyListeners();
+      rethrow;
+    }
+  }
+
   void setCategory(String category) {
     if (_state.activeCategory == category) {
       return;
@@ -110,7 +144,9 @@ class LibraryStore extends ChangeNotifier {
     if (category == 'ALL') {
       return books;
     }
-    return books.where((book) => _mapCategory(book) == category).toList(growable: false);
+    return books
+        .where((book) => _mapCategory(book) == category)
+        .toList(growable: false);
   }
 
   String _mapCategory(BookEntity book) {
@@ -124,6 +160,23 @@ class LibraryStore extends ChangeNotifier {
         return 'DESIGN';
       default:
         return 'HISTORY';
+    }
+  }
+
+  Uint8List? _decodeCoverDataUrl(String? dataUrl) {
+    if (dataUrl == null || !dataUrl.startsWith('data:image/')) {
+      return null;
+    }
+    const marker = ';base64,';
+    final markerIndex = dataUrl.indexOf(marker);
+    if (markerIndex <= 0 || markerIndex + marker.length >= dataUrl.length) {
+      return null;
+    }
+    final payload = dataUrl.substring(markerIndex + marker.length);
+    try {
+      return base64Decode(payload);
+    } catch (_) {
+      return null;
     }
   }
 }

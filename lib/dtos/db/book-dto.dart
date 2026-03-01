@@ -9,6 +9,7 @@ class BookDto {
     required this.createdAtMillis,
     required this.updatedAtMillis,
     this.coverUrl,
+    this.profileBgColor,
     this.sourcePath,
   });
 
@@ -16,6 +17,7 @@ class BookDto {
   final String title;
   final String author;
   final String? coverUrl;
+  final String? profileBgColor;
   final String sourceType;
   final String? sourcePath;
   final int createdAtMillis;
@@ -27,6 +29,7 @@ class BookDto {
       title: title,
       author: author,
       coverUrl: coverUrl,
+      profileBgColor: profileBgColor,
       sourceType: sourceType,
       sourcePath: sourcePath,
       createdAt: DateTime.fromMillisecondsSinceEpoch(createdAtMillis),
@@ -40,6 +43,7 @@ class BookDto {
       title: entity.title,
       author: entity.author,
       coverUrl: entity.coverUrl,
+      profileBgColor: entity.profileBgColor,
       sourceType: entity.sourceType,
       sourcePath: entity.sourcePath,
       createdAtMillis: entity.createdAt.millisecondsSinceEpoch,

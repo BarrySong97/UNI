@@ -12,9 +12,15 @@ import 'package:uni/stores/reader/reader-store.dart';
 void main() {
   test('openBook restores chapter and charOffset from progress', () async {
     final database = AppDatabase();
-    final bookRepository = BookRepositoryImpl(booksDao: BooksDao(database: database));
-    final chapterRepository = ChapterRepositoryImpl(chaptersDao: ChaptersDao(database: database));
-    final progressRepository = ProgressRepositoryImpl(progressDao: ProgressDao(database: database));
+    final bookRepository = BookRepositoryImpl(
+      booksDao: BooksDao(database: database),
+    );
+    final chapterRepository = ChapterRepositoryImpl(
+      chaptersDao: ChaptersDao(database: database),
+    );
+    final progressRepository = ProgressRepositoryImpl(
+      progressDao: ProgressDao(database: database),
+    );
 
     final now = DateTime.now();
     await bookRepository.upsertSeedBook(
@@ -56,9 +62,15 @@ void main() {
 
   test('flushProgress forces save immediately', () async {
     final database = AppDatabase();
-    final bookRepository = BookRepositoryImpl(booksDao: BooksDao(database: database));
-    final chapterRepository = ChapterRepositoryImpl(chaptersDao: ChaptersDao(database: database));
-    final progressRepository = ProgressRepositoryImpl(progressDao: ProgressDao(database: database));
+    final bookRepository = BookRepositoryImpl(
+      booksDao: BooksDao(database: database),
+    );
+    final chapterRepository = ChapterRepositoryImpl(
+      chaptersDao: ChaptersDao(database: database),
+    );
+    final progressRepository = ProgressRepositoryImpl(
+      progressDao: ProgressDao(database: database),
+    );
 
     final now = DateTime.now();
     await bookRepository.upsertSeedBook(
@@ -88,5 +100,54 @@ void main() {
 
     final saved = await progressRepository.getProgress('book-2');
     expect(saved?.charOffset, 4);
+  });
+
+  test('flushProgress can save silently without emitting listeners', () async {
+    final database = AppDatabase();
+    final bookRepository = BookRepositoryImpl(
+      booksDao: BooksDao(database: database),
+    );
+    final chapterRepository = ChapterRepositoryImpl(
+      chaptersDao: ChaptersDao(database: database),
+    );
+    final progressRepository = ProgressRepositoryImpl(
+      progressDao: ProgressDao(database: database),
+    );
+
+    final now = DateTime.now();
+    await bookRepository.upsertSeedBook(
+      id: 'book-3',
+      title: 'Book 3',
+      author: 'Author',
+      createdAt: now,
+      updatedAt: now,
+    );
+    await chapterRepository.upsertSeedChapter(
+      id: 'chapter-3',
+      bookId: 'book-3',
+      idx: 0,
+      title: 'Chapter 3',
+      content: 'abcdefghijk',
+    );
+
+    final store = ReaderStore(
+      bookRepository: bookRepository,
+      chapterRepository: chapterRepository,
+      progressRepository: progressRepository,
+    );
+    var notifyCount = 0;
+    store.addListener(() {
+      notifyCount++;
+    });
+
+    await store.openBook('book-3');
+    store.updateOffset(6);
+    notifyCount = 0;
+
+    await store.flushProgress(emitStateChanges: false);
+
+    final saved = await progressRepository.getProgress('book-3');
+    expect(saved?.charOffset, 6);
+    expect(notifyCount, 0);
   });
 }

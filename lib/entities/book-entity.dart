@@ -7,6 +7,7 @@ class BookEntity {
     required this.createdAt,
     required this.updatedAt,
     this.coverUrl,
+    this.profileBgColor,
     this.sourcePath,
   });
 
@@ -14,6 +15,7 @@ class BookEntity {
   final String title;
   final String author;
   final String? coverUrl;
+  final String? profileBgColor;
   final String sourceType;
   final String? sourcePath;
   final DateTime createdAt;

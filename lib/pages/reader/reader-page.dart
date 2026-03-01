@@ -25,7 +25,9 @@ class ReaderPage extends StatefulWidget {
 
 class _ReaderPageState extends State<ReaderPage> {
   final ScrollController _scrollController = ScrollController();
-  final FocusNode _selectionFocusNode = FocusNode(debugLabel: 'reader-selection-focus');
+  final FocusNode _selectionFocusNode = FocusNode(
+    debugLabel: 'reader-selection-focus',
+  );
   TextSelection? _lastSelection;
   int _selectionEpoch = 0;
   ReaderStore? _readerStore;
@@ -42,7 +44,10 @@ class _ReaderPageState extends State<ReaderPage> {
       await _readerStore!.openBook(widget.bookId);
       final chapter = _readerStore!.state.chapter;
       if (chapter != null) {
-        await _highlightStore!.loadHighlights(widget.bookId, chapterId: chapter.id);
+        await _highlightStore!.loadHighlights(
+          widget.bookId,
+          chapterId: chapter.id,
+        );
       }
     });
 
@@ -55,7 +60,7 @@ class _ReaderPageState extends State<ReaderPage> {
   void dispose() {
     _scrollController.dispose();
     _selectionFocusNode.dispose();
-    _readerStore?.flushProgress();
+    unawaited(_readerStore?.flushProgress(emitStateChanges: false));
     super.dispose();
   }
 
@@ -79,10 +84,18 @@ class _ReaderPageState extends State<ReaderPage> {
           title: state.book?.title ?? 'Reader',
           actions: <Widget>[
             ReaderToolbar(
+              onOpenBookProfile: () {
+                Navigator.of(
+                  context,
+                ).pushNamed(RouteNames.bookDetail, arguments: widget.bookId);
+              },
               onOpenHighlights: () {
                 Navigator.of(context).pushNamed(
                   RouteNames.highlights,
-                  arguments: <String, String>{'bookId': widget.bookId, 'chapterId': chapter.id},
+                  arguments: <String, String>{
+                    'bookId': widget.bookId,
+                    'chapterId': chapter.id,
+                  },
                 );
               },
               onOpenSettings: () {
@@ -103,13 +116,19 @@ class _ReaderPageState extends State<ReaderPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
                         SelectableParagraph(
-                          key: ValueKey<String>('selection-paragraph-$_selectionEpoch'),
+                          key: ValueKey<String>(
+                            'selection-paragraph-$_selectionEpoch',
+                          ),
                           text: chapter.content,
                           highlights: highlightStore.state.items,
-                          highlightActionLabel: localizations.tr('highlightAction'),
+                          highlightActionLabel: localizations.tr(
+                            'highlightAction',
+                          ),
                           focusNode: _selectionFocusNode,
                           onSelectionChanged: (selection) {
-                            _lastSelection = selection.isCollapsed ? null : selection;
+                            _lastSelection = selection.isCollapsed
+                                ? null
+                                : selection;
                           },
                           onHighlightRequested: (selection) {
                             _lastSelection = selection;
@@ -168,8 +187,12 @@ class _ReaderPageState extends State<ReaderPage> {
     if (selection.isCollapsed) {
       return;
     }
-    final start = selection.start < selection.end ? selection.start : selection.end;
-    final end = selection.start < selection.end ? selection.end : selection.start;
+    final start = selection.start < selection.end
+        ? selection.start
+        : selection.end;
+    final end = selection.start < selection.end
+        ? selection.end
+        : selection.start;
 
     try {
       await highlightStore.createHighlight(

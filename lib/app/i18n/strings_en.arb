@@ -9,5 +9,22 @@
   "importingBook": "Importing book...",
   "importDone": "Import finished",
   "searchComingSoon": "Search coming soon",
-  "menuComingSoon": "Menu coming soon"
+  "menuComingSoon": "Menu coming soon",
+  "myLibrary": "MY LIBRARY",
+  "nowReading": "NOW READING",
+  "yourCollection": "YOUR COLLECTION",
+  "myHighlights": "MY HIGHLIGHTS",
+  "noHighlightsYet": "No highlights yet",
+  "emptyHighlight": "Untitled highlight",
+  "viewAll": "VIEW ALL",
+  "continueReading": "CONTINUE",
+  "pageLabel": "Page {page}",
+  "bookNotFound": "Book not found",
+  "bookProfileSettings": "Book settings",
+  "deleteBook": "Delete book",
+  "deleteBookConfirmTitle": "Delete this book?",
+  "deleteBookConfirmMessage": "This will remove the book, chapters, progress, and highlights from this app.",
+  "deleteBookFailed": "Delete failed",
+  "cancel": "Cancel",
+  "delete": "Delete"
 }

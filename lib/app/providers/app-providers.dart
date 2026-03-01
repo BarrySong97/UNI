@@ -4,6 +4,7 @@ import '../../repositories/book/book-repository.dart';
 import '../../repositories/chapter/chapter-repository.dart';
 import '../../repositories/highlight/highlight-repository.dart';
 import '../../repositories/progress/progress-repository.dart';
+import '../../services/library/book-profile-entry-service.dart';
 import '../../stores/highlight/highlight-store.dart';
 import '../../stores/library/library-store.dart';
 import '../../stores/reader/reader-store.dart';
@@ -15,6 +16,7 @@ class AppProviders {
     required this.chapterRepository,
     required this.progressRepository,
     required this.highlightRepository,
+    required this.bookProfileEntryService,
     required this.appLocaleController,
   });
 
@@ -22,6 +24,7 @@ class AppProviders {
   final ChapterRepository chapterRepository;
   final ProgressRepository progressRepository;
   final HighlightRepository highlightRepository;
+  final BookProfileEntryService bookProfileEntryService;
   final AppLocaleController appLocaleController;
 
   late final LibraryStore libraryStore;

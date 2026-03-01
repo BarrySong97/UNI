@@ -9,5 +9,22 @@
   "importingBook": "正在导入书籍...",
   "importDone": "导入完成",
   "searchComingSoon": "搜索功能开发中",
-  "menuComingSoon": "菜单功能开发中"
+  "menuComingSoon": "菜单功能开发中",
+  "myLibrary": "我的书库",
+  "nowReading": "正在阅读",
+  "yourCollection": "馆藏书目",
+  "myHighlights": "我的划线",
+  "noHighlightsYet": "还没有划线",
+  "emptyHighlight": "未命名划线",
+  "viewAll": "查看全部",
+  "continueReading": "继续阅读",
+  "pageLabel": "第 {page} 页",
+  "bookNotFound": "未找到该书籍",
+  "bookProfileSettings": "图书设置",
+  "deleteBook": "删除图书",
+  "deleteBookConfirmTitle": "删除这本书？",
+  "deleteBookConfirmMessage": "这会从本应用中删除该书及其章节、阅读进度和划线。",
+  "deleteBookFailed": "删除失败",
+  "cancel": "取消",
+  "delete": "删除"
 }

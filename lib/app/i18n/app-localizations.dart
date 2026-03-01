@@ -7,7 +7,8 @@ class AppLocalizations {
 
   final Locale locale;
 
-  static const LocalizationsDelegate<AppLocalizations> delegate = _AppLocalizationsDelegate();
+  static const LocalizationsDelegate<AppLocalizations> delegate =
+      _AppLocalizationsDelegate();
 
   static const List<LocalizationsDelegate<dynamic>> delegates =
       <LocalizationsDelegate<dynamic>>[
@@ -18,12 +19,16 @@ class AppLocalizations {
       ];
 
   static AppLocalizations of(BuildContext context) {
-    final instance = Localizations.of<AppLocalizations>(context, AppLocalizations);
+    final instance = Localizations.of<AppLocalizations>(
+      context,
+      AppLocalizations,
+    );
     assert(instance != null, 'AppLocalizations not found in widget tree.');
     return instance!;
   }
 
-  static const Map<String, Map<String, String>> _strings = <String, Map<String, String>>{
+  static const Map<String, Map<String, String>>
+  _strings = <String, Map<String, String>>{
     'en': <String, String>{
       'appTitle': 'Uni Reader',
       'libraryTitle': 'Library',
@@ -36,6 +41,24 @@ class AppLocalizations {
       'importDone': 'Import finished',
       'searchComingSoon': 'Search coming soon',
       'menuComingSoon': 'Menu coming soon',
+      'myLibrary': 'MY LIBRARY',
+      'nowReading': 'NOW READING',
+      'yourCollection': 'YOUR COLLECTION',
+      'myHighlights': 'MY HIGHLIGHTS',
+      'noHighlightsYet': 'No highlights yet',
+      'emptyHighlight': 'Untitled highlight',
+      'viewAll': 'VIEW ALL',
+      'continueReading': 'CONTINUE',
+      'pageLabel': 'Page {page}',
+      'bookNotFound': 'Book not found',
+      'bookProfileSettings': 'Book settings',
+      'deleteBook': 'Delete book',
+      'deleteBookConfirmTitle': 'Delete this book?',
+      'deleteBookConfirmMessage':
+          'This will remove the book, chapters, progress, and highlights from this app.',
+      'deleteBookFailed': 'Delete failed',
+      'cancel': 'Cancel',
+      'delete': 'Delete',
     },
     'zh': <String, String>{
       'appTitle': 'Uni Reader',
@@ -49,6 +72,23 @@ class AppLocalizations {
       'importDone': '导入完成',
       'searchComingSoon': '搜索功能开发中',
       'menuComingSoon': '菜单功能开发中',
+      'myLibrary': '我的书库',
+      'nowReading': '正在阅读',
+      'yourCollection': '馆藏书目',
+      'myHighlights': '我的划线',
+      'noHighlightsYet': '还没有划线',
+      'emptyHighlight': '未命名划线',
+      'viewAll': '查看全部',
+      'continueReading': '继续阅读',
+      'pageLabel': '第 {page} 页',
+      'bookNotFound': '未找到该书籍',
+      'bookProfileSettings': '图书设置',
+      'deleteBook': '删除图书',
+      'deleteBookConfirmTitle': '删除这本书？',
+      'deleteBookConfirmMessage': '这会从本应用中删除该书及其章节、阅读进度和划线。',
+      'deleteBookFailed': '删除失败',
+      'cancel': '取消',
+      'delete': '删除',
     },
   };
 
@@ -58,11 +98,13 @@ class AppLocalizations {
   }
 }
 
-class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {
+class _AppLocalizationsDelegate
+    extends LocalizationsDelegate<AppLocalizations> {
   const _AppLocalizationsDelegate();
 
   @override
-  bool isSupported(Locale locale) => <String>{'en', 'zh'}.contains(locale.languageCode);
+  bool isSupported(Locale locale) =>
+      <String>{'en', 'zh'}.contains(locale.languageCode);
 
   @override
   Future<AppLocalizations> load(Locale locale) {
@@ -70,5 +112,6 @@ class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> 
   }
 
   @override
-  bool shouldReload(covariant LocalizationsDelegate<AppLocalizations> old) => false;
+  bool shouldReload(covariant LocalizationsDelegate<AppLocalizations> old) =>
+      false;
 }

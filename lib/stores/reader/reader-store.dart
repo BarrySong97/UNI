@@ -16,10 +16,11 @@ class ReaderStore extends ChangeNotifier {
     required ChapterRepository chapterRepository,
     required ProgressRepository progressRepository,
     ReadingPositionService? readingPositionService,
-  })  : _bookRepository = bookRepository,
-        _chapterRepository = chapterRepository,
-        _progressRepository = progressRepository,
-        _readingPositionService = readingPositionService ?? ReadingPositionService();
+  }) : _bookRepository = bookRepository,
+       _chapterRepository = chapterRepository,
+       _progressRepository = progressRepository,
+       _readingPositionService =
+           readingPositionService ?? ReadingPositionService();
 
   final BookRepository _bookRepository;
   final ChapterRepository _chapterRepository;
@@ -57,7 +58,10 @@ class ReaderStore extends ChangeNotifier {
       offset: progress?.charOffset ?? 0,
       totalLength: maxOffset,
     );
-    final percent = _readingPositionService.toPercent(offset: charOffset, totalLength: maxOffset);
+    final percent = _readingPositionService.toPercent(
+      offset: charOffset,
+      totalLength: maxOffset,
+    );
 
     _state = _state.copyWith(
       book: book,
@@ -86,8 +90,14 @@ class ReaderStore extends ChangeNotifier {
       return;
     }
 
-    final clamped = _readingPositionService.clampOffset(offset: offset, totalLength: chapter.content.length);
-    final percent = _readingPositionService.toPercent(offset: clamped, totalLength: chapter.content.length);
+    final clamped = _readingPositionService.clampOffset(
+      offset: offset,
+      totalLength: chapter.content.length,
+    );
+    final percent = _readingPositionService.toPercent(
+      offset: clamped,
+      totalLength: chapter.content.length,
+    );
 
     _state = _state.copyWith(charOffset: clamped, percent: percent);
     notifyListeners();
@@ -104,15 +114,17 @@ class ReaderStore extends ChangeNotifier {
     );
   }
 
-  Future<void> saveProgress() async {
+  Future<void> saveProgress({bool emitStateChanges = true}) async {
     final book = _state.book;
     final chapter = _state.chapter;
     if (book == null || chapter == null) {
       return;
     }
 
-    _state = _state.copyWith(isSaving: true);
-    notifyListeners();
+    if (emitStateChanges) {
+      _state = _state.copyWith(isSaving: true);
+      notifyListeners();
+    }
 
     final progress = ReadingProgressEntity(
       bookId: book.id,
@@ -123,13 +135,15 @@ class ReaderStore extends ChangeNotifier {
     );
     await _progressRepository.saveProgress(progress);
 
-    _state = _state.copyWith(isSaving: false);
-    notifyListeners();
+    if (emitStateChanges) {
+      _state = _state.copyWith(isSaving: false);
+      notifyListeners();
+    }
   }
 
-  Future<void> flushProgress() async {
+  Future<void> flushProgress({bool emitStateChanges = true}) async {
     _saveTimer?.cancel();
-    await saveProgress();
+    await saveProgress(emitStateChanges: emitStateChanges);
   }
 
   @override
