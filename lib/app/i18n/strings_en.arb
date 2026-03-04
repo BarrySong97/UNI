@@ -26,5 +26,15 @@
   "deleteBookConfirmMessage": "This will remove the book, chapters, progress, and highlights from this app.",
   "deleteBookFailed": "Delete failed",
   "cancel": "Cancel",
-  "delete": "Delete"
+  "delete": "Delete",
+  "readerChapterList": "Chapters",
+  "readerSearchBook": "Search this book",
+  "readerCurrentRead": "Current reading",
+  "readerCurrentReadProgress": "Current reading {current}/{total}",
+  "readerAddBookmark": "Add bookmark",
+  "readerDownloadDone": "Download done",
+  "readerAutoFlip": "Auto flip",
+  "readerGlobalSearch": "Global search",
+  "readerOpenNotes": "View notes",
+  "readerBookThoughts": "Book thoughts"
 }

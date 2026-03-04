@@ -4,10 +4,14 @@ import 'package:sqflite/sqflite.dart';
 import '../../dtos/db/book-dto.dart';
 import '../../dtos/db/chapter-dto.dart';
 import '../../dtos/db/highlight-dto.dart';
+import '../../dtos/db/reader-pagination-cache-dto.dart';
+import '../../dtos/db/reader-preferences-dto.dart';
 import '../../dtos/db/reading-progress-dto.dart';
 import 'tables/books-table.dart';
 import 'tables/chapters-table.dart';
 import 'tables/highlights-table.dart';
+import 'tables/reader-pagination-cache-table.dart';
+import 'tables/reader-preferences-table.dart';
 import 'tables/reading-progress-table.dart';
 
 class AppDatabase {
@@ -22,7 +26,7 @@ class AppDatabase {
     final path = p.join(root, 'uni_reader.db');
     final database = await openDatabase(
       path,
-      version: 2,
+      version: 5,
       onCreate: (db, _) async {
         await db.execute('''
 CREATE TABLE ${BooksTable.tableName} (
@@ -31,6 +35,7 @@ CREATE TABLE ${BooksTable.tableName} (
   ${BooksTable.author} TEXT NOT NULL,
   ${BooksTable.coverUrl} TEXT,
   ${BooksTable.profileBgColor} TEXT,
+  ${BooksTable.estimatedTotalPages} INTEGER,
   ${BooksTable.sourceType} TEXT NOT NULL,
   ${BooksTable.sourcePath} TEXT,
   ${BooksTable.createdAt} INTEGER NOT NULL,
@@ -72,6 +77,8 @@ CREATE TABLE ${HighlightsTable.tableName} (
   ${HighlightsTable.updatedAt} INTEGER NOT NULL
 )
 ''');
+        await _createReaderPreferencesTable(db);
+        await _createReaderPaginationCacheTables(db);
         await db.execute(
           'CREATE INDEX idx_chapters_book_idx ON ${ChaptersTable.tableName} (${ChaptersTable.bookId}, ${ChaptersTable.idx})',
         );
@@ -84,6 +91,17 @@ CREATE TABLE ${HighlightsTable.tableName} (
           await db.execute(
             'ALTER TABLE ${BooksTable.tableName} ADD COLUMN ${BooksTable.profileBgColor} TEXT',
           );
+        }
+        if (oldVersion < 3) {
+          await db.execute(
+            'ALTER TABLE ${BooksTable.tableName} ADD COLUMN ${BooksTable.estimatedTotalPages} INTEGER',
+          );
+        }
+        if (oldVersion < 4) {
+          await _createReaderPreferencesTable(db);
+        }
+        if (oldVersion < 5) {
+          await _createReaderPaginationCacheTables(db);
         }
       },
     );
@@ -125,6 +143,88 @@ CREATE TABLE ${HighlightsTable.tableName} (
 
   Future<void> deleteHighlight(String highlightId) =>
       _backend.deleteHighlight(highlightId);
+
+  Future<ReaderPreferencesDto?> getReaderPreferences(String bookId) =>
+      _backend.getReaderPreferences(bookId);
+
+  Future<void> upsertReaderPreferences(ReaderPreferencesDto preferences) =>
+      _backend.upsertReaderPreferences(preferences);
+
+  Future<ReaderPaginationCacheDto?> getReaderPaginationCache({
+    required String bookId,
+    required String layoutKey,
+    required String cacheKind,
+    required int chapterStart,
+    required int chapterEnd,
+  }) => _backend.getReaderPaginationCache(
+    bookId: bookId,
+    layoutKey: layoutKey,
+    cacheKind: cacheKind,
+    chapterStart: chapterStart,
+    chapterEnd: chapterEnd,
+  );
+
+  Future<void> upsertReaderPaginationCache(ReaderPaginationCacheDto cache) =>
+      _backend.upsertReaderPaginationCache(cache);
+
+  Future<void> pruneReaderPaginationCaches({
+    required String bookId,
+    required int keepCount,
+  }) => _backend.pruneReaderPaginationCaches(
+    bookId: bookId,
+    keepCount: keepCount,
+  );
+
+  static Future<void> _createReaderPreferencesTable(DatabaseExecutor db) async {
+    await db.execute('''
+CREATE TABLE ${ReaderPreferencesTable.tableName} (
+  ${ReaderPreferencesTable.bookId} TEXT PRIMARY KEY,
+  ${ReaderPreferencesTable.fontSize} REAL NOT NULL,
+  ${ReaderPreferencesTable.pagePaddingLevel} INTEGER NOT NULL,
+  ${ReaderPreferencesTable.lineHeightLevel} INTEGER NOT NULL,
+  ${ReaderPreferencesTable.letterSpacing} REAL NOT NULL,
+  ${ReaderPreferencesTable.textColor} INTEGER NOT NULL,
+  ${ReaderPreferencesTable.backgroundColor} INTEGER NOT NULL,
+  ${ReaderPreferencesTable.brightness} REAL NOT NULL,
+  ${ReaderPreferencesTable.fontFamily} TEXT NOT NULL,
+  ${ReaderPreferencesTable.firstLineIndent} INTEGER NOT NULL,
+  ${ReaderPreferencesTable.pageTurnMode} TEXT NOT NULL
+)
+''');
+  }
+
+  static Future<void> _createReaderPaginationCacheTables(
+    DatabaseExecutor db,
+  ) async {
+    await db.execute('''
+CREATE TABLE ${ReaderPaginationCacheTable.tableName} (
+  ${ReaderPaginationCacheTable.id} TEXT PRIMARY KEY,
+  ${ReaderPaginationCacheTable.bookId} TEXT NOT NULL,
+  ${ReaderPaginationCacheTable.layoutKey} TEXT NOT NULL,
+  ${ReaderPaginationCacheTable.cacheKind} TEXT NOT NULL,
+  ${ReaderPaginationCacheTable.chapterStart} INTEGER NOT NULL,
+  ${ReaderPaginationCacheTable.chapterEnd} INTEGER NOT NULL,
+  ${ReaderPaginationCacheTable.pageCount} INTEGER NOT NULL,
+  ${ReaderPaginationCacheTable.updatedAt} INTEGER NOT NULL
+)
+''');
+    await db.execute('''
+CREATE TABLE ${ReaderPaginationSliceTable.tableName} (
+  ${ReaderPaginationSliceTable.cacheId} TEXT NOT NULL,
+  ${ReaderPaginationSliceTable.pageIndex} INTEGER NOT NULL,
+  ${ReaderPaginationSliceTable.chapterIndex} INTEGER NOT NULL,
+  ${ReaderPaginationSliceTable.startOffset} INTEGER NOT NULL,
+  ${ReaderPaginationSliceTable.endOffset} INTEGER NOT NULL,
+  PRIMARY KEY (${ReaderPaginationSliceTable.cacheId}, ${ReaderPaginationSliceTable.pageIndex})
+)
+''');
+    await db.execute(
+      'CREATE INDEX idx_reader_pagination_cache_book_updated ON ${ReaderPaginationCacheTable.tableName} (${ReaderPaginationCacheTable.bookId}, ${ReaderPaginationCacheTable.updatedAt} DESC)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_reader_pagination_cache_book_layout ON ${ReaderPaginationCacheTable.tableName} (${ReaderPaginationCacheTable.bookId}, ${ReaderPaginationCacheTable.layoutKey}, ${ReaderPaginationCacheTable.cacheKind})',
+    );
+  }
 }
 
 abstract class _DatabaseBackend {
@@ -140,6 +240,20 @@ abstract class _DatabaseBackend {
   Future<List<HighlightDto>> listHighlights(String bookId, {String? chapterId});
   Future<void> upsertHighlight(HighlightDto highlight);
   Future<void> deleteHighlight(String highlightId);
+  Future<ReaderPreferencesDto?> getReaderPreferences(String bookId);
+  Future<void> upsertReaderPreferences(ReaderPreferencesDto preferences);
+  Future<ReaderPaginationCacheDto?> getReaderPaginationCache({
+    required String bookId,
+    required String layoutKey,
+    required String cacheKind,
+    required int chapterStart,
+    required int chapterEnd,
+  });
+  Future<void> upsertReaderPaginationCache(ReaderPaginationCacheDto cache);
+  Future<void> pruneReaderPaginationCaches({
+    required String bookId,
+    required int keepCount,
+  });
 }
 
 class _InMemoryBackend implements _DatabaseBackend {
@@ -148,6 +262,10 @@ class _InMemoryBackend implements _DatabaseBackend {
   final Map<String, ReadingProgressDto> _progress =
       <String, ReadingProgressDto>{};
   final Map<String, HighlightDto> _highlights = <String, HighlightDto>{};
+  final Map<String, ReaderPreferencesDto> _readerPreferences =
+      <String, ReaderPreferencesDto>{};
+  final Map<String, ReaderPaginationCacheDto> _readerPaginationCaches =
+      <String, ReaderPaginationCacheDto>{};
 
   @override
   Future<List<BookDto>> listBooks() async =>
@@ -167,6 +285,8 @@ class _InMemoryBackend implements _DatabaseBackend {
     _chapters.removeWhere((_, chapter) => chapter.bookId == bookId);
     _progress.remove(bookId);
     _highlights.removeWhere((_, highlight) => highlight.bookId == bookId);
+    _readerPreferences.remove(bookId);
+    _readerPaginationCaches.removeWhere((_, cache) => cache.bookId == bookId);
   }
 
   @override
@@ -226,6 +346,60 @@ class _InMemoryBackend implements _DatabaseBackend {
   Future<void> deleteHighlight(String highlightId) async {
     _highlights.remove(highlightId);
   }
+
+  @override
+  Future<ReaderPreferencesDto?> getReaderPreferences(String bookId) async =>
+      _readerPreferences[bookId];
+
+  @override
+  Future<void> upsertReaderPreferences(ReaderPreferencesDto preferences) async {
+    _readerPreferences[preferences.bookId] = preferences;
+  }
+
+  @override
+  Future<ReaderPaginationCacheDto?> getReaderPaginationCache({
+    required String bookId,
+    required String layoutKey,
+    required String cacheKind,
+    required int chapterStart,
+    required int chapterEnd,
+  }) async {
+    for (final cache in _readerPaginationCaches.values) {
+      if (cache.bookId == bookId &&
+          cache.layoutKey == layoutKey &&
+          cache.cacheKind == cacheKind &&
+          cache.chapterStart == chapterStart &&
+          cache.chapterEnd == chapterEnd) {
+        return cache;
+      }
+    }
+    return null;
+  }
+
+  @override
+  Future<void> upsertReaderPaginationCache(
+    ReaderPaginationCacheDto cache,
+  ) async {
+    _readerPaginationCaches[cache.id] = cache;
+  }
+
+  @override
+  Future<void> pruneReaderPaginationCaches({
+    required String bookId,
+    required int keepCount,
+  }) async {
+    final list =
+        _readerPaginationCaches.values
+            .where((cache) => cache.bookId == bookId)
+            .toList(growable: false)
+          ..sort((a, b) => b.updatedAtMillis.compareTo(a.updatedAtMillis));
+    if (list.length <= keepCount) {
+      return;
+    }
+    for (final cache in list.skip(keepCount)) {
+      _readerPaginationCaches.remove(cache.id);
+    }
+  }
 }
 
 class _SqfliteBackend implements _DatabaseBackend {
@@ -264,6 +438,7 @@ class _SqfliteBackend implements _DatabaseBackend {
       BooksTable.author: book.author,
       BooksTable.coverUrl: book.coverUrl,
       BooksTable.profileBgColor: book.profileBgColor,
+      BooksTable.estimatedTotalPages: book.estimatedTotalPages,
       BooksTable.sourceType: book.sourceType,
       BooksTable.sourcePath: book.sourcePath,
       BooksTable.createdAt: book.createdAtMillis,
@@ -282,6 +457,32 @@ class _SqfliteBackend implements _DatabaseBackend {
       await txn.delete(
         ReadingProgressTable.tableName,
         where: '${ReadingProgressTable.bookId} = ?',
+        whereArgs: <Object?>[bookId],
+      );
+      await txn.delete(
+        ReaderPreferencesTable.tableName,
+        where: '${ReaderPreferencesTable.bookId} = ?',
+        whereArgs: <Object?>[bookId],
+      );
+      final cacheRows = await txn.query(
+        ReaderPaginationCacheTable.tableName,
+        columns: <String>[ReaderPaginationCacheTable.id],
+        where: '${ReaderPaginationCacheTable.bookId} = ?',
+        whereArgs: <Object?>[bookId],
+      );
+      final cacheIds = cacheRows
+          .map((row) => row[ReaderPaginationCacheTable.id]! as String)
+          .toList(growable: false);
+      for (final cacheId in cacheIds) {
+        await txn.delete(
+          ReaderPaginationSliceTable.tableName,
+          where: '${ReaderPaginationSliceTable.cacheId} = ?',
+          whereArgs: <Object?>[cacheId],
+        );
+      }
+      await txn.delete(
+        ReaderPaginationCacheTable.tableName,
+        where: '${ReaderPaginationCacheTable.bookId} = ?',
         whereArgs: <Object?>[bookId],
       );
       await txn.delete(
@@ -407,6 +608,154 @@ class _SqfliteBackend implements _DatabaseBackend {
     );
   }
 
+  @override
+  Future<ReaderPreferencesDto?> getReaderPreferences(String bookId) async {
+    final rows = await _database.query(
+      ReaderPreferencesTable.tableName,
+      where: '${ReaderPreferencesTable.bookId} = ?',
+      whereArgs: <Object?>[bookId],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return null;
+    }
+    return _readerPreferencesFromRow(rows.first);
+  }
+
+  @override
+  Future<void> upsertReaderPreferences(ReaderPreferencesDto preferences) {
+    return _database.insert(
+      ReaderPreferencesTable.tableName,
+      <String, Object?>{
+        ReaderPreferencesTable.bookId: preferences.bookId,
+        ReaderPreferencesTable.fontSize: preferences.fontSize,
+        ReaderPreferencesTable.pagePaddingLevel: preferences.pagePaddingLevel,
+        ReaderPreferencesTable.lineHeightLevel: preferences.lineHeightLevel,
+        ReaderPreferencesTable.letterSpacing: preferences.letterSpacing,
+        ReaderPreferencesTable.textColor: preferences.textColorValue,
+        ReaderPreferencesTable.backgroundColor:
+            preferences.backgroundColorValue,
+        ReaderPreferencesTable.brightness: preferences.brightness,
+        ReaderPreferencesTable.fontFamily: preferences.fontFamily,
+        ReaderPreferencesTable.firstLineIndent: preferences.firstLineIndent,
+        ReaderPreferencesTable.pageTurnMode: preferences.pageTurnMode,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  @override
+  Future<ReaderPaginationCacheDto?> getReaderPaginationCache({
+    required String bookId,
+    required String layoutKey,
+    required String cacheKind,
+    required int chapterStart,
+    required int chapterEnd,
+  }) async {
+    final rows = await _database.query(
+      ReaderPaginationCacheTable.tableName,
+      where:
+          '${ReaderPaginationCacheTable.bookId} = ? AND ${ReaderPaginationCacheTable.layoutKey} = ? AND ${ReaderPaginationCacheTable.cacheKind} = ? AND ${ReaderPaginationCacheTable.chapterStart} = ? AND ${ReaderPaginationCacheTable.chapterEnd} = ?',
+      whereArgs: <Object?>[
+        bookId,
+        layoutKey,
+        cacheKind,
+        chapterStart,
+        chapterEnd,
+      ],
+      orderBy: '${ReaderPaginationCacheTable.updatedAt} DESC',
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return null;
+    }
+    final cacheRow = rows.first;
+    final cacheId = cacheRow[ReaderPaginationCacheTable.id]! as String;
+    final sliceRows = await _database.query(
+      ReaderPaginationSliceTable.tableName,
+      where: '${ReaderPaginationSliceTable.cacheId} = ?',
+      whereArgs: <Object?>[cacheId],
+      orderBy: '${ReaderPaginationSliceTable.pageIndex} ASC',
+    );
+    final slices = sliceRows
+        .map(_readerPaginationSliceFromRow)
+        .toList(growable: false);
+    return _readerPaginationCacheFromRow(cacheRow, slices: slices);
+  }
+
+  @override
+  Future<void> upsertReaderPaginationCache(
+    ReaderPaginationCacheDto cache,
+  ) async {
+    await _database.transaction((txn) async {
+      await txn.insert(
+        ReaderPaginationCacheTable.tableName,
+        <String, Object?>{
+          ReaderPaginationCacheTable.id: cache.id,
+          ReaderPaginationCacheTable.bookId: cache.bookId,
+          ReaderPaginationCacheTable.layoutKey: cache.layoutKey,
+          ReaderPaginationCacheTable.cacheKind: cache.cacheKind,
+          ReaderPaginationCacheTable.chapterStart: cache.chapterStart,
+          ReaderPaginationCacheTable.chapterEnd: cache.chapterEnd,
+          ReaderPaginationCacheTable.pageCount: cache.pageCount,
+          ReaderPaginationCacheTable.updatedAt: cache.updatedAtMillis,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      await txn.delete(
+        ReaderPaginationSliceTable.tableName,
+        where: '${ReaderPaginationSliceTable.cacheId} = ?',
+        whereArgs: <Object?>[cache.id],
+      );
+      for (final slice in cache.slices) {
+        await txn.insert(
+          ReaderPaginationSliceTable.tableName,
+          <String, Object?>{
+            ReaderPaginationSliceTable.cacheId: cache.id,
+            ReaderPaginationSliceTable.pageIndex: slice.pageIndex,
+            ReaderPaginationSliceTable.chapterIndex: slice.chapterIndex,
+            ReaderPaginationSliceTable.startOffset: slice.startOffset,
+            ReaderPaginationSliceTable.endOffset: slice.endOffset,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+    });
+  }
+
+  @override
+  Future<void> pruneReaderPaginationCaches({
+    required String bookId,
+    required int keepCount,
+  }) async {
+    final rows = await _database.query(
+      ReaderPaginationCacheTable.tableName,
+      columns: <String>[ReaderPaginationCacheTable.id],
+      where: '${ReaderPaginationCacheTable.bookId} = ?',
+      whereArgs: <Object?>[bookId],
+      orderBy: '${ReaderPaginationCacheTable.updatedAt} DESC',
+    );
+    if (rows.length <= keepCount) {
+      return;
+    }
+    final deleteRows = rows.skip(keepCount);
+    await _database.transaction((txn) async {
+      for (final row in deleteRows) {
+        final cacheId = row[ReaderPaginationCacheTable.id]! as String;
+        await txn.delete(
+          ReaderPaginationSliceTable.tableName,
+          where: '${ReaderPaginationSliceTable.cacheId} = ?',
+          whereArgs: <Object?>[cacheId],
+        );
+        await txn.delete(
+          ReaderPaginationCacheTable.tableName,
+          where: '${ReaderPaginationCacheTable.id} = ?',
+          whereArgs: <Object?>[cacheId],
+        );
+      }
+    });
+  }
+
   BookDto _bookFromRow(Map<String, Object?> row) {
     return BookDto(
       id: row[BooksTable.id]! as String,
@@ -414,6 +763,7 @@ class _SqfliteBackend implements _DatabaseBackend {
       author: row[BooksTable.author]! as String,
       coverUrl: row[BooksTable.coverUrl] as String?,
       profileBgColor: row[BooksTable.profileBgColor] as String?,
+      estimatedTotalPages: row[BooksTable.estimatedTotalPages] as int?,
       sourceType: row[BooksTable.sourceType]! as String,
       sourcePath: row[BooksTable.sourcePath] as String?,
       createdAtMillis: row[BooksTable.createdAt]! as int,
@@ -456,6 +806,51 @@ class _SqfliteBackend implements _DatabaseBackend {
       note: row[HighlightsTable.note] as String?,
       createdAtMillis: row[HighlightsTable.createdAt]! as int,
       updatedAtMillis: row[HighlightsTable.updatedAt]! as int,
+    );
+  }
+
+  ReaderPreferencesDto _readerPreferencesFromRow(Map<String, Object?> row) {
+    return ReaderPreferencesDto(
+      bookId: row[ReaderPreferencesTable.bookId]! as String,
+      fontSize: (row[ReaderPreferencesTable.fontSize]! as num).toDouble(),
+      pagePaddingLevel: row[ReaderPreferencesTable.pagePaddingLevel]! as int,
+      lineHeightLevel: row[ReaderPreferencesTable.lineHeightLevel]! as int,
+      letterSpacing: (row[ReaderPreferencesTable.letterSpacing]! as num)
+          .toDouble(),
+      textColorValue: row[ReaderPreferencesTable.textColor]! as int,
+      backgroundColorValue: row[ReaderPreferencesTable.backgroundColor]! as int,
+      brightness: (row[ReaderPreferencesTable.brightness]! as num).toDouble(),
+      fontFamily: row[ReaderPreferencesTable.fontFamily]! as String,
+      firstLineIndent: row[ReaderPreferencesTable.firstLineIndent]! as int,
+      pageTurnMode: row[ReaderPreferencesTable.pageTurnMode]! as String,
+    );
+  }
+
+  ReaderPaginationSliceDto _readerPaginationSliceFromRow(
+    Map<String, Object?> row,
+  ) {
+    return ReaderPaginationSliceDto(
+      pageIndex: row[ReaderPaginationSliceTable.pageIndex]! as int,
+      chapterIndex: row[ReaderPaginationSliceTable.chapterIndex]! as int,
+      startOffset: row[ReaderPaginationSliceTable.startOffset]! as int,
+      endOffset: row[ReaderPaginationSliceTable.endOffset]! as int,
+    );
+  }
+
+  ReaderPaginationCacheDto _readerPaginationCacheFromRow(
+    Map<String, Object?> row, {
+    required List<ReaderPaginationSliceDto> slices,
+  }) {
+    return ReaderPaginationCacheDto(
+      id: row[ReaderPaginationCacheTable.id]! as String,
+      bookId: row[ReaderPaginationCacheTable.bookId]! as String,
+      layoutKey: row[ReaderPaginationCacheTable.layoutKey]! as String,
+      cacheKind: row[ReaderPaginationCacheTable.cacheKind]! as String,
+      chapterStart: row[ReaderPaginationCacheTable.chapterStart]! as int,
+      chapterEnd: row[ReaderPaginationCacheTable.chapterEnd]! as int,
+      pageCount: row[ReaderPaginationCacheTable.pageCount]! as int,
+      updatedAtMillis: row[ReaderPaginationCacheTable.updatedAt]! as int,
+      slices: slices,
     );
   }
 }

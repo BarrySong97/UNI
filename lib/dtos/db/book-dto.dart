@@ -10,6 +10,7 @@ class BookDto {
     required this.updatedAtMillis,
     this.coverUrl,
     this.profileBgColor,
+    this.estimatedTotalPages,
     this.sourcePath,
   });
 
@@ -18,6 +19,7 @@ class BookDto {
   final String author;
   final String? coverUrl;
   final String? profileBgColor;
+  final int? estimatedTotalPages;
   final String sourceType;
   final String? sourcePath;
   final int createdAtMillis;
@@ -30,6 +32,7 @@ class BookDto {
       author: author,
       coverUrl: coverUrl,
       profileBgColor: profileBgColor,
+      estimatedTotalPages: estimatedTotalPages,
       sourceType: sourceType,
       sourcePath: sourcePath,
       createdAt: DateTime.fromMillisecondsSinceEpoch(createdAtMillis),
@@ -44,6 +47,7 @@ class BookDto {
       author: entity.author,
       coverUrl: entity.coverUrl,
       profileBgColor: entity.profileBgColor,
+      estimatedTotalPages: entity.estimatedTotalPages,
       sourceType: entity.sourceType,
       sourcePath: entity.sourcePath,
       createdAtMillis: entity.createdAt.millisecondsSinceEpoch,

@@ -10,6 +10,8 @@ class SelectableParagraph extends StatelessWidget {
     required this.highlights,
     required this.highlightActionLabel,
     required this.focusNode,
+    this.textStyle,
+    this.contentPadding = const EdgeInsets.all(16),
     required this.onSelectionChanged,
     required this.onHighlightRequested,
     super.key,
@@ -19,17 +21,23 @@ class SelectableParagraph extends StatelessWidget {
   final List<HighlightEntity> highlights;
   final String highlightActionLabel;
   final FocusNode focusNode;
+  final TextStyle? textStyle;
+  final EdgeInsetsGeometry contentPadding;
   final void Function(TextSelection selection) onSelectionChanged;
   final void Function(TextSelection selection) onHighlightRequested;
   final HighlightedTextSpanBuilder _builder;
 
   @override
   Widget build(BuildContext context) {
-    final baseStyle = Theme.of(context).textTheme.bodyLarge;
-    final spans = _builder.build(text: text, highlights: highlights, baseStyle: baseStyle);
+    final baseStyle = textStyle ?? Theme.of(context).textTheme.bodyLarge;
+    final spans = _builder.build(
+      text: text,
+      highlights: highlights,
+      baseStyle: baseStyle,
+    );
 
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: contentPadding,
       child: SelectableText.rich(
         TextSpan(children: spans, style: baseStyle),
         focusNode: focusNode,
@@ -42,7 +50,9 @@ class SelectableParagraph extends StatelessWidget {
             return const SizedBox.shrink();
           }
 
-          final selectedText = selection.textInside(editableTextState.textEditingValue.text);
+          final selectedText = selection.textInside(
+            editableTextState.textEditingValue.text,
+          );
           final localizations = MaterialLocalizations.of(context);
           final canCopy = selectedText.isNotEmpty;
 

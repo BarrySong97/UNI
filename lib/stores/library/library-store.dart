@@ -1,10 +1,13 @@
-import 'package:flutter/foundation.dart';
 import 'dart:convert';
+import 'dart:math' as math;
+
+import 'package:flutter/foundation.dart';
 
 import '../../entities/book-entity.dart';
 import '../../entities/chapter-entity.dart';
 import '../../repositories/book/book-repository.dart';
 import '../../repositories/chapter/chapter-repository.dart';
+import '../../shared/constants/reader-constants.dart';
 import '../../services/library/book-profile-color-service.dart';
 import '../../services/parser/book-import-service.dart';
 import 'library-state.dart';
@@ -66,12 +69,14 @@ class LibraryStore extends ChangeNotifier {
       final coverBytes = _decodeCoverDataUrl(imported.coverUrl);
       final profileBgColor = await _bookProfileColorService
           .resolveProfileBgColorHex(coverBytes);
+      final estimatedTotalPages = _estimateTotalPages(imported.chapters);
       final book = BookEntity(
         id: bookId,
         title: imported.title,
         author: imported.author,
         coverUrl: imported.coverUrl,
         profileBgColor: profileBgColor,
+        estimatedTotalPages: estimatedTotalPages,
         sourceType: imported.sourceType,
         sourcePath: imported.sourcePath,
         createdAt: now,
@@ -178,5 +183,19 @@ class LibraryStore extends ChangeNotifier {
     } catch (_) {
       return null;
     }
+  }
+
+  int _estimateTotalPages(List<ImportedChapterDraft> chapters) {
+    final totalChars = chapters.fold<int>(
+      0,
+      (sum, chapter) => sum + chapter.content.length,
+    );
+    if (totalChars <= 0) {
+      return 1;
+    }
+    return math.max(
+      1,
+      (totalChars / ReaderConstants.estimatedCharsPerPage).ceil(),
+    );
   }
 }

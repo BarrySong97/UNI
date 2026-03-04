@@ -62,6 +62,7 @@ void main() {
       final imported = store.state.books.single;
       expect(imported.profileBgColor, isNotNull);
       expect(imported.profileBgColor, startsWith('#'));
+      expect(imported.estimatedTotalPages, 1);
     },
   );
 
@@ -86,6 +87,31 @@ void main() {
 
       final imported = store.state.books.single;
       expect(imported.profileBgColor, isNull);
+      expect(imported.estimatedTotalPages, 1);
+    },
+  );
+
+  test(
+    'importBookFromPath stores estimated total pages for long content',
+    () async {
+      final longContent = List<String>.filled(200, 'chapter text').join();
+      final store = await createStore(
+        ImportedBookDraft(
+          title: 'Book C',
+          author: 'Author C',
+          sourceType: 'local_txt',
+          sourcePath: '/tmp/book-c.txt',
+          chapters: <ImportedChapterDraft>[
+            ImportedChapterDraft(title: 'Chapter 1', content: longContent),
+          ],
+          format: 'txt',
+        ),
+      );
+
+      await store.importBookFromPath('/tmp/book-c.txt');
+
+      final imported = store.state.books.single;
+      expect(imported.estimatedTotalPages, greaterThan(1));
     },
   );
 }

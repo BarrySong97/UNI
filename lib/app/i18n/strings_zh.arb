@@ -26,5 +26,15 @@
   "deleteBookConfirmMessage": "这会从本应用中删除该书及其章节、阅读进度和划线。",
   "deleteBookFailed": "删除失败",
   "cancel": "取消",
-  "delete": "删除"
+  "delete": "删除",
+  "readerChapterList": "章节列表",
+  "readerSearchBook": "搜本书",
+  "readerCurrentRead": "当前读到",
+  "readerCurrentReadProgress": "当前读到 {current}/{total}",
+  "readerAddBookmark": "添加书签",
+  "readerDownloadDone": "下载完成",
+  "readerAutoFlip": "开启自动翻页",
+  "readerGlobalSearch": "全文搜索",
+  "readerOpenNotes": "查看笔记",
+  "readerBookThoughts": "书友想法"
 }

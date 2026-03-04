@@ -14,11 +14,15 @@ import 'package:uni/repositories/book/book-repository-impl.dart';
 import 'package:uni/repositories/chapter/chapter-repository-impl.dart';
 import 'package:uni/repositories/highlight/highlight-repository-impl.dart';
 import 'package:uni/repositories/progress/progress-repository-impl.dart';
+import 'package:uni/repositories/reader-pagination-cache/reader-pagination-cache-repository-impl.dart';
+import 'package:uni/repositories/reader-preferences/reader-preferences-repository-impl.dart';
 import 'package:uni/services/db/app-database.dart';
 import 'package:uni/services/db/daos/books-dao.dart';
 import 'package:uni/services/db/daos/chapters-dao.dart';
 import 'package:uni/services/db/daos/highlights-dao.dart';
 import 'package:uni/services/db/daos/progress-dao.dart';
+import 'package:uni/services/db/daos/reader-pagination-cache-dao.dart';
+import 'package:uni/services/db/daos/reader-preferences-dao.dart';
 import 'package:uni/services/library/book-profile-color-service.dart';
 import 'package:uni/services/library/book-profile-entry-service.dart';
 import 'package:uni/services/parser/book-import-service.dart';
@@ -54,12 +58,20 @@ Future<AppProviders> _createProviders({
   final chaptersDao = ChaptersDao(database: database);
   final progressDao = ProgressDao(database: database);
   final highlightsDao = HighlightsDao(database: database);
+  final readerPaginationCacheDao = ReaderPaginationCacheDao(database: database);
+  final readerPreferencesDao = ReaderPreferencesDao(database: database);
 
   final bookRepository = BookRepositoryImpl(booksDao: booksDao);
   final chapterRepository = ChapterRepositoryImpl(chaptersDao: chaptersDao);
   final progressRepository = ProgressRepositoryImpl(progressDao: progressDao);
   final highlightRepository = HighlightRepositoryImpl(
     highlightsDao: highlightsDao,
+  );
+  final readerPreferencesRepository = ReaderPreferencesRepositoryImpl(
+    preferencesDao: readerPreferencesDao,
+  );
+  final readerPaginationCacheRepository = ReaderPaginationCacheRepositoryImpl(
+    cacheDao: readerPaginationCacheDao,
   );
 
   final now = DateTime.now();
@@ -139,6 +151,8 @@ Future<AppProviders> _createProviders({
     chapterRepository: chapterRepository,
     progressRepository: progressRepository,
     highlightRepository: highlightRepository,
+    readerPaginationCacheRepository: readerPaginationCacheRepository,
+    readerPreferencesRepository: readerPreferencesRepository,
     bookProfileEntryService: BookProfileEntryService(
       progressRepository: progressRepository,
     ),
@@ -154,6 +168,8 @@ Future<AppProviders> _createProviders({
       bookRepository: bookRepository,
       chapterRepository: chapterRepository,
       progressRepository: progressRepository,
+      readerPaginationCacheRepository: readerPaginationCacheRepository,
+      readerPreferencesRepository: readerPreferencesRepository,
     ),
     highlightStore: HighlightStore(highlightRepository: highlightRepository),
   );

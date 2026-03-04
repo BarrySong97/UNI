@@ -4,6 +4,8 @@ import '../../repositories/book/book-repository.dart';
 import '../../repositories/chapter/chapter-repository.dart';
 import '../../repositories/highlight/highlight-repository.dart';
 import '../../repositories/progress/progress-repository.dart';
+import '../../repositories/reader-pagination-cache/reader-pagination-cache-repository.dart';
+import '../../repositories/reader-preferences/reader-preferences-repository.dart';
 import '../../services/library/book-profile-entry-service.dart';
 import '../../stores/highlight/highlight-store.dart';
 import '../../stores/library/library-store.dart';
@@ -16,6 +18,8 @@ class AppProviders {
     required this.chapterRepository,
     required this.progressRepository,
     required this.highlightRepository,
+    required this.readerPaginationCacheRepository,
+    required this.readerPreferencesRepository,
     required this.bookProfileEntryService,
     required this.appLocaleController,
   });
@@ -24,6 +28,8 @@ class AppProviders {
   final ChapterRepository chapterRepository;
   final ProgressRepository progressRepository;
   final HighlightRepository highlightRepository;
+  final ReaderPaginationCacheRepository readerPaginationCacheRepository;
+  final ReaderPreferencesRepository readerPreferencesRepository;
   final BookProfileEntryService bookProfileEntryService;
   final AppLocaleController appLocaleController;
 
@@ -52,7 +58,8 @@ class AppProvidersScope extends InheritedWidget {
   final AppProviders providers;
 
   static AppProviders of(BuildContext context) {
-    final scope = context.dependOnInheritedWidgetOfExactType<AppProvidersScope>();
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<AppProvidersScope>();
     assert(scope != null, 'AppProvidersScope not found in widget tree.');
     return scope!.providers;
   }
