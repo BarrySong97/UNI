@@ -4,12 +4,8 @@ class HighlightDto {
   const HighlightDto({
     required this.id,
     required this.bookId,
-    required this.chapterId,
-    required this.startOffset,
-    required this.endOffset,
+    required this.locatorJson,
     required this.selectedText,
-    required this.prefixContext,
-    required this.suffixContext,
     required this.color,
     required this.createdAtMillis,
     required this.updatedAtMillis,
@@ -18,12 +14,8 @@ class HighlightDto {
 
   final String id;
   final String bookId;
-  final String chapterId;
-  final int startOffset;
-  final int endOffset;
+  final String locatorJson;
   final String selectedText;
-  final String prefixContext;
-  final String suffixContext;
   final String color;
   final String? note;
   final int createdAtMillis;
@@ -33,12 +25,8 @@ class HighlightDto {
     return HighlightEntity(
       id: id,
       bookId: bookId,
-      chapterId: chapterId,
-      startOffset: startOffset,
-      endOffset: endOffset,
+      locatorJson: locatorJson,
       selectedText: selectedText,
-      prefixContext: prefixContext,
-      suffixContext: suffixContext,
       color: color,
       note: note,
       createdAt: DateTime.fromMillisecondsSinceEpoch(createdAtMillis),
@@ -50,12 +38,8 @@ class HighlightDto {
     return HighlightDto(
       id: entity.id,
       bookId: entity.bookId,
-      chapterId: entity.chapterId,
-      startOffset: entity.startOffset,
-      endOffset: entity.endOffset,
+      locatorJson: entity.locatorJson,
       selectedText: entity.selectedText,
-      prefixContext: entity.prefixContext,
-      suffixContext: entity.suffixContext,
       color: entity.color,
       note: entity.note,
       createdAtMillis: entity.createdAt.millisecondsSinceEpoch,

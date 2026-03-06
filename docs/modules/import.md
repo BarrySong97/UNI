@@ -1,58 +1,59 @@
 # 模块：import
 
 ## 模块目的
-支持本地文件导入到书架，并将可解析格式转换为章节数据。
+支持本地 EPUB 文件导入到书架，提取元数据（标题、作者、封面）并存储 EPUB 文件路径。
 
 ## 边界
 ### In
 - 文件选择
-- 格式识别
-- 导入草稿生成
-- 书籍与章节入库
+- 格式识别（仅 EPUB）
+- 元数据提取（标题、作者、封面）
+- EPUB 文件拷贝到本地目录
+- 书籍入库
 
 ### Out
-- 阅读器渲染
+- 阅读器渲染（由 Readium SDK 处理）
+- 章节解析（由 Readium SDK 处理）
 - 划线逻辑
 - 远程下载与版权管理
 
 ## 核心流程
-1. 用户选择本地文件。
-2. `BookImportService` 根据扩展名分发解析逻辑。
-3. 生成 `ImportedBookDraft`（包含可选 `coverUrl`）与章节草稿。
-4. 导入阶段为每个章节提取并标准化章节标题（优先章节头/正文首行，缺失时回退默认标题）。
-5. 导入阶段基于封面提取 `profileBgColor`（`#AARRGGBB`，提取失败可为空）。
-6. 导入阶段按章节总字符数估算整本 `estimatedTotalPages` 并写入图书数据。
-7. 写入 `BookRepository` / `ChapterRepository`（SQLite 持久化）。
+1. 用户选择本地 EPUB 文件。
+2. `BookImportService` 验证文件格式为 EPUB。
+3. 提取 EPUB 元数据：
+   - 解析 OPF 文件获取标题、作者
+   - 提取封面图片转为 data URL
+4. 生成 `ImportedBookDraft`（包含元数据和 `coverUrl`）。
+5. `LibraryStore` 将 EPUB 文件拷贝到 `booksDirectory`。
+6. 基于封面提取 `profileBgColor`（用于书架渐变背景）。
+7. 写入 `BookRepository`，存储 `epubFilePath` 字段。
 8. 刷新书架并提示导入结果。
 
 ## 关键状态与数据
-- `BookImportService.supportedExtensions`
-- `ImportedBookDraft` / `ImportedChapterDraft`
+- `BookImportService.supportedExtensions` = `{'epub'}`
+- `ImportedBookDraft`（title, author, sourceType, sourcePath, format, coverUrl）
 - `LibraryState.isImporting / lastImportMessage`
-- `ImportedBookDraft.coverUrl`（EPUB 提取到 data url）
+- `BookEntity.epubFilePath`（EPUB 文件本地路径）
 - `BookEntity.profileBgColor`（导入时提取并入库）
-- `BookEntity.estimatedTotalPages`（导入时估算并入库）
 
 ## 交互与异常
-- 不支持格式时明确报错。
-- 文件不存在或读取失败时提示失败。
-- `pdf/mobi/azw3` 等当前可导入但用占位章节提示。
-- EPUB 章节按 OPF spine 阅读顺序导入，章节标题优先取正文标题标签；提取失败回退默认标题（英文 `Chapter N` / 中文 `第N章`），不阻断导入。
-- EPUB 章节标题优先级：TOC（`nav.xhtml` / `toc.ncx`）> 正文标题标签（`h1/h2/h3/title`）> 默认标题。
-- EPUB 正文清洗保留段落边界（避免整章粘连为单段），并对超长章节按内容块进行分段导入（如 `Chapter 1 (2)`）。
-- EPUB 封面缺失或解析失败时不阻断导入，封面回退占位。
-- 封面存在但取色失败时不阻断导入，`profileBgColor` 可为空并由页面回退默认渐变。
+- 不支持格式（非 EPUB）时抛出 `UnsupportedError`。
+- 文件不存在或读取失败时抛出 `FileSystemException`。
+- EPUB 元数据缺失时回退到文件名（标题）/ 'Unknown'（作者）。
+- EPUB 封面缺失或解析失败时不阻断导入，`coverUrl` 为 null。
+- 封面存在但取色失败时不阻断导入，`profileBgColor` 可为空。
 
 ## 验收标准
-- `txt/epub` 导入后可读。
-- 导入后每个章节都具备可展示的章节标题。
-- 占位格式导入后可在书架看到。
+- EPUB 导入后可在书架看到并进入阅读。
 - EPUB 导入后若包含封面资源，书架展示真实封面。
 - EPUB 导入优先使用 metadata 中的标题/作者；缺失时回退文件名/Unknown。
-- 重启应用后导入书籍/章节仍存在（Android/iOS/macOS）。
+- 重启应用后导入书籍仍存在（Android/iOS/macOS）。
 - 导入成功/失败都有反馈。
-- `flutter analyze` / `flutter test` 通过。
+- 非 EPUB 格式明确报错。
+- `flutter analyze` 通过。
 
 ## 非目标
+- 不支持 TXT/PDF/MOBI/AZW3 等非 EPUB 格式（本次重构范围）。
 - 不做 DRM 处理。
 - 不做大文件后台任务队列。
+- 不解析章节内容（由 Readium SDK 在阅读时处理）。

@@ -12,6 +12,7 @@ class BookDto {
     this.profileBgColor,
     this.estimatedTotalPages,
     this.sourcePath,
+    this.epubFilePath,
   });
 
   final String id;
@@ -22,6 +23,7 @@ class BookDto {
   final int? estimatedTotalPages;
   final String sourceType;
   final String? sourcePath;
+  final String? epubFilePath;
   final int createdAtMillis;
   final int updatedAtMillis;
 
@@ -35,6 +37,7 @@ class BookDto {
       estimatedTotalPages: estimatedTotalPages,
       sourceType: sourceType,
       sourcePath: sourcePath,
+      epubFilePath: epubFilePath,
       createdAt: DateTime.fromMillisecondsSinceEpoch(createdAtMillis),
       updatedAt: DateTime.fromMillisecondsSinceEpoch(updatedAtMillis),
     );
@@ -50,6 +53,7 @@ class BookDto {
       estimatedTotalPages: entity.estimatedTotalPages,
       sourceType: entity.sourceType,
       sourcePath: entity.sourcePath,
+      epubFilePath: entity.epubFilePath,
       createdAtMillis: entity.createdAt.millisecondsSinceEpoch,
       updatedAtMillis: entity.updatedAt.millisecondsSinceEpoch,
     );

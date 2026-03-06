@@ -6,22 +6,17 @@ import 'package:uni/app/i18n/app-localizations.dart';
 import 'package:uni/app/providers/app-providers.dart';
 import 'package:uni/app/routes/route-names.dart';
 import 'package:uni/entities/book-entity.dart';
-import 'package:uni/entities/chapter-entity.dart';
 import 'package:uni/entities/highlight-entity.dart';
 import 'package:uni/entities/reading-progress-entity.dart';
 import 'package:uni/pages/library/book-detail-page.dart';
 import 'package:uni/repositories/book/book-repository-impl.dart';
-import 'package:uni/repositories/chapter/chapter-repository-impl.dart';
 import 'package:uni/repositories/highlight/highlight-repository-impl.dart';
 import 'package:uni/repositories/progress/progress-repository-impl.dart';
-import 'package:uni/repositories/reader-pagination-cache/reader-pagination-cache-repository-impl.dart';
 import 'package:uni/repositories/reader-preferences/reader-preferences-repository-impl.dart';
 import 'package:uni/services/db/app-database.dart';
 import 'package:uni/services/db/daos/books-dao.dart';
-import 'package:uni/services/db/daos/chapters-dao.dart';
 import 'package:uni/services/db/daos/highlights-dao.dart';
 import 'package:uni/services/db/daos/progress-dao.dart';
-import 'package:uni/services/db/daos/reader-pagination-cache-dao.dart';
 import 'package:uni/services/db/daos/reader-preferences-dao.dart';
 import 'package:uni/services/library/book-profile-color-service.dart';
 import 'package:uni/services/library/book-profile-entry-service.dart';
@@ -55,23 +50,17 @@ Future<AppProviders> _createProviders({
 }) async {
   final database = AppDatabase();
   final booksDao = BooksDao(database: database);
-  final chaptersDao = ChaptersDao(database: database);
   final progressDao = ProgressDao(database: database);
   final highlightsDao = HighlightsDao(database: database);
-  final readerPaginationCacheDao = ReaderPaginationCacheDao(database: database);
   final readerPreferencesDao = ReaderPreferencesDao(database: database);
 
   final bookRepository = BookRepositoryImpl(booksDao: booksDao);
-  final chapterRepository = ChapterRepositoryImpl(chaptersDao: chaptersDao);
   final progressRepository = ProgressRepositoryImpl(progressDao: progressDao);
   final highlightRepository = HighlightRepositoryImpl(
     highlightsDao: highlightsDao,
   );
   final readerPreferencesRepository = ReaderPreferencesRepositoryImpl(
     preferencesDao: readerPreferencesDao,
-  );
-  final readerPaginationCacheRepository = ReaderPaginationCacheRepositoryImpl(
-    cacheDao: readerPaginationCacheDao,
   );
 
   final now = DateTime.now();
@@ -82,6 +71,7 @@ Future<AppProviders> _createProviders({
       author: mainBookAuthor,
       sourceType: 'local_epub',
       profileBgColor: mainBookProfileBgColor,
+      epubFilePath: '/tmp/book-1.epub',
       createdAt: now,
       updatedAt: now,
     ),
@@ -92,29 +82,9 @@ Future<AppProviders> _createProviders({
       title: 'Thinking Architecture',
       author: 'Peter Zumthor',
       sourceType: 'local_epub',
+      epubFilePath: '/tmp/book-2.epub',
       createdAt: now,
       updatedAt: now,
-    ),
-  );
-
-  await chapterRepository.upsertChapter(
-    ChapterEntity(
-      id: 'book-1-c1',
-      bookId: 'book-1',
-      idx: 0,
-      title: 'Chapter 1',
-      content: 'Hello world',
-      wordCount: 11,
-    ),
-  );
-  await chapterRepository.upsertChapter(
-    ChapterEntity(
-      id: 'book-2-c1',
-      bookId: 'book-2',
-      idx: 0,
-      title: 'Chapter 1',
-      content: 'Collection chapter',
-      wordCount: 16,
     ),
   );
 
@@ -122,8 +92,7 @@ Future<AppProviders> _createProviders({
     await progressRepository.saveProgress(
       ReadingProgressEntity(
         bookId: 'book-2',
-        chapterId: 'book-2-c1',
-        charOffset: 200,
+        locatorJson: '{"href":"/chapter1.xhtml","type":"text/html"}',
         percent: 0.5,
         updatedAt: now,
       ),
@@ -134,12 +103,8 @@ Future<AppProviders> _createProviders({
     HighlightEntity(
       id: 'h-1',
       bookId: 'book-1',
-      chapterId: 'book-1-c1',
-      startOffset: 120,
-      endOffset: 140,
+      locatorJson: '{"href":"/chapter1.xhtml","locations":{"cssSelector":"p.intro"}}',
       selectedText: 'Design creates emotional shelter.',
-      prefixContext: '',
-      suffixContext: '',
       color: '#FFFFEB3B',
       createdAt: now,
       updatedAt: now,
@@ -148,10 +113,8 @@ Future<AppProviders> _createProviders({
 
   final providers = AppProviders(
     bookRepository: bookRepository,
-    chapterRepository: chapterRepository,
     progressRepository: progressRepository,
     highlightRepository: highlightRepository,
-    readerPaginationCacheRepository: readerPaginationCacheRepository,
     readerPreferencesRepository: readerPreferencesRepository,
     bookProfileEntryService: BookProfileEntryService(
       progressRepository: progressRepository,
@@ -161,14 +124,12 @@ Future<AppProviders> _createProviders({
   providers.registerStores(
     libraryStore: LibraryStore(
       bookRepository: bookRepository,
-      chapterRepository: chapterRepository,
       bookImportService: BookImportService(),
+      booksDirectory: '/tmp/test_books',
     ),
     readerStore: ReaderStore(
       bookRepository: bookRepository,
-      chapterRepository: chapterRepository,
       progressRepository: progressRepository,
-      readerPaginationCacheRepository: readerPaginationCacheRepository,
       readerPreferencesRepository: readerPreferencesRepository,
     ),
     highlightStore: HighlightStore(highlightRepository: highlightRepository),

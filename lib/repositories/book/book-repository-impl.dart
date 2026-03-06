@@ -36,6 +36,7 @@ class BookRepositoryImpl implements BookRepository {
     required String author,
     required DateTime createdAt,
     required DateTime updatedAt,
+    String? epubFilePath,
   }) {
     return _booksDao.upsertBook(
       BookDto(
@@ -43,6 +44,7 @@ class BookRepositoryImpl implements BookRepository {
         title: title,
         author: author,
         sourceType: 'local_epub',
+        epubFilePath: epubFilePath,
         createdAtMillis: createdAt.millisecondsSinceEpoch,
         updatedAtMillis: updatedAt.millisecondsSinceEpoch,
       ),

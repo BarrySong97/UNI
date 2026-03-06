@@ -1,13 +1,11 @@
 import 'dart:convert';
-import 'dart:math' as math;
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
 
 import '../../entities/book-entity.dart';
-import '../../entities/chapter-entity.dart';
 import '../../repositories/book/book-repository.dart';
-import '../../repositories/chapter/chapter-repository.dart';
-import '../../shared/constants/reader-constants.dart';
 import '../../services/library/book-profile-color-service.dart';
 import '../../services/parser/book-import-service.dart';
 import 'library-state.dart';
@@ -15,18 +13,18 @@ import 'library-state.dart';
 class LibraryStore extends ChangeNotifier {
   LibraryStore({
     required BookRepository bookRepository,
-    required ChapterRepository chapterRepository,
     required BookImportService bookImportService,
+    required String booksDirectory,
     BookProfileColorService? bookProfileColorService,
   }) : _bookRepository = bookRepository,
-       _chapterRepository = chapterRepository,
        _bookImportService = bookImportService,
+       _booksDirectory = booksDirectory,
        _bookProfileColorService =
            bookProfileColorService ?? const BookProfileColorService();
 
   final BookRepository _bookRepository;
-  final ChapterRepository _chapterRepository;
   final BookImportService _bookImportService;
+  final String _booksDirectory;
   final BookProfileColorService _bookProfileColorService;
   LibraryState _state = LibraryState.initial();
 
@@ -66,37 +64,26 @@ class LibraryStore extends ChangeNotifier {
       final imported = await _bookImportService.importFromPath(filePath);
       final now = DateTime.now();
       final bookId = 'book_${now.microsecondsSinceEpoch}';
+
+      final epubFilePath = await _copyEpubToLocal(filePath, bookId);
+
       final coverBytes = _decodeCoverDataUrl(imported.coverUrl);
       final profileBgColor = await _bookProfileColorService
           .resolveProfileBgColorHex(coverBytes);
-      final estimatedTotalPages = _estimateTotalPages(imported.chapters);
+
       final book = BookEntity(
         id: bookId,
         title: imported.title,
         author: imported.author,
         coverUrl: imported.coverUrl,
         profileBgColor: profileBgColor,
-        estimatedTotalPages: estimatedTotalPages,
         sourceType: imported.sourceType,
         sourcePath: imported.sourcePath,
+        epubFilePath: epubFilePath,
         createdAt: now,
         updatedAt: now,
       );
       await _bookRepository.upsertBook(book);
-
-      for (var i = 0; i < imported.chapters.length; i++) {
-        final chapter = imported.chapters[i];
-        await _chapterRepository.upsertChapter(
-          ChapterEntity(
-            id: '${bookId}_chapter_$i',
-            bookId: bookId,
-            idx: i,
-            title: chapter.title,
-            content: chapter.content,
-            wordCount: chapter.content.length,
-          ),
-        );
-      }
 
       final books = await _bookRepository.getShelfBooks();
       _state = _state.copyWith(
@@ -117,9 +104,29 @@ class LibraryStore extends ChangeNotifier {
     }
   }
 
+  Future<String> _copyEpubToLocal(String sourcePath, String bookId) async {
+    final dir = Directory(_booksDirectory);
+    if (!dir.existsSync()) {
+      dir.createSync(recursive: true);
+    }
+    final ext = p.extension(sourcePath);
+    final destPath = p.join(_booksDirectory, '$bookId$ext');
+    await File(sourcePath).copy(destPath);
+    return destPath;
+  }
+
   Future<void> deleteBookById(String bookId) async {
     try {
+      final book = await _bookRepository.getBookById(bookId);
       await _bookRepository.deleteBookById(bookId);
+
+      if (book?.epubFilePath != null) {
+        final file = File(book!.epubFilePath!);
+        if (await file.exists()) {
+          await file.delete();
+        }
+      }
+
       final books = await _bookRepository.getShelfBooks();
       _state = _state.copyWith(
         books: books,
@@ -183,19 +190,5 @@ class LibraryStore extends ChangeNotifier {
     } catch (_) {
       return null;
     }
-  }
-
-  int _estimateTotalPages(List<ImportedChapterDraft> chapters) {
-    final totalChars = chapters.fold<int>(
-      0,
-      (sum, chapter) => sum + chapter.content.length,
-    );
-    if (totalChars <= 0) {
-      return 1;
-    }
-    return math.max(
-      1,
-      (totalChars / ReaderConstants.estimatedCharsPerPage).ceil(),
-    );
   }
 }

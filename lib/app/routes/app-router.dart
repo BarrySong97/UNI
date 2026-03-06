@@ -36,7 +36,6 @@ class AppRouter {
         return MaterialPageRoute<void>(
           builder: (_) => HighlightListPage(
             bookId: args?['bookId'] ?? '',
-            chapterId: args?['chapterId'],
           ),
         );
       default:

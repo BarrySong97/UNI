@@ -8,19 +8,14 @@
       "name": "Flutter Dev",
       "request": "launch",
       "type": "dart",
-      "args": [
-        "-t", // if your have different main file
-        "lib/main.dart"
-      ]
+      "args": ["-t", "lib/main.dart"]
     },
     {
-      "name": "Flutter Noraml",
+      "name": "Flutter Run (No Debug)",
       "request": "launch",
       "type": "dart",
-      "args": [
-        "-t", // if your have different main file
-        "lib/main.dart"
-      ]
+      "noDebug": true,
+      "args": ["-t", "lib/main.dart"]
     }
   ]
 }

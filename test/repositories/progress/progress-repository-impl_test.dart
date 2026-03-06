@@ -11,8 +11,7 @@ void main() {
     final now = DateTime.now();
     final entity = ReadingProgressEntity(
       bookId: 'b1',
-      chapterId: 'c1',
-      charOffset: 12,
+      locatorJson: '{"href":"/chapter1.xhtml","type":"text/html"}',
       percent: 0.66,
       updatedAt: now,
     );
@@ -21,8 +20,7 @@ void main() {
     final saved = await repository.getProgress('b1');
 
     expect(saved, isNotNull);
-    expect(saved?.chapterId, 'c1');
-    expect(saved?.charOffset, 12);
+    expect(saved?.locatorJson, contains('chapter1.xhtml'));
     expect(saved?.percent, 0.66);
   });
 }

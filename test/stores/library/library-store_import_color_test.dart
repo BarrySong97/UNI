@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uni/repositories/book/book-repository-impl.dart';
-import 'package:uni/repositories/chapter/chapter-repository-impl.dart';
 import 'package:uni/services/db/app-database.dart';
 import 'package:uni/services/db/daos/books-dao.dart';
-import 'package:uni/services/db/daos/chapters-dao.dart';
 import 'package:uni/services/library/book-profile-color-service.dart';
 import 'package:uni/services/parser/book-import-service.dart';
 import 'package:uni/stores/library/library-store.dart';
@@ -27,13 +25,10 @@ void main() {
     final bookRepository = BookRepositoryImpl(
       booksDao: BooksDao(database: database),
     );
-    final chapterRepository = ChapterRepositoryImpl(
-      chaptersDao: ChaptersDao(database: database),
-    );
     return LibraryStore(
       bookRepository: bookRepository,
-      chapterRepository: chapterRepository,
       bookImportService: _FakeBookImportService(draft),
+      booksDirectory: '/tmp/test_books',
       bookProfileColorService: BookProfileColorService(
         dominantColorExtractor: (bytes) async => const Color(0xFF336699),
       ),
@@ -49,9 +44,6 @@ void main() {
           author: 'Author A',
           sourceType: 'local_epub',
           sourcePath: '/tmp/book-a.epub',
-          chapters: <ImportedChapterDraft>[
-            ImportedChapterDraft(title: 'Chapter 1', content: 'Hello'),
-          ],
           format: 'epub',
           coverUrl: coverDataUrl,
         ),
@@ -62,7 +54,6 @@ void main() {
       final imported = store.state.books.single;
       expect(imported.profileBgColor, isNotNull);
       expect(imported.profileBgColor, startsWith('#'));
-      expect(imported.estimatedTotalPages, 1);
     },
   );
 
@@ -73,45 +64,17 @@ void main() {
         const ImportedBookDraft(
           title: 'Book B',
           author: 'Author B',
-          sourceType: 'local_txt',
-          sourcePath: '/tmp/book-b.txt',
-          chapters: <ImportedChapterDraft>[
-            ImportedChapterDraft(title: 'Chapter 1', content: 'Hello'),
-          ],
-          format: 'txt',
+          sourceType: 'local_epub',
+          sourcePath: '/tmp/book-b.epub',
+          format: 'epub',
           coverUrl: null,
         ),
       );
 
-      await store.importBookFromPath('/tmp/book-b.txt');
+      await store.importBookFromPath('/tmp/book-b.epub');
 
       final imported = store.state.books.single;
       expect(imported.profileBgColor, isNull);
-      expect(imported.estimatedTotalPages, 1);
-    },
-  );
-
-  test(
-    'importBookFromPath stores estimated total pages for long content',
-    () async {
-      final longContent = List<String>.filled(200, 'chapter text').join();
-      final store = await createStore(
-        ImportedBookDraft(
-          title: 'Book C',
-          author: 'Author C',
-          sourceType: 'local_txt',
-          sourcePath: '/tmp/book-c.txt',
-          chapters: <ImportedChapterDraft>[
-            ImportedChapterDraft(title: 'Chapter 1', content: longContent),
-          ],
-          format: 'txt',
-        ),
-      );
-
-      await store.importBookFromPath('/tmp/book-c.txt');
-
-      final imported = store.state.books.single;
-      expect(imported.estimatedTotalPages, greaterThan(1));
     },
   );
 }

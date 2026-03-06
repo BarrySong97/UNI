@@ -57,7 +57,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
     );
   }
 
-  Future<void> _openHighlights({String? chapterId}) async {
+  Future<void> _openHighlights() async {
     if (_isNavigating || !mounted) {
       return;
     }
@@ -67,7 +67,6 @@ class _BookDetailPageState extends State<BookDetailPage> {
         RouteNames.highlights,
         arguments: <String, String>{
           'bookId': widget.bookId,
-          if (chapterId != null) 'chapterId': chapterId,
         },
       );
     } finally {
@@ -280,7 +279,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
         final progressPercent = data.progress?.percent ?? 0;
         final displayPage = data.progress == null
             ? 1
-            : ((data.progress!.charOffset ~/ 800) + 1);
+            : ((data.progress!.percent * 100).round().clamp(1, 100));
         final coverBytes = _decodeCoverDataUrl(data.book.coverUrl);
         _ensureTopGradientFuture(
           gradientKey:
@@ -595,10 +594,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                     InkWell(
                                       onTap: _isDeleting
                                           ? null
-                                          : () => _openHighlights(
-                                              chapterId:
-                                                  data.highlights[i].chapterId,
-                                            ),
+                                          : () => _openHighlights(),
                                       child: Padding(
                                         padding: const EdgeInsets.symmetric(
                                           vertical: 10,
@@ -636,7 +632,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                                   ),
                                                   const SizedBox(height: 6),
                                                   Text(
-                                                    '${localizations.tr('pageLabel').replaceAll('{page}', '${(data.highlights[i].startOffset ~/ 800) + 1}')} · ${data.highlights[i].chapterId}',
+                                                    data.highlights[i].color,
                                                     style: const TextStyle(
                                                       fontSize: LibraryDesignTokens
                                                           .bookProfileCollectionAuthorSize,

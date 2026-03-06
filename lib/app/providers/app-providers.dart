@@ -1,10 +1,8 @@
 import 'package:flutter/widgets.dart';
 
 import '../../repositories/book/book-repository.dart';
-import '../../repositories/chapter/chapter-repository.dart';
 import '../../repositories/highlight/highlight-repository.dart';
 import '../../repositories/progress/progress-repository.dart';
-import '../../repositories/reader-pagination-cache/reader-pagination-cache-repository.dart';
 import '../../repositories/reader-preferences/reader-preferences-repository.dart';
 import '../../services/library/book-profile-entry-service.dart';
 import '../../stores/highlight/highlight-store.dart';
@@ -15,20 +13,16 @@ import '../i18n/app-locale.dart';
 class AppProviders {
   AppProviders({
     required this.bookRepository,
-    required this.chapterRepository,
     required this.progressRepository,
     required this.highlightRepository,
-    required this.readerPaginationCacheRepository,
     required this.readerPreferencesRepository,
     required this.bookProfileEntryService,
     required this.appLocaleController,
   });
 
   final BookRepository bookRepository;
-  final ChapterRepository chapterRepository;
   final ProgressRepository progressRepository;
   final HighlightRepository highlightRepository;
-  final ReaderPaginationCacheRepository readerPaginationCacheRepository;
   final ReaderPreferencesRepository readerPreferencesRepository;
   final BookProfileEntryService bookProfileEntryService;
   final AppLocaleController appLocaleController;

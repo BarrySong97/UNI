@@ -9,8 +9,8 @@ class HighlightRepositoryImpl implements HighlightRepository {
   final HighlightsDao _highlightsDao;
 
   @override
-  Future<List<HighlightEntity>> getHighlights(String bookId, {String? chapterId}) async {
-    final list = await _highlightsDao.listByBookId(bookId, chapterId: chapterId);
+  Future<List<HighlightEntity>> getHighlights(String bookId) async {
+    final list = await _highlightsDao.listByBookId(bookId);
     return list.map((dto) => dto.toEntity()).toList(growable: false);
   }
 

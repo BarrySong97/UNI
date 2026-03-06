@@ -10,6 +10,7 @@ class BookEntity {
     this.profileBgColor,
     this.estimatedTotalPages,
     this.sourcePath,
+    this.epubFilePath,
   });
 
   final String id;
@@ -20,6 +21,7 @@ class BookEntity {
   final int? estimatedTotalPages;
   final String sourceType;
   final String? sourcePath;
+  final String? epubFilePath;
   final DateTime createdAt;
   final DateTime updatedAt;
 }

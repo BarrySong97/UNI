@@ -4,13 +4,11 @@ import 'package:sqflite/sqflite.dart';
 import '../../dtos/db/book-dto.dart';
 import '../../dtos/db/chapter-dto.dart';
 import '../../dtos/db/highlight-dto.dart';
-import '../../dtos/db/reader-pagination-cache-dto.dart';
 import '../../dtos/db/reader-preferences-dto.dart';
 import '../../dtos/db/reading-progress-dto.dart';
 import 'tables/books-table.dart';
 import 'tables/chapters-table.dart';
 import 'tables/highlights-table.dart';
-import 'tables/reader-pagination-cache-table.dart';
 import 'tables/reader-preferences-table.dart';
 import 'tables/reading-progress-table.dart';
 
@@ -26,7 +24,7 @@ class AppDatabase {
     final path = p.join(root, 'uni_reader.db');
     final database = await openDatabase(
       path,
-      version: 5,
+      version: 7,
       onCreate: (db, _) async {
         await db.execute('''
 CREATE TABLE ${BooksTable.tableName} (
@@ -38,6 +36,7 @@ CREATE TABLE ${BooksTable.tableName} (
   ${BooksTable.estimatedTotalPages} INTEGER,
   ${BooksTable.sourceType} TEXT NOT NULL,
   ${BooksTable.sourcePath} TEXT,
+  ${BooksTable.epubFilePath} TEXT,
   ${BooksTable.createdAt} INTEGER NOT NULL,
   ${BooksTable.updatedAt} INTEGER NOT NULL
 )
@@ -55,8 +54,7 @@ CREATE TABLE ${ChaptersTable.tableName} (
         await db.execute('''
 CREATE TABLE ${ReadingProgressTable.tableName} (
   ${ReadingProgressTable.bookId} TEXT PRIMARY KEY,
-  ${ReadingProgressTable.chapterId} TEXT NOT NULL,
-  ${ReadingProgressTable.charOffset} INTEGER NOT NULL,
+  ${ReadingProgressTable.locatorJson} TEXT NOT NULL,
   ${ReadingProgressTable.percent} REAL NOT NULL,
   ${ReadingProgressTable.updatedAt} INTEGER NOT NULL
 )
@@ -65,12 +63,8 @@ CREATE TABLE ${ReadingProgressTable.tableName} (
 CREATE TABLE ${HighlightsTable.tableName} (
   ${HighlightsTable.id} TEXT PRIMARY KEY,
   ${HighlightsTable.bookId} TEXT NOT NULL,
-  ${HighlightsTable.chapterId} TEXT NOT NULL,
-  ${HighlightsTable.startOffset} INTEGER NOT NULL,
-  ${HighlightsTable.endOffset} INTEGER NOT NULL,
+  ${HighlightsTable.locatorJson} TEXT NOT NULL,
   ${HighlightsTable.selectedText} TEXT NOT NULL,
-  ${HighlightsTable.prefixContext} TEXT NOT NULL,
-  ${HighlightsTable.suffixContext} TEXT NOT NULL,
   ${HighlightsTable.color} TEXT NOT NULL,
   ${HighlightsTable.note} TEXT,
   ${HighlightsTable.createdAt} INTEGER NOT NULL,
@@ -78,34 +72,59 @@ CREATE TABLE ${HighlightsTable.tableName} (
 )
 ''');
         await _createReaderPreferencesTable(db);
-        await _createReaderPaginationCacheTables(db);
         await db.execute(
           'CREATE INDEX idx_chapters_book_idx ON ${ChaptersTable.tableName} (${ChaptersTable.bookId}, ${ChaptersTable.idx})',
         );
         await db.execute(
-          'CREATE INDEX idx_highlights_book_chapter_start ON ${HighlightsTable.tableName} (${HighlightsTable.bookId}, ${HighlightsTable.chapterId}, ${HighlightsTable.startOffset})',
+          'CREATE INDEX idx_highlights_book ON ${HighlightsTable.tableName} (${HighlightsTable.bookId})',
         );
       },
       onUpgrade: (db, oldVersion, newVersion) async {
-        if (oldVersion < 2) {
-          await db.execute(
-            'ALTER TABLE ${BooksTable.tableName} ADD COLUMN ${BooksTable.profileBgColor} TEXT',
-          );
-        }
-        if (oldVersion < 3) {
-          await db.execute(
-            'ALTER TABLE ${BooksTable.tableName} ADD COLUMN ${BooksTable.estimatedTotalPages} INTEGER',
-          );
-        }
-        if (oldVersion < 4) {
-          await _createReaderPreferencesTable(db);
-        }
-        if (oldVersion < 5) {
-          await _createReaderPaginationCacheTables(db);
+        if (oldVersion < 7) {
+          await _migrateToV7(db);
         }
       },
     );
     return AppDatabase._(_SqfliteBackend(database));
+  }
+
+  static Future<void> _migrateToV7(DatabaseExecutor db) async {
+    await db.execute(
+      'ALTER TABLE ${BooksTable.tableName} ADD COLUMN ${BooksTable.epubFilePath} TEXT',
+    );
+
+    await db.execute('DROP TABLE IF EXISTS reading_progress');
+    await db.execute('''
+CREATE TABLE ${ReadingProgressTable.tableName} (
+  ${ReadingProgressTable.bookId} TEXT PRIMARY KEY,
+  ${ReadingProgressTable.locatorJson} TEXT NOT NULL,
+  ${ReadingProgressTable.percent} REAL NOT NULL,
+  ${ReadingProgressTable.updatedAt} INTEGER NOT NULL
+)
+''');
+
+    await db.execute('DROP TABLE IF EXISTS highlights');
+    await db.execute('''
+CREATE TABLE ${HighlightsTable.tableName} (
+  ${HighlightsTable.id} TEXT PRIMARY KEY,
+  ${HighlightsTable.bookId} TEXT NOT NULL,
+  ${HighlightsTable.locatorJson} TEXT NOT NULL,
+  ${HighlightsTable.selectedText} TEXT NOT NULL,
+  ${HighlightsTable.color} TEXT NOT NULL,
+  ${HighlightsTable.note} TEXT,
+  ${HighlightsTable.createdAt} INTEGER NOT NULL,
+  ${HighlightsTable.updatedAt} INTEGER NOT NULL
+)
+''');
+    await db.execute(
+      'CREATE INDEX idx_highlights_book ON ${HighlightsTable.tableName} (${HighlightsTable.bookId})',
+    );
+
+    await db.execute('DROP TABLE IF EXISTS reader_pagination_slices');
+    await db.execute('DROP TABLE IF EXISTS reader_pagination_cache');
+    await db.execute('DROP TABLE IF EXISTS book_images');
+
+    await db.execute('DELETE FROM ${ChaptersTable.tableName}');
   }
 
   Future<List<BookDto>> listBooks() => _backend.listBooks();
@@ -135,7 +154,7 @@ CREATE TABLE ${HighlightsTable.tableName} (
     String bookId, {
     String? chapterId,
   }) {
-    return _backend.listHighlights(bookId, chapterId: chapterId);
+    return _backend.listHighlights(bookId);
   }
 
   Future<void> upsertHighlight(HighlightDto highlight) =>
@@ -149,31 +168,6 @@ CREATE TABLE ${HighlightsTable.tableName} (
 
   Future<void> upsertReaderPreferences(ReaderPreferencesDto preferences) =>
       _backend.upsertReaderPreferences(preferences);
-
-  Future<ReaderPaginationCacheDto?> getReaderPaginationCache({
-    required String bookId,
-    required String layoutKey,
-    required String cacheKind,
-    required int chapterStart,
-    required int chapterEnd,
-  }) => _backend.getReaderPaginationCache(
-    bookId: bookId,
-    layoutKey: layoutKey,
-    cacheKind: cacheKind,
-    chapterStart: chapterStart,
-    chapterEnd: chapterEnd,
-  );
-
-  Future<void> upsertReaderPaginationCache(ReaderPaginationCacheDto cache) =>
-      _backend.upsertReaderPaginationCache(cache);
-
-  Future<void> pruneReaderPaginationCaches({
-    required String bookId,
-    required int keepCount,
-  }) => _backend.pruneReaderPaginationCaches(
-    bookId: bookId,
-    keepCount: keepCount,
-  );
 
   static Future<void> _createReaderPreferencesTable(DatabaseExecutor db) async {
     await db.execute('''
@@ -192,39 +186,6 @@ CREATE TABLE ${ReaderPreferencesTable.tableName} (
 )
 ''');
   }
-
-  static Future<void> _createReaderPaginationCacheTables(
-    DatabaseExecutor db,
-  ) async {
-    await db.execute('''
-CREATE TABLE ${ReaderPaginationCacheTable.tableName} (
-  ${ReaderPaginationCacheTable.id} TEXT PRIMARY KEY,
-  ${ReaderPaginationCacheTable.bookId} TEXT NOT NULL,
-  ${ReaderPaginationCacheTable.layoutKey} TEXT NOT NULL,
-  ${ReaderPaginationCacheTable.cacheKind} TEXT NOT NULL,
-  ${ReaderPaginationCacheTable.chapterStart} INTEGER NOT NULL,
-  ${ReaderPaginationCacheTable.chapterEnd} INTEGER NOT NULL,
-  ${ReaderPaginationCacheTable.pageCount} INTEGER NOT NULL,
-  ${ReaderPaginationCacheTable.updatedAt} INTEGER NOT NULL
-)
-''');
-    await db.execute('''
-CREATE TABLE ${ReaderPaginationSliceTable.tableName} (
-  ${ReaderPaginationSliceTable.cacheId} TEXT NOT NULL,
-  ${ReaderPaginationSliceTable.pageIndex} INTEGER NOT NULL,
-  ${ReaderPaginationSliceTable.chapterIndex} INTEGER NOT NULL,
-  ${ReaderPaginationSliceTable.startOffset} INTEGER NOT NULL,
-  ${ReaderPaginationSliceTable.endOffset} INTEGER NOT NULL,
-  PRIMARY KEY (${ReaderPaginationSliceTable.cacheId}, ${ReaderPaginationSliceTable.pageIndex})
-)
-''');
-    await db.execute(
-      'CREATE INDEX idx_reader_pagination_cache_book_updated ON ${ReaderPaginationCacheTable.tableName} (${ReaderPaginationCacheTable.bookId}, ${ReaderPaginationCacheTable.updatedAt} DESC)',
-    );
-    await db.execute(
-      'CREATE INDEX idx_reader_pagination_cache_book_layout ON ${ReaderPaginationCacheTable.tableName} (${ReaderPaginationCacheTable.bookId}, ${ReaderPaginationCacheTable.layoutKey}, ${ReaderPaginationCacheTable.cacheKind})',
-    );
-  }
 }
 
 abstract class _DatabaseBackend {
@@ -237,23 +198,11 @@ abstract class _DatabaseBackend {
   Future<List<ChapterDto>> listChaptersByBook(String bookId);
   Future<ReadingProgressDto?> getProgress(String bookId);
   Future<void> upsertProgress(ReadingProgressDto progress);
-  Future<List<HighlightDto>> listHighlights(String bookId, {String? chapterId});
+  Future<List<HighlightDto>> listHighlights(String bookId);
   Future<void> upsertHighlight(HighlightDto highlight);
   Future<void> deleteHighlight(String highlightId);
   Future<ReaderPreferencesDto?> getReaderPreferences(String bookId);
   Future<void> upsertReaderPreferences(ReaderPreferencesDto preferences);
-  Future<ReaderPaginationCacheDto?> getReaderPaginationCache({
-    required String bookId,
-    required String layoutKey,
-    required String cacheKind,
-    required int chapterStart,
-    required int chapterEnd,
-  });
-  Future<void> upsertReaderPaginationCache(ReaderPaginationCacheDto cache);
-  Future<void> pruneReaderPaginationCaches({
-    required String bookId,
-    required int keepCount,
-  });
 }
 
 class _InMemoryBackend implements _DatabaseBackend {
@@ -264,8 +213,6 @@ class _InMemoryBackend implements _DatabaseBackend {
   final Map<String, HighlightDto> _highlights = <String, HighlightDto>{};
   final Map<String, ReaderPreferencesDto> _readerPreferences =
       <String, ReaderPreferencesDto>{};
-  final Map<String, ReaderPaginationCacheDto> _readerPaginationCaches =
-      <String, ReaderPaginationCacheDto>{};
 
   @override
   Future<List<BookDto>> listBooks() async =>
@@ -286,7 +233,6 @@ class _InMemoryBackend implements _DatabaseBackend {
     _progress.remove(bookId);
     _highlights.removeWhere((_, highlight) => highlight.bookId == bookId);
     _readerPreferences.remove(bookId);
-    _readerPaginationCaches.removeWhere((_, cache) => cache.bookId == bookId);
   }
 
   @override
@@ -317,23 +263,12 @@ class _InMemoryBackend implements _DatabaseBackend {
   }
 
   @override
-  Future<List<HighlightDto>> listHighlights(
-    String bookId, {
-    String? chapterId,
-  }) async {
+  Future<List<HighlightDto>> listHighlights(String bookId) async {
     final filtered = _highlights.values.where(
-      (item) =>
-          item.bookId == bookId &&
-          (chapterId == null || item.chapterId == chapterId),
+      (item) => item.bookId == bookId,
     );
     final list = filtered.toList(growable: false)
-      ..sort((a, b) {
-        final start = a.startOffset.compareTo(b.startOffset);
-        if (start != 0) {
-          return start;
-        }
-        return a.updatedAtMillis.compareTo(b.updatedAtMillis);
-      });
+      ..sort((a, b) => a.createdAtMillis.compareTo(b.createdAtMillis));
     return list;
   }
 
@@ -354,51 +289,6 @@ class _InMemoryBackend implements _DatabaseBackend {
   @override
   Future<void> upsertReaderPreferences(ReaderPreferencesDto preferences) async {
     _readerPreferences[preferences.bookId] = preferences;
-  }
-
-  @override
-  Future<ReaderPaginationCacheDto?> getReaderPaginationCache({
-    required String bookId,
-    required String layoutKey,
-    required String cacheKind,
-    required int chapterStart,
-    required int chapterEnd,
-  }) async {
-    for (final cache in _readerPaginationCaches.values) {
-      if (cache.bookId == bookId &&
-          cache.layoutKey == layoutKey &&
-          cache.cacheKind == cacheKind &&
-          cache.chapterStart == chapterStart &&
-          cache.chapterEnd == chapterEnd) {
-        return cache;
-      }
-    }
-    return null;
-  }
-
-  @override
-  Future<void> upsertReaderPaginationCache(
-    ReaderPaginationCacheDto cache,
-  ) async {
-    _readerPaginationCaches[cache.id] = cache;
-  }
-
-  @override
-  Future<void> pruneReaderPaginationCaches({
-    required String bookId,
-    required int keepCount,
-  }) async {
-    final list =
-        _readerPaginationCaches.values
-            .where((cache) => cache.bookId == bookId)
-            .toList(growable: false)
-          ..sort((a, b) => b.updatedAtMillis.compareTo(a.updatedAtMillis));
-    if (list.length <= keepCount) {
-      return;
-    }
-    for (final cache in list.skip(keepCount)) {
-      _readerPaginationCaches.remove(cache.id);
-    }
   }
 }
 
@@ -441,6 +331,7 @@ class _SqfliteBackend implements _DatabaseBackend {
       BooksTable.estimatedTotalPages: book.estimatedTotalPages,
       BooksTable.sourceType: book.sourceType,
       BooksTable.sourcePath: book.sourcePath,
+      BooksTable.epubFilePath: book.epubFilePath,
       BooksTable.createdAt: book.createdAtMillis,
       BooksTable.updatedAt: book.updatedAtMillis,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
@@ -462,27 +353,6 @@ class _SqfliteBackend implements _DatabaseBackend {
       await txn.delete(
         ReaderPreferencesTable.tableName,
         where: '${ReaderPreferencesTable.bookId} = ?',
-        whereArgs: <Object?>[bookId],
-      );
-      final cacheRows = await txn.query(
-        ReaderPaginationCacheTable.tableName,
-        columns: <String>[ReaderPaginationCacheTable.id],
-        where: '${ReaderPaginationCacheTable.bookId} = ?',
-        whereArgs: <Object?>[bookId],
-      );
-      final cacheIds = cacheRows
-          .map((row) => row[ReaderPaginationCacheTable.id]! as String)
-          .toList(growable: false);
-      for (final cacheId in cacheIds) {
-        await txn.delete(
-          ReaderPaginationSliceTable.tableName,
-          where: '${ReaderPaginationSliceTable.cacheId} = ?',
-          whereArgs: <Object?>[cacheId],
-        );
-      }
-      await txn.delete(
-        ReaderPaginationCacheTable.tableName,
-        where: '${ReaderPaginationCacheTable.bookId} = ?',
         whereArgs: <Object?>[bookId],
       );
       await txn.delete(
@@ -553,30 +423,19 @@ class _SqfliteBackend implements _DatabaseBackend {
   Future<void> upsertProgress(ReadingProgressDto progress) {
     return _database.insert(ReadingProgressTable.tableName, <String, Object?>{
       ReadingProgressTable.bookId: progress.bookId,
-      ReadingProgressTable.chapterId: progress.chapterId,
-      ReadingProgressTable.charOffset: progress.charOffset,
+      ReadingProgressTable.locatorJson: progress.locatorJson,
       ReadingProgressTable.percent: progress.percent,
       ReadingProgressTable.updatedAt: progress.updatedAtMillis,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   @override
-  Future<List<HighlightDto>> listHighlights(
-    String bookId, {
-    String? chapterId,
-  }) async {
-    final whereParts = <String>['${HighlightsTable.bookId} = ?'];
-    final whereArgs = <Object?>[bookId];
-    if (chapterId != null) {
-      whereParts.add('${HighlightsTable.chapterId} = ?');
-      whereArgs.add(chapterId);
-    }
+  Future<List<HighlightDto>> listHighlights(String bookId) async {
     final rows = await _database.query(
       HighlightsTable.tableName,
-      where: whereParts.join(' AND '),
-      whereArgs: whereArgs,
-      orderBy:
-          '${HighlightsTable.startOffset} ASC, ${HighlightsTable.updatedAt} ASC',
+      where: '${HighlightsTable.bookId} = ?',
+      whereArgs: <Object?>[bookId],
+      orderBy: '${HighlightsTable.createdAt} ASC',
     );
     return rows.map(_highlightFromRow).toList(growable: false);
   }
@@ -586,12 +445,8 @@ class _SqfliteBackend implements _DatabaseBackend {
     return _database.insert(HighlightsTable.tableName, <String, Object?>{
       HighlightsTable.id: highlight.id,
       HighlightsTable.bookId: highlight.bookId,
-      HighlightsTable.chapterId: highlight.chapterId,
-      HighlightsTable.startOffset: highlight.startOffset,
-      HighlightsTable.endOffset: highlight.endOffset,
+      HighlightsTable.locatorJson: highlight.locatorJson,
       HighlightsTable.selectedText: highlight.selectedText,
-      HighlightsTable.prefixContext: highlight.prefixContext,
-      HighlightsTable.suffixContext: highlight.suffixContext,
       HighlightsTable.color: highlight.color,
       HighlightsTable.note: highlight.note,
       HighlightsTable.createdAt: highlight.createdAtMillis,
@@ -644,118 +499,6 @@ class _SqfliteBackend implements _DatabaseBackend {
     );
   }
 
-  @override
-  Future<ReaderPaginationCacheDto?> getReaderPaginationCache({
-    required String bookId,
-    required String layoutKey,
-    required String cacheKind,
-    required int chapterStart,
-    required int chapterEnd,
-  }) async {
-    final rows = await _database.query(
-      ReaderPaginationCacheTable.tableName,
-      where:
-          '${ReaderPaginationCacheTable.bookId} = ? AND ${ReaderPaginationCacheTable.layoutKey} = ? AND ${ReaderPaginationCacheTable.cacheKind} = ? AND ${ReaderPaginationCacheTable.chapterStart} = ? AND ${ReaderPaginationCacheTable.chapterEnd} = ?',
-      whereArgs: <Object?>[
-        bookId,
-        layoutKey,
-        cacheKind,
-        chapterStart,
-        chapterEnd,
-      ],
-      orderBy: '${ReaderPaginationCacheTable.updatedAt} DESC',
-      limit: 1,
-    );
-    if (rows.isEmpty) {
-      return null;
-    }
-    final cacheRow = rows.first;
-    final cacheId = cacheRow[ReaderPaginationCacheTable.id]! as String;
-    final sliceRows = await _database.query(
-      ReaderPaginationSliceTable.tableName,
-      where: '${ReaderPaginationSliceTable.cacheId} = ?',
-      whereArgs: <Object?>[cacheId],
-      orderBy: '${ReaderPaginationSliceTable.pageIndex} ASC',
-    );
-    final slices = sliceRows
-        .map(_readerPaginationSliceFromRow)
-        .toList(growable: false);
-    return _readerPaginationCacheFromRow(cacheRow, slices: slices);
-  }
-
-  @override
-  Future<void> upsertReaderPaginationCache(
-    ReaderPaginationCacheDto cache,
-  ) async {
-    await _database.transaction((txn) async {
-      await txn.insert(
-        ReaderPaginationCacheTable.tableName,
-        <String, Object?>{
-          ReaderPaginationCacheTable.id: cache.id,
-          ReaderPaginationCacheTable.bookId: cache.bookId,
-          ReaderPaginationCacheTable.layoutKey: cache.layoutKey,
-          ReaderPaginationCacheTable.cacheKind: cache.cacheKind,
-          ReaderPaginationCacheTable.chapterStart: cache.chapterStart,
-          ReaderPaginationCacheTable.chapterEnd: cache.chapterEnd,
-          ReaderPaginationCacheTable.pageCount: cache.pageCount,
-          ReaderPaginationCacheTable.updatedAt: cache.updatedAtMillis,
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
-      await txn.delete(
-        ReaderPaginationSliceTable.tableName,
-        where: '${ReaderPaginationSliceTable.cacheId} = ?',
-        whereArgs: <Object?>[cache.id],
-      );
-      for (final slice in cache.slices) {
-        await txn.insert(
-          ReaderPaginationSliceTable.tableName,
-          <String, Object?>{
-            ReaderPaginationSliceTable.cacheId: cache.id,
-            ReaderPaginationSliceTable.pageIndex: slice.pageIndex,
-            ReaderPaginationSliceTable.chapterIndex: slice.chapterIndex,
-            ReaderPaginationSliceTable.startOffset: slice.startOffset,
-            ReaderPaginationSliceTable.endOffset: slice.endOffset,
-          },
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
-      }
-    });
-  }
-
-  @override
-  Future<void> pruneReaderPaginationCaches({
-    required String bookId,
-    required int keepCount,
-  }) async {
-    final rows = await _database.query(
-      ReaderPaginationCacheTable.tableName,
-      columns: <String>[ReaderPaginationCacheTable.id],
-      where: '${ReaderPaginationCacheTable.bookId} = ?',
-      whereArgs: <Object?>[bookId],
-      orderBy: '${ReaderPaginationCacheTable.updatedAt} DESC',
-    );
-    if (rows.length <= keepCount) {
-      return;
-    }
-    final deleteRows = rows.skip(keepCount);
-    await _database.transaction((txn) async {
-      for (final row in deleteRows) {
-        final cacheId = row[ReaderPaginationCacheTable.id]! as String;
-        await txn.delete(
-          ReaderPaginationSliceTable.tableName,
-          where: '${ReaderPaginationSliceTable.cacheId} = ?',
-          whereArgs: <Object?>[cacheId],
-        );
-        await txn.delete(
-          ReaderPaginationCacheTable.tableName,
-          where: '${ReaderPaginationCacheTable.id} = ?',
-          whereArgs: <Object?>[cacheId],
-        );
-      }
-    });
-  }
-
   BookDto _bookFromRow(Map<String, Object?> row) {
     return BookDto(
       id: row[BooksTable.id]! as String,
@@ -766,6 +509,7 @@ class _SqfliteBackend implements _DatabaseBackend {
       estimatedTotalPages: row[BooksTable.estimatedTotalPages] as int?,
       sourceType: row[BooksTable.sourceType]! as String,
       sourcePath: row[BooksTable.sourcePath] as String?,
+      epubFilePath: row[BooksTable.epubFilePath] as String?,
       createdAtMillis: row[BooksTable.createdAt]! as int,
       updatedAtMillis: row[BooksTable.updatedAt]! as int,
     );
@@ -785,8 +529,7 @@ class _SqfliteBackend implements _DatabaseBackend {
   ReadingProgressDto _progressFromRow(Map<String, Object?> row) {
     return ReadingProgressDto(
       bookId: row[ReadingProgressTable.bookId]! as String,
-      chapterId: row[ReadingProgressTable.chapterId]! as String,
-      charOffset: row[ReadingProgressTable.charOffset]! as int,
+      locatorJson: row[ReadingProgressTable.locatorJson]! as String,
       percent: (row[ReadingProgressTable.percent]! as num).toDouble(),
       updatedAtMillis: row[ReadingProgressTable.updatedAt]! as int,
     );
@@ -796,12 +539,8 @@ class _SqfliteBackend implements _DatabaseBackend {
     return HighlightDto(
       id: row[HighlightsTable.id]! as String,
       bookId: row[HighlightsTable.bookId]! as String,
-      chapterId: row[HighlightsTable.chapterId]! as String,
-      startOffset: row[HighlightsTable.startOffset]! as int,
-      endOffset: row[HighlightsTable.endOffset]! as int,
+      locatorJson: row[HighlightsTable.locatorJson]! as String,
       selectedText: row[HighlightsTable.selectedText]! as String,
-      prefixContext: row[HighlightsTable.prefixContext]! as String,
-      suffixContext: row[HighlightsTable.suffixContext]! as String,
       color: row[HighlightsTable.color]! as String,
       note: row[HighlightsTable.note] as String?,
       createdAtMillis: row[HighlightsTable.createdAt]! as int,
@@ -823,34 +562,6 @@ class _SqfliteBackend implements _DatabaseBackend {
       fontFamily: row[ReaderPreferencesTable.fontFamily]! as String,
       firstLineIndent: row[ReaderPreferencesTable.firstLineIndent]! as int,
       pageTurnMode: row[ReaderPreferencesTable.pageTurnMode]! as String,
-    );
-  }
-
-  ReaderPaginationSliceDto _readerPaginationSliceFromRow(
-    Map<String, Object?> row,
-  ) {
-    return ReaderPaginationSliceDto(
-      pageIndex: row[ReaderPaginationSliceTable.pageIndex]! as int,
-      chapterIndex: row[ReaderPaginationSliceTable.chapterIndex]! as int,
-      startOffset: row[ReaderPaginationSliceTable.startOffset]! as int,
-      endOffset: row[ReaderPaginationSliceTable.endOffset]! as int,
-    );
-  }
-
-  ReaderPaginationCacheDto _readerPaginationCacheFromRow(
-    Map<String, Object?> row, {
-    required List<ReaderPaginationSliceDto> slices,
-  }) {
-    return ReaderPaginationCacheDto(
-      id: row[ReaderPaginationCacheTable.id]! as String,
-      bookId: row[ReaderPaginationCacheTable.bookId]! as String,
-      layoutKey: row[ReaderPaginationCacheTable.layoutKey]! as String,
-      cacheKind: row[ReaderPaginationCacheTable.cacheKind]! as String,
-      chapterStart: row[ReaderPaginationCacheTable.chapterStart]! as int,
-      chapterEnd: row[ReaderPaginationCacheTable.chapterEnd]! as int,
-      pageCount: row[ReaderPaginationCacheTable.pageCount]! as int,
-      updatedAtMillis: row[ReaderPaginationCacheTable.updatedAt]! as int,
-      slices: slices,
     );
   }
 }

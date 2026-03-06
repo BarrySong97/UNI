@@ -13,17 +13,39 @@ void main() {
 
     final created = await store.createHighlight(
       bookId: 'book-1',
-      chapterId: 'chapter-1',
-      chapterText: 'abcdefghijklmnopqrstuvwxyz',
-      startOffset: 1,
-      endOffset: 3,
+      locatorJson: '{"href":"/chapter1.xhtml","locations":{"cssSelector":"p.intro"}}',
+      selectedText: 'highlighted text',
     );
 
     expect(store.state.items.length, 1);
-    expect(store.state.items.first.selectedText, 'bc');
+    expect(store.state.items.first.selectedText, 'highlighted text');
+    expect(store.state.items.first.locatorJson, contains('chapter1.xhtml'));
 
     await store.deleteHighlight(created.id);
 
     expect(store.state.items, isEmpty);
+  });
+
+  test('loadHighlights loads highlights for a book', () async {
+    final repository = HighlightRepositoryImpl(
+      highlightsDao: HighlightsDao(database: AppDatabase()),
+    );
+    final store = HighlightStore(highlightRepository: repository);
+
+    await store.createHighlight(
+      bookId: 'book-2',
+      locatorJson: '{"href":"/chapter2.xhtml"}',
+      selectedText: 'first highlight',
+    );
+    await store.createHighlight(
+      bookId: 'book-2',
+      locatorJson: '{"href":"/chapter3.xhtml"}',
+      selectedText: 'second highlight',
+    );
+
+    final newStore = HighlightStore(highlightRepository: repository);
+    await newStore.loadHighlights('book-2');
+
+    expect(newStore.state.items.length, 2);
   });
 }

@@ -31,8 +31,7 @@ void main() {
     await repository.saveProgress(
       ReadingProgressEntity(
         bookId: 'book-1',
-        chapterId: 'chapter-1',
-        charOffset: 10,
+        locatorJson: '{"href":"/chapter1.xhtml","type":"text/html"}',
         percent: 0.4,
         updatedAt: DateTime.now(),
       ),

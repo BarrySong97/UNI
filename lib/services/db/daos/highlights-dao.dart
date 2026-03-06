@@ -6,8 +6,8 @@ class HighlightsDao {
 
   final AppDatabase _database;
 
-  Future<List<HighlightDto>> listByBookId(String bookId, {String? chapterId}) {
-    return _database.listHighlights(bookId, chapterId: chapterId);
+  Future<List<HighlightDto>> listByBookId(String bookId) {
+    return _database.listHighlights(bookId);
   }
 
   Future<void> upsertHighlight(HighlightDto dto) => _database.upsertHighlight(dto);

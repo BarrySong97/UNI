@@ -17,7 +17,7 @@ class HighlightItem extends StatelessWidget {
     return Card(
       child: ListTile(
         title: Text(highlight.selectedText),
-        subtitle: Text('${highlight.chapterId} ${highlight.startOffset}-${highlight.endOffset}'),
+        subtitle: Text(highlight.color),
         trailing: IconButton(icon: const Icon(Icons.delete_outline), onPressed: onDelete),
       ),
     );

@@ -8,12 +8,10 @@ import '../../shared/ui/empty-view.dart';
 class HighlightListPage extends StatefulWidget {
   const HighlightListPage({
     required this.bookId,
-    this.chapterId,
     super.key,
   });
 
   final String bookId;
-  final String? chapterId;
 
   @override
   State<HighlightListPage> createState() => _HighlightListPageState();
@@ -26,7 +24,6 @@ class _HighlightListPageState extends State<HighlightListPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       AppProvidersScope.of(context).highlightStore.loadHighlights(
         widget.bookId,
-        chapterId: widget.chapterId,
       );
     });
   }

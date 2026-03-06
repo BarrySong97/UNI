@@ -1,4 +1,11 @@
 PODS:
+  - CryptoSwift (1.8.4)
+  - DifferenceKit (1.3.0):
+    - DifferenceKit/Core (= 1.3.0)
+    - DifferenceKit/UIKitExtension (= 1.3.0)
+  - DifferenceKit/Core (1.3.0)
+  - DifferenceKit/UIKitExtension (1.3.0):
+    - DifferenceKit/Core
   - DKImagePickerController/Core (4.3.9):
     - DKImagePickerController/ImageDataManager
     - DKImagePickerController/Resource
@@ -33,7 +40,57 @@ PODS:
   - file_picker (0.0.1):
     - DKImagePickerController/PhotoGallery
     - Flutter
+  - flureadium (0.0.1):
+    - Flutter
+    - PromiseKit (~> 8.1)
+    - ReadiumAdapterGCDWebServer (~> 3.5.0)
+    - ReadiumNavigator (~> 3.5.0)
+    - ReadiumOPDS (~> 3.5.0)
+    - ReadiumShared (~> 3.5.0)
+    - ReadiumStreamer (~> 3.5.0)
   - Flutter (1.0.0)
+  - Minizip (1.0.0)
+  - package_info_plus (0.4.5):
+    - Flutter
+  - PromiseKit (8.2.0):
+    - PromiseKit/CorePromise (= 8.2.0)
+    - PromiseKit/Foundation (= 8.2.0)
+    - PromiseKit/UIKit (= 8.2.0)
+  - PromiseKit/CorePromise (8.2.0)
+  - PromiseKit/Foundation (8.2.0):
+    - PromiseKit/CorePromise
+  - PromiseKit/UIKit (8.2.0):
+    - PromiseKit/CorePromise
+  - ReadiumAdapterGCDWebServer (3.5.0):
+    - ReadiumGCDWebServer (~> 4.0.0)
+    - ReadiumInternal (~> 3.5.0)
+    - ReadiumShared (~> 3.5.0)
+  - ReadiumFuzi (4.0.0)
+  - ReadiumGCDWebServer (4.0.1):
+    - ReadiumGCDWebServer/Core (= 4.0.1)
+  - ReadiumGCDWebServer/Core (4.0.1)
+  - ReadiumInternal (3.5.0)
+  - ReadiumNavigator (3.5.0):
+    - DifferenceKit (~> 1.0)
+    - ReadiumInternal (~> 3.5.0)
+    - ReadiumShared (~> 3.5.0)
+    - SwiftSoup (~> 2.7.0)
+  - ReadiumOPDS (3.5.0):
+    - ReadiumFuzi (~> 4.0.0)
+    - ReadiumInternal (~> 3.5.0)
+    - ReadiumShared (~> 3.5.0)
+  - ReadiumShared (3.5.0):
+    - Minizip (~> 1.0.0)
+    - ReadiumFuzi (~> 4.0.0)
+    - ReadiumInternal (~> 3.5.0)
+    - ReadiumZIPFoundation (~> 3.0.1)
+    - SwiftSoup (~> 2.7.0)
+  - ReadiumStreamer (3.5.0):
+    - CryptoSwift (~> 1.8.0)
+    - ReadiumFuzi (~> 4.0.0)
+    - ReadiumInternal (~> 3.5.0)
+    - ReadiumShared (~> 3.5.0)
+  - ReadiumZIPFoundation (3.0.1)
   - SDWebImage (5.21.1):
     - SDWebImage/Core (= 5.21.1)
   - SDWebImage/Core (5.21.1)
@@ -43,41 +100,99 @@ PODS:
   - sqflite_darwin (0.0.4):
     - Flutter
     - FlutterMacOS
+  - SwiftSoup (2.7.6)
   - SwiftyGif (5.4.5)
+  - wakelock_plus (0.0.1):
+    - Flutter
 
 DEPENDENCIES:
   - file_picker (from `.symlinks/plugins/file_picker/ios`)
+  - flureadium (from `.symlinks/plugins/flureadium/ios`)
   - Flutter (from `Flutter`)
+  - package_info_plus (from `.symlinks/plugins/package_info_plus/ios`)
+  - PromiseKit (~> 8.1)
+  - ReadiumAdapterGCDWebServer (from `https://raw.githubusercontent.com/readium/swift-toolkit/3.5.0/Support/CocoaPods/ReadiumAdapterGCDWebServer.podspec`)
+  - ReadiumInternal (from `https://raw.githubusercontent.com/readium/swift-toolkit/3.5.0/Support/CocoaPods/ReadiumInternal.podspec`)
+  - ReadiumNavigator (from `https://raw.githubusercontent.com/readium/swift-toolkit/3.5.0/Support/CocoaPods/ReadiumNavigator.podspec`)
+  - ReadiumOPDS (from `https://raw.githubusercontent.com/readium/swift-toolkit/3.5.0/Support/CocoaPods/ReadiumOPDS.podspec`)
+  - ReadiumShared (from `https://raw.githubusercontent.com/readium/swift-toolkit/3.5.0/Support/CocoaPods/ReadiumShared.podspec`)
+  - ReadiumStreamer (from `https://raw.githubusercontent.com/readium/swift-toolkit/3.5.0/Support/CocoaPods/ReadiumStreamer.podspec`)
+  - ReadiumZIPFoundation (from `https://raw.githubusercontent.com/readium/podspecs/refs/heads/main/ReadiumZIPFoundation/3.0.1/ReadiumZIPFoundation.podspec`)
   - shared_preferences_foundation (from `.symlinks/plugins/shared_preferences_foundation/darwin`)
   - sqflite_darwin (from `.symlinks/plugins/sqflite_darwin/darwin`)
+  - wakelock_plus (from `.symlinks/plugins/wakelock_plus/ios`)
 
 SPEC REPOS:
   trunk:
+    - CryptoSwift
+    - DifferenceKit
     - DKImagePickerController
     - DKPhotoGallery
+    - Minizip
+    - PromiseKit
+    - ReadiumFuzi
+    - ReadiumGCDWebServer
     - SDWebImage
+    - SwiftSoup
     - SwiftyGif
 
 EXTERNAL SOURCES:
   file_picker:
     :path: ".symlinks/plugins/file_picker/ios"
+  flureadium:
+    :path: ".symlinks/plugins/flureadium/ios"
   Flutter:
     :path: Flutter
+  package_info_plus:
+    :path: ".symlinks/plugins/package_info_plus/ios"
+  ReadiumAdapterGCDWebServer:
+    :podspec: https://raw.githubusercontent.com/readium/swift-toolkit/3.5.0/Support/CocoaPods/ReadiumAdapterGCDWebServer.podspec
+  ReadiumInternal:
+    :podspec: https://raw.githubusercontent.com/readium/swift-toolkit/3.5.0/Support/CocoaPods/ReadiumInternal.podspec
+  ReadiumNavigator:
+    :podspec: https://raw.githubusercontent.com/readium/swift-toolkit/3.5.0/Support/CocoaPods/ReadiumNavigator.podspec
+  ReadiumOPDS:
+    :podspec: https://raw.githubusercontent.com/readium/swift-toolkit/3.5.0/Support/CocoaPods/ReadiumOPDS.podspec
+  ReadiumShared:
+    :podspec: https://raw.githubusercontent.com/readium/swift-toolkit/3.5.0/Support/CocoaPods/ReadiumShared.podspec
+  ReadiumStreamer:
+    :podspec: https://raw.githubusercontent.com/readium/swift-toolkit/3.5.0/Support/CocoaPods/ReadiumStreamer.podspec
+  ReadiumZIPFoundation:
+    :podspec: https://raw.githubusercontent.com/readium/podspecs/refs/heads/main/ReadiumZIPFoundation/3.0.1/ReadiumZIPFoundation.podspec
   shared_preferences_foundation:
     :path: ".symlinks/plugins/shared_preferences_foundation/darwin"
   sqflite_darwin:
     :path: ".symlinks/plugins/sqflite_darwin/darwin"
+  wakelock_plus:
+    :path: ".symlinks/plugins/wakelock_plus/ios"
 
 SPEC CHECKSUMS:
+  CryptoSwift: e64e11850ede528a02a0f3e768cec8e9d92ecb90
+  DifferenceKit: ab185c4d7f9cef8af3fcf593e5b387fb81e999ca
   DKImagePickerController: 946cec48c7873164274ecc4624d19e3da4c1ef3c
   DKPhotoGallery: b3834fecb755ee09a593d7c9e389d8b5d6deed60
   file_picker: a0560bc09d61de87f12d246fc47d2119e6ef37be
-  Flutter: e0871f40cf51350855a761d2e70bf5af5b9b5de7
+  flureadium: 39852cebeb8f170ed64ca0fccdb1d4b6a93f64e1
+  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  Minizip: 188cb3e39a1195c283ae03bf673d182596fefd0b
+  package_info_plus: af8e2ca6888548050f16fa2f1938db7b5a5df499
+  PromiseKit: 74e6ab5894856b4762fef547055c809bca91d440
+  ReadiumAdapterGCDWebServer: 5e20e4fd489d61dbecec510a96cdbd58119cdeac
+  ReadiumFuzi: 888d023b862f524e314f85925c94768a501f05c0
+  ReadiumGCDWebServer: 6c905689d61c416a73e0b16e9218c10bb405817c
+  ReadiumInternal: cee9fd82fa433c429faf56a9d7e76a8697ff780f
+  ReadiumNavigator: bb10a2624839c7697eda081088398378ccf7026a
+  ReadiumOPDS: c28950a304bae03d1ab42272ef91b324b459d624
+  ReadiumShared: 20be908d74b6f4de0811438eeca5ab0822ac7fb6
+  ReadiumStreamer: b62701ca281e7017541c853b0738eb5b95130197
+  ReadiumZIPFoundation: 2f3e19e361f1b7751ecf37a88c754287692c12c2
   SDWebImage: f29024626962457f3470184232766516dee8dfea
   shared_preferences_foundation: 9e1978ff2562383bd5676f64ec4e9aa8fa06a6f7
   sqflite_darwin: 20b2a3a3b70e43edae938624ce550a3cbf66a3d0
+  SwiftSoup: 9ec2526c76ebc3fe5d3157c82b40b45a27eeb82d
   SwiftyGif: 706c60cf65fa2bc5ee0313beece843c8eb8194d4
+  wakelock_plus: e29112ab3ef0b318e58cfa5c32326458be66b556
 
-PODFILE CHECKSUM: 4305caec6b40dde0ae97be1573c53de1882a07e5
+PODFILE CHECKSUM: b7b1d8e8b678ec2d51898ead0d9cb91c9ec4df26
 
 COCOAPODS: 1.16.2

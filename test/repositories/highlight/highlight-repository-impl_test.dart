@@ -14,22 +14,19 @@ void main() {
     final entity = HighlightEntity(
       id: 'h1',
       bookId: 'b1',
-      chapterId: 'c1',
-      startOffset: 1,
-      endOffset: 2,
+      locatorJson: '{"href":"/chapter1.xhtml","locations":{"cssSelector":"p.intro"}}',
       selectedText: 'x',
-      prefixContext: 'a',
-      suffixContext: 'b',
       color: '#FF0000',
       createdAt: now,
       updatedAt: now,
     );
 
     await repository.createHighlight(entity);
-    final list = await repository.getHighlights('b1', chapterId: 'c1');
+    final list = await repository.getHighlights('b1');
 
     expect(list.length, 1);
     expect(list.first.id, 'h1');
     expect(list.first.color, '#FF0000');
+    expect(list.first.locatorJson, contains('chapter1.xhtml'));
   });
 }

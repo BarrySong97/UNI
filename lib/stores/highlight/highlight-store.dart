@@ -2,61 +2,40 @@ import 'package:flutter/foundation.dart';
 
 import '../../entities/highlight-entity.dart';
 import '../../repositories/highlight/highlight-repository.dart';
-import '../../services/highlight/highlight-anchor-service.dart';
-import '../../services/highlight/highlight-resolver-service.dart';
-import '../../shared/utils/text-range-utils.dart';
 import 'highlight-state.dart';
 
 class HighlightStore extends ChangeNotifier {
   HighlightStore({
     required HighlightRepository highlightRepository,
-    HighlightAnchorService? anchorService,
-    HighlightResolverService? resolverService,
-  })  : _highlightRepository = highlightRepository,
-        _anchorService = anchorService ?? HighlightAnchorService(),
-        _resolverService = resolverService ?? HighlightResolverService();
+  }) : _highlightRepository = highlightRepository;
 
   final HighlightRepository _highlightRepository;
-  final HighlightAnchorService _anchorService;
-  final HighlightResolverService _resolverService;
 
   HighlightState _state = const HighlightState();
 
   HighlightState get state => _state;
 
-  Future<void> loadHighlights(String bookId, {String? chapterId}) async {
+  Future<void> loadHighlights(String bookId) async {
     _state = _state.copyWith(isLoading: true);
     notifyListeners();
-    final items = await _highlightRepository.getHighlights(bookId, chapterId: chapterId);
-    _state = _state.copyWith(items: _resolverService.sortForRender(items), isLoading: false);
+    final items = await _highlightRepository.getHighlights(bookId);
+    _state = _state.copyWith(items: items, isLoading: false);
     notifyListeners();
   }
 
   Future<HighlightEntity> createHighlight({
     required String bookId,
-    required String chapterId,
-    required String chapterText,
-    required int startOffset,
-    required int endOffset,
+    required String locatorJson,
+    required String selectedText,
     String? color,
     String? note,
   }) async {
-    final normalized = TextRangeUtils.normalize(start: startOffset, end: endOffset, max: chapterText.length);
-    final anchor = _anchorService.createAnchor(
-      chapterText: chapterText,
-      start: normalized.start,
-      end: normalized.end,
-    );
     final now = DateTime.now();
     final highlight = HighlightEntity(
-      id: '${chapterId}_${now.microsecondsSinceEpoch}',
+      id: '${bookId}_hl_${now.microsecondsSinceEpoch}',
       bookId: bookId,
-      chapterId: chapterId,
-      startOffset: normalized.start,
-      endOffset: normalized.end,
-      selectedText: anchor.selectedText,
-      prefixContext: anchor.prefixContext,
-      suffixContext: anchor.suffixContext,
+      locatorJson: locatorJson,
+      selectedText: selectedText,
       color: color ?? _state.selectedColor,
       note: note,
       createdAt: now,
@@ -65,7 +44,7 @@ class HighlightStore extends ChangeNotifier {
 
     final created = await _highlightRepository.createHighlight(highlight);
     final next = List<HighlightEntity>.from(_state.items)..add(created);
-    _state = _state.copyWith(items: _resolverService.sortForRender(next));
+    _state = _state.copyWith(items: next);
     notifyListeners();
     return created;
   }
