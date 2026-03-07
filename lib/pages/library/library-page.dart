@@ -47,6 +47,7 @@ class _LibraryPageState extends State<LibraryPage> {
           books: state.books,
           isImporting: state.isImporting,
           progressMap: state.progressMap,
+          hasReadingProgress: state.progressUpdatedMap.isNotEmpty,
           emptyMessage: localizations.tr('emptyLibrary'),
           importingMessage: localizations.tr('importingBook'),
           nowReadingBook: nowReading,
@@ -65,8 +66,11 @@ class _LibraryPageState extends State<LibraryPage> {
   }
 
   BookEntity? _computeNowReading(LibraryState state) {
-    if (state.books.isEmpty || state.progressUpdatedMap.isEmpty) {
+    if (state.books.isEmpty) {
       return null;
+    }
+    if (state.progressUpdatedMap.isEmpty) {
+      return state.books.first;
     }
     String? mostRecentBookId;
     DateTime? mostRecentTime;
@@ -77,12 +81,12 @@ class _LibraryPageState extends State<LibraryPage> {
       }
     }
     if (mostRecentBookId == null) {
-      return null;
+      return state.books.first;
     }
     try {
       return state.books.firstWhere((b) => b.id == mostRecentBookId);
     } catch (_) {
-      return null;
+      return state.books.first;
     }
   }
 

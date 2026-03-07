@@ -30,7 +30,7 @@ class AppLocalizations {
   static const Map<String, Map<String, String>>
   _strings = <String, Map<String, String>>{
     'en': <String, String>{
-      'appTitle': 'Uni Reader',
+      'appTitle': 'Immersed',
       'libraryTitle': 'Library',
       'emptyLibrary': 'No books yet',
       'openReader': 'Open Reader',
@@ -78,7 +78,7 @@ class AppLocalizations {
       'startReadingJourney': 'Start your reading journey',
     },
     'zh': <String, String>{
-      'appTitle': 'Uni Reader',
+      'appTitle': 'Immersed',
       'libraryTitle': '书架',
       'emptyLibrary': '暂无书籍',
       'openReader': '开始阅读',

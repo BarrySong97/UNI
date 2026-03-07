@@ -40,6 +40,7 @@ class LibraryStore extends ChangeNotifier {
 
     try {
       final books = await _bookRepository.getShelfBooks();
+      await _migrateAbsolutePathsIfNeeded(books);
       final progressData = await _loadProgressData(books);
       _state = _state.copyWith(
         books: books,
@@ -132,7 +133,43 @@ class LibraryStore extends ChangeNotifier {
     final ext = p.extension(sourcePath);
     final destPath = p.join(_booksDirectory, '$bookId$ext');
     await File(sourcePath).copy(destPath);
-    return destPath;
+    // Return relative path so it survives iOS container UUID changes.
+    return 'books/$bookId$ext';
+  }
+
+  String _resolveEpubPath(String storedPath) {
+    if (p.isAbsolute(storedPath)) {
+      return storedPath;
+    }
+    final docsDir = p.dirname(_booksDirectory);
+    return p.join(docsDir, storedPath);
+  }
+
+  Future<void> _migrateAbsolutePathsIfNeeded(List<BookEntity> books) async {
+    for (final book in books) {
+      final path = book.epubFilePath;
+      if (path == null || !p.isAbsolute(path)) continue;
+
+      final booksSegment = '${p.separator}books${p.separator}';
+      final idx = path.lastIndexOf(booksSegment);
+      if (idx < 0) continue;
+
+      final relativePath = path.substring(idx + 1);
+      final updated = BookEntity(
+        id: book.id,
+        title: book.title,
+        author: book.author,
+        coverUrl: book.coverUrl,
+        profileBgColor: book.profileBgColor,
+        estimatedTotalPages: book.estimatedTotalPages,
+        sourceType: book.sourceType,
+        sourcePath: book.sourcePath,
+        epubFilePath: relativePath,
+        createdAt: book.createdAt,
+        updatedAt: book.updatedAt,
+      );
+      await _bookRepository.upsertBook(updated);
+    }
   }
 
   Future<void> deleteBookById(String bookId) async {
@@ -141,7 +178,8 @@ class LibraryStore extends ChangeNotifier {
       await _bookRepository.deleteBookById(bookId);
 
       if (book?.epubFilePath != null) {
-        final file = File(book!.epubFilePath!);
+        final resolvedPath = _resolveEpubPath(book!.epubFilePath!);
+        final file = File(resolvedPath);
         if (await file.exists()) {
           await file.delete();
         }

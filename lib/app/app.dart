@@ -7,8 +7,8 @@ import 'providers/app-providers.dart';
 import 'routes/app-router.dart';
 import 'theme/app-theme.dart';
 
-class UniApp extends StatelessWidget {
-  const UniApp({required this.providers, super.key});
+class ImmersedApp extends StatelessWidget {
+  const ImmersedApp({required this.providers, super.key});
 
   final AppProviders providers;
 

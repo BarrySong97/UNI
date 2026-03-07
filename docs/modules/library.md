@@ -7,7 +7,7 @@
 ### In
 - 首页仪表板布局（Header / Stats / Now Reading / Word of the Day / Book Grid）
 - 书籍列表加载与展示
-- "Now Reading" 当前在读书籍卡片（基于最近阅读进度 updatedAt）
+- "Now Reading" 当前在读书籍卡片（基于最近阅读进度 updatedAt；无进度时使用第一本书）
 - 书架 2 列网格（最多 8 本，按最近阅读时间排序）
 - 点书后根据规则进入 `Book Profile` 或阅读页
 - 触发导入流程入口（Header "+" 按钮）
@@ -26,7 +26,7 @@
 1. 页面初始化时触发 `LibraryStore.loadShelf()`。
 2. store 从数据库读取书籍，加载阅读进度（percent + updatedAt）。
 3. `LibraryPage` 计算派生数据：
-   - `nowReadingBook`：`progressUpdatedMap` 中 updatedAt 最新的书。
+   - `nowReadingBook`：`progressUpdatedMap` 中 updatedAt 最新的书；无进度时使用第一本书。
    - `gridBooks`：排除 nowReadingBook 后，按 updatedAt 降序排列，取前 8 本。
 4. 用户点击 "Continue" 按钮直接进入阅读器。
 5. 用户点击网格中的书籍由 `BookProfileEntryService` 判定入口：
@@ -37,13 +37,14 @@
 ## 首页布局结构
 ```
 LibraryHeader ("MY LIBRARY" + "Reading" 标题 + "+" 导入按钮 + 用户头像)
-LibraryReadingStats (DAILY GOAL 卡片 + BOOKS READ 卡片)
-Now Reading 区域 (Section Header + NowReadingCard)
-WordOfDayCard (静态占位)
+LibraryReadingStats (DAILY GOAL 卡片 + BOOKS READ 卡片) — 无进度时显示 empty state
+Now Reading 区域 (Section Header + NowReadingCard) — 无进度时使用第一本书
+WordOfDayCard (静态占位) — 无进度时替换为阅读提示文字
 LibraryBookGrid (2 列网格，最多 8 本)
 ```
 
-空状态时仅显示 Header + "Add Your First Book" 按钮。
+无书时仅显示 Header + "Add Your First Book" 按钮。
+有书但无阅读进度时显示统计 empty state、第一本书为 Now Reading、阅读提示替代 Word of Day。
 
 ## 关键状态与数据
 - `LibraryState.books`
@@ -53,6 +54,7 @@ LibraryBookGrid (2 列网格，最多 8 本)
 - `LibraryState.isLoading / isImporting`
 - `BookEntity.coverUrl`（data url 封面）
 - `BookEntity.profileBgColor`（`#AARRGGBB`）
+- `BookEntity.epubFilePath`（相对路径，如 `books/book_xxx.epub`，运行时解析为绝对路径）
 - `BookProfileEntryService.resolveEntry(bookId)`
 
 ## 交互与异常
@@ -60,7 +62,7 @@ LibraryBookGrid (2 列网格，最多 8 本)
 - 空态：无书籍时展示 "Add Your First Book" 按钮，隐藏统计和功能模块。
 - 导入失败：通过消息提示错误。
 - 封面异常：真实封面解码失败时回退到占位封面。
-- Now Reading 卡片：无阅读进度时不显示该区域。
+- Now Reading 卡片：无阅读进度时使用第一本书，始终显示。
 - 真实封面显示策略：`BoxFit.cover`，优先填满封面区域（允许轻微裁切）。
 - `Book Profile` 顶部背景优先使用 `profileBgColor` 生成渐变。
 - `Book Profile` 设置菜单可删除图书，删除确认后级联清理该书关联数据。
@@ -70,13 +72,13 @@ LibraryBookGrid (2 列网格，最多 8 本)
 
 ## 验收标准
 - 首页结构稳定渲染（Header / Stats / Now Reading / Word of the Day / Grid）。
-- Now Reading 显示最近阅读的书（基于 progressUpdatedMap 最新 updatedAt）。
+- Now Reading 显示最近阅读的书（基于 progressUpdatedMap 最新 updatedAt）；无进度时显示第一本书。
 - 网格为 2 列布局，每个 tile 下方显示书名和作者。
 - 网格最多显示 8 本，按最近阅读时间排序。
 - 空状态显示 "Add Your First Book" 按钮。
 - 点击 "Continue" 按钮直接进入阅读器。
 - 导入 EPUB 后书架可显示真实封面；其他格式显示占位封面。
-- 重启应用后导入书籍仍可见。
+- 重启应用后导入书籍仍可见且可打开阅读（iOS 容器路径变化不影响）。
 - 删除图书后，该图书及关联数据不再可见。
 - `flutter analyze` / `flutter test` 通过。
 

@@ -4,6 +4,8 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flureadium/flureadium.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 import '../../app/i18n/app-localizations.dart';
 import '../../app/providers/app-providers.dart';
@@ -55,14 +57,23 @@ class _ReaderPageState extends State<ReaderPage> {
       debugPrint('DEBUG: epubPath = $epubPath');
       if (epubPath == null) return;
 
+      final resolvedPath = await _resolveEpubPath(epubPath);
       try {
-        final pub = await _flureadium.openPublication(epubPath);
+        final pub = await _flureadium.openPublication(resolvedPath);
         if (!mounted) return;
         setState(() => _publication = pub);
       } catch (e) {
         debugPrint('Failed to open publication: $e');
       }
     });
+  }
+
+  Future<String> _resolveEpubPath(String storedPath) async {
+    if (p.isAbsolute(storedPath)) {
+      return storedPath;
+    }
+    final docsDir = await getApplicationDocumentsDirectory();
+    return p.join(docsDir.path, storedPath);
   }
 
   void _subscribeToChannels() {

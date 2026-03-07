@@ -87,6 +87,6 @@ class AppBootstrap {
       highlightStore: HighlightStore(highlightRepository: highlightRepository),
     );
 
-    return AppBootstrapResult(app: UniApp(providers: providers));
+    return AppBootstrapResult(app: ImmersedApp(providers: providers));
   }
 }

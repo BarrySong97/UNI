@@ -6,7 +6,6 @@ import 'package:uni/app/providers/app-providers.dart';
 import 'package:uni/app/routes/route-names.dart';
 import 'package:uni/entities/book-entity.dart';
 import 'package:uni/entities/reading-progress-entity.dart';
-import 'package:uni/components/library/library-book-tile.dart';
 import 'package:uni/pages/library/library-page.dart';
 import 'package:uni/repositories/book/book-repository-impl.dart';
 import 'package:uni/repositories/chapter/chapter-repository-impl.dart';
@@ -135,7 +134,7 @@ Widget _buildApp({
 }
 
 void main() {
-  testWidgets('first open routes to book detail profile', (tester) async {
+  testWidgets('first open routes to reader via Now Reading Continue', (tester) async {
     final providers = await _createProviders(hasProgress: false);
     final observer = _RecordingNavigatorObserver();
 
@@ -144,15 +143,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Book without progress appears in the grid — scroll down to it and tap
-    final tileFinder = find.byType(LibraryBookTile);
-    expect(tileFinder, findsOneWidget);
-    await tester.ensureVisible(tileFinder);
-    await tester.pumpAndSettle();
-    await tester.tap(tileFinder);
+    // Book without progress appears as Now Reading — tap Continue button
+    await tester.tap(find.text('Continue'));
     await tester.pumpAndSettle();
 
-    expect(observer.pushedRouteNames, contains(RouteNames.bookDetail));
+    expect(observer.pushedRouteNames, contains(RouteNames.reader));
   });
 
   testWidgets('book with progress routes to reader via Continue button', (tester) async {
