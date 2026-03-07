@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../pages/highlight/highlight-list-page.dart';
+import '../../pages/statistics/statistics-page.dart';
+import '../../pages/word-of-day/word-of-day-page.dart';
 import '../../pages/library/book-detail-page.dart';
 import '../../pages/library/library-page.dart';
 import '../../pages/reader/reader-page.dart';
@@ -31,6 +33,10 @@ class AppRouter {
         return MaterialPageRoute<void>(builder: (_) => ReaderPage(bookId: bookId!));
       case RouteNames.readerSettings:
         return MaterialPageRoute<void>(builder: (_) => const ReaderSettingsPage());
+      case RouteNames.statistics:
+        return MaterialPageRoute<void>(builder: (_) => const StatisticsPage());
+      case RouteNames.wordOfDay:
+        return MaterialPageRoute<void>(builder: (_) => const WordOfDayPage());
       case RouteNames.highlights:
         final args = settings.arguments as Map<String, String>?;
         return MaterialPageRoute<void>(

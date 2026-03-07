@@ -10,6 +10,8 @@ class LibraryState {
     this.isImporting = false,
     this.lastImportMessage,
     this.errorMessage,
+    this.progressMap = const <String, double>{},
+    this.progressUpdatedMap = const <String, DateTime>{},
   });
 
   final List<BookEntity> books;
@@ -20,6 +22,8 @@ class LibraryState {
   final bool isImporting;
   final String? lastImportMessage;
   final String? errorMessage;
+  final Map<String, double> progressMap;
+  final Map<String, DateTime> progressUpdatedMap;
 
   factory LibraryState.initial() => const LibraryState(
     books: <BookEntity>[],
@@ -38,6 +42,8 @@ class LibraryState {
     bool? isImporting,
     String? lastImportMessage,
     String? errorMessage,
+    Map<String, double>? progressMap,
+    Map<String, DateTime>? progressUpdatedMap,
   }) {
     return LibraryState(
       books: books ?? this.books,
@@ -48,6 +54,8 @@ class LibraryState {
       isImporting: isImporting ?? this.isImporting,
       lastImportMessage: lastImportMessage,
       errorMessage: errorMessage,
+      progressMap: progressMap ?? this.progressMap,
+      progressUpdatedMap: progressUpdatedMap ?? this.progressUpdatedMap,
     );
   }
 }

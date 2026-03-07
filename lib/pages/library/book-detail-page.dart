@@ -8,7 +8,6 @@ import '../../app/i18n/app-localizations.dart';
 import '../../app/providers/app-providers.dart';
 import '../../app/routes/route-names.dart';
 import '../../entities/book-entity.dart';
-import '../../entities/highlight-entity.dart';
 import '../../entities/reading-progress-entity.dart';
 import '../../services/library/book-profile-color-service.dart';
 import '../../shared/constants/library-design-tokens.dart';
@@ -32,6 +31,8 @@ class _BookDetailPageState extends State<BookDetailPage> {
   bool _isDeleting = false;
   bool _isBackfillingProfileColor = false;
 
+  static const String _mockCategory = 'Fiction';
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -44,34 +45,21 @@ class _BookDetailPageState extends State<BookDetailPage> {
     if (book == null) {
       return null;
     }
-    final highlights = await providers.highlightRepository.getHighlights(
-      widget.bookId,
-    );
     final progress = await providers.progressRepository.getProgress(
       widget.bookId,
+    );
+    final chapters = await providers.chapterRepository.getChapters(
+      widget.bookId,
+    );
+    final totalWordCount = chapters.fold<int>(
+      0,
+      (sum, ch) => sum + ch.wordCount,
     );
     return _BookProfileData(
       book: book,
       progress: progress,
-      highlights: highlights,
+      totalWordCount: totalWordCount,
     );
-  }
-
-  Future<void> _openHighlights() async {
-    if (_isNavigating || !mounted) {
-      return;
-    }
-    _isNavigating = true;
-    try {
-      await Navigator.of(context).pushNamed(
-        RouteNames.highlights,
-        arguments: <String, String>{
-          'bookId': widget.bookId,
-        },
-      );
-    } finally {
-      _isNavigating = false;
-    }
   }
 
   Future<void> _continueReading() async {
@@ -252,6 +240,74 @@ class _BookDetailPageState extends State<BookDetailPage> {
     );
   }
 
+  String _formatWordCount(int count) {
+    if (count >= 1000) {
+      return '${(count / 1000).toStringAsFixed(1)}k';
+    }
+    return count.toString();
+  }
+
+  Widget _buildStatItem({required String label, required String value}) {
+    return Expanded(
+      child: Column(
+        children: <Widget>[
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w600,
+              color: LibraryDesignTokens.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              color: LibraryDesignTokens.bookProfileMutedText,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatsRow({
+    required double progressPercent,
+    required int wordCount,
+    required String category,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      child: Row(
+        children: <Widget>[
+          _buildStatItem(
+            label: 'Progress',
+            value: '${(progressPercent * 100).round()}%',
+          ),
+          Container(
+            width: 1,
+            height: 32,
+            color: LibraryDesignTokens.borderColor,
+          ),
+          _buildStatItem(
+            label: 'Words',
+            value: _formatWordCount(wordCount),
+          ),
+          Container(
+            width: 1,
+            height: 32,
+            color: LibraryDesignTokens.borderColor,
+          ),
+          _buildStatItem(
+            label: 'Category',
+            value: category,
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final localizations = AppLocalizations.of(context);
@@ -277,9 +333,6 @@ class _BookDetailPageState extends State<BookDetailPage> {
 
         final data = snapshot.data!;
         final progressPercent = data.progress?.percent ?? 0;
-        final displayPage = data.progress == null
-            ? 1
-            : ((data.progress!.percent * 100).round().clamp(1, 100));
         final coverBytes = _decodeCoverDataUrl(data.book.coverUrl);
         _ensureTopGradientFuture(
           gradientKey:
@@ -296,381 +349,189 @@ class _BookDetailPageState extends State<BookDetailPage> {
             final statusBarSourceColor = _statusBarSourceColorForGradient(
               gradient,
             );
-            final statusBarTopInset = MediaQuery.paddingOf(context).top;
             return AnnotatedRegion<SystemUiOverlayStyle>(
               value: _statusBarOverlayStyle(statusBarSourceColor),
               child: Scaffold(
                 backgroundColor: LibraryDesignTokens.pageBackground,
                 body: Stack(
                   children: <Widget>[
-                    SafeArea(
-                      top: false,
-                      child: SingleChildScrollView(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                            Container(
-                              decoration: BoxDecoration(gradient: gradient),
-                              padding: EdgeInsets.fromLTRB(
-                                14,
-                                statusBarTopInset + 18,
-                                14,
-                                22,
-                              ),
+                    SingleChildScrollView(
+                      child: Column(
+                        children: <Widget>[
+                          Container(
+                            width: double.infinity,
+                            decoration: BoxDecoration(gradient: gradient),
+                            child: SafeArea(
+                              bottom: false,
                               child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: <Widget>[
-                                  Row(
-                                    children: <Widget>[
-                                      Expanded(
-                                        child: Text(
-                                          data.book.title,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            fontSize: LibraryDesignTokens
-                                                .bookProfileTopTitleSize,
-                                            fontWeight: FontWeight.w700,
-                                            letterSpacing: 1.2,
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: <Widget>[
+                                        IconButton(
+                                          onPressed: () =>
+                                              Navigator.of(context).pop(),
+                                          icon: const Icon(
+                                            Icons.arrow_back,
                                             color:
                                                 LibraryDesignTokens.textPrimary,
                                           ),
                                         ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      PopupMenuButton<_BookProfileMenuAction>(
-                                        enabled: !_isDeleting,
-                                        tooltip: localizations.tr(
-                                          'bookProfileSettings',
-                                        ),
-                                        onSelected: _onSettingsAction,
-                                        itemBuilder: (context) =>
-                                            <
-                                              PopupMenuEntry<
-                                                _BookProfileMenuAction
-                                              >
-                                            >[
-                                              PopupMenuItem<
-                                                _BookProfileMenuAction
-                                              >(
-                                                value: _BookProfileMenuAction
-                                                    .deleteBook,
-                                                child: Text(
-                                                  localizations.tr(
-                                                    'deleteBook',
+                                        PopupMenuButton<_BookProfileMenuAction>(
+                                          enabled: !_isDeleting,
+                                          tooltip: localizations.tr(
+                                            'bookProfileSettings',
+                                          ),
+                                          onSelected: _onSettingsAction,
+                                          itemBuilder: (context) =>
+                                              <
+                                                PopupMenuEntry<
+                                                  _BookProfileMenuAction
+                                                >
+                                              >[
+                                                PopupMenuItem<
+                                                  _BookProfileMenuAction
+                                                >(
+                                                  value: _BookProfileMenuAction
+                                                      .deleteBook,
+                                                  child: Text(
+                                                    localizations.tr(
+                                                      'deleteBook',
+                                                    ),
                                                   ),
                                                 ),
-                                              ),
-                                            ],
-                                        icon: const Icon(
-                                          Icons.settings_outlined,
-                                          color:
-                                              LibraryDesignTokens.textPrimary,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 10),
-                                  Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: <Widget>[
-                                      SizedBox(
-                                        width: 128,
-                                        height: 188,
-                                        child: coverBytes != null
-                                            ? Image.memory(
-                                                coverBytes,
-                                                fit: BoxFit.cover,
-                                              )
-                                            : Container(
-                                                color: LibraryDesignTokens
-                                                    .coverGray,
-                                                alignment: Alignment.center,
-                                                child: const Text(
-                                                  'COVER',
-                                                  style: TextStyle(
-                                                    color: Colors.white70,
-                                                    fontSize: 14,
-                                                    letterSpacing: 1.2,
-                                                  ),
-                                                ),
-                                              ),
-                                      ),
-                                      const SizedBox(width: 16),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: <Widget>[
-                                            Text(
-                                              data.book.title.toUpperCase(),
-                                              maxLines: 3,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(
-                                                fontSize: LibraryDesignTokens
-                                                    .bookProfileBookTitleSize,
-                                                fontWeight: FontWeight.w500,
-                                                color: LibraryDesignTokens
-                                                    .textPrimary,
-                                                height: 1.2,
-                                              ),
-                                            ),
-                                            if (_shouldShowAuthor(
-                                              data.book.author,
-                                            )) ...<Widget>[
-                                              const SizedBox(height: 8),
-                                              Text(
-                                                data.book.author,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: const TextStyle(
-                                                  fontSize: LibraryDesignTokens
-                                                      .bookProfileMetaSize,
-                                                  fontWeight: FontWeight.w400,
-                                                  color: LibraryDesignTokens
-                                                      .bookProfileMutedText,
-                                                ),
-                                              ),
-                                            ],
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 14),
-                                  Row(
-                                    children: <Widget>[
-                                      Text(
-                                        localizations
-                                            .tr('pageLabel')
-                                            .replaceAll(
-                                              '{page}',
-                                              '$displayPage',
-                                            ),
-                                        style: const TextStyle(
-                                          fontSize: LibraryDesignTokens
-                                              .bookProfileMetaSize,
-                                          color: LibraryDesignTokens
-                                              .bookProfileMutedText,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Text(
-                                        '${(progressPercent * 100).round()}%',
-                                        style: const TextStyle(
-                                          fontSize: LibraryDesignTokens
-                                              .bookProfileMetaSize,
-                                          color: LibraryDesignTokens
-                                              .bookProfileMutedText,
-                                        ),
-                                      ),
-                                      const Spacer(),
-                                      ElevatedButton.icon(
-                                        onPressed: _isDeleting
-                                            ? null
-                                            : _continueReading,
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor:
-                                              LibraryDesignTokens.textPrimary,
-                                          foregroundColor: Colors.white,
-                                          elevation: 0,
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 14,
-                                            vertical: 10,
+                                              ],
+                                          icon: const Icon(
+                                            Icons.more_vert,
+                                            color:
+                                                LibraryDesignTokens.textPrimary,
                                           ),
-                                          textStyle: const TextStyle(
-                                            fontSize: LibraryDesignTokens
-                                                .bookProfileActionSize,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                          shape: const StadiumBorder(),
                                         ),
-                                        icon: const Icon(
-                                          Icons.arrow_forward_rounded,
-                                          size: 16,
-                                        ),
-                                        label: Text(
-                                          localizations.tr('continueReading'),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(3),
-                                    child: LinearProgressIndicator(
-                                      value: progressPercent
-                                          .clamp(0, 1)
-                                          .toDouble(),
-                                      minHeight: 2,
-                                      backgroundColor:
-                                          LibraryDesignTokens.borderColor,
-                                      color: LibraryDesignTokens.textPrimary,
+                                      ],
                                     ),
                                   ),
-                                ],
-                              ),
-                            ),
-                            const Divider(
-                              height: 1,
-                              thickness: 1,
-                              color: LibraryDesignTokens.borderColor,
-                            ),
-                            Container(
-                              color:
-                                  LibraryDesignTokens.bookProfileCollectionBg,
-                              padding: const EdgeInsets.fromLTRB(
-                                14,
-                                22,
-                                14,
-                                32,
-                              ),
-                              child: Column(
-                                children: <Widget>[
-                                  Row(
-                                    children: <Widget>[
-                                      Text(
-                                        localizations.tr('myHighlights'),
-                                        style: const TextStyle(
-                                          fontSize: LibraryDesignTokens
-                                              .bookProfileSectionLabelSize,
-                                          fontWeight: FontWeight.w600,
-                                          color:
-                                              LibraryDesignTokens.textSecondary,
-                                          letterSpacing: 1.8,
-                                        ),
-                                      ),
-                                      const Spacer(),
-                                      OutlinedButton.icon(
-                                        onPressed: _isDeleting
-                                            ? null
-                                            : () => _openHighlights(),
-                                        style: OutlinedButton.styleFrom(
-                                          foregroundColor:
-                                              LibraryDesignTokens.textPrimary,
-                                          side: const BorderSide(
+                                  const SizedBox(height: 16),
+                                  Center(
+                                    child: Container(
+                                      width: 160,
+                                      height: 235,
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(8),
+                                        boxShadow: <BoxShadow>[
+                                          BoxShadow(
                                             color:
-                                                LibraryDesignTokens.borderColor,
+                                                Colors.black.withValues(alpha: 0.2),
+                                            blurRadius: 12,
+                                            offset: const Offset(0, 4),
                                           ),
-                                          elevation: 0,
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                            vertical: 8,
-                                          ),
-                                          textStyle: const TextStyle(
-                                            fontSize: LibraryDesignTokens
-                                                .bookProfileActionSize,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                          shape: const StadiumBorder(),
-                                        ),
-                                        icon: const Icon(
-                                          Icons.arrow_forward_rounded,
-                                          size: 16,
-                                        ),
-                                        label: Text(
-                                          localizations.tr('viewAll'),
-                                        ),
+                                        ],
                                       ),
-                                    ],
+                                      clipBehavior: Clip.antiAlias,
+                                      child: coverBytes != null
+                                          ? Image.memory(
+                                              coverBytes,
+                                              fit: BoxFit.cover,
+                                            )
+                                          : Container(
+                                              color:
+                                                  LibraryDesignTokens.coverGray,
+                                              alignment: Alignment.center,
+                                              child: const Text(
+                                                'COVER',
+                                                style: TextStyle(
+                                                  color: Colors.white70,
+                                                  fontSize: 16,
+                                                  letterSpacing: 1.2,
+                                                ),
+                                              ),
+                                            ),
+                                    ),
                                   ),
-                                  const SizedBox(height: 20),
-                                  if (data.highlights.isEmpty)
-                                    Text(
-                                      localizations.tr('noHighlightsYet'),
+                                  const SizedBox(height: 24),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 24,
+                                    ),
+                                    child: Text(
+                                      data.book.title,
+                                      textAlign: TextAlign.center,
+                                      maxLines: 3,
+                                      overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(
-                                        fontSize: LibraryDesignTokens
-                                            .bookProfileCollectionAuthorSize,
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.w600,
+                                        color: LibraryDesignTokens.textPrimary,
+                                        height: 1.3,
+                                      ),
+                                    ),
+                                  ),
+                                  if (_shouldShowAuthor(
+                                    data.book.author,
+                                  )) ...<Widget>[
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      data.book.author,
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                        fontSize: 14,
                                         color: LibraryDesignTokens
                                             .bookProfileMutedText,
                                       ),
                                     ),
-                                  for (
-                                    var i = 0;
-                                    i < data.highlights.length;
-                                    i++
-                                  ) ...<Widget>[
-                                    InkWell(
-                                      onTap: _isDeleting
-                                          ? null
-                                          : () => _openHighlights(),
-                                      child: Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: 10,
-                                        ),
-                                        child: Row(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: <Widget>[
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: <Widget>[
-                                                  Text(
-                                                    data
-                                                            .highlights[i]
-                                                            .selectedText
-                                                            .trim()
-                                                            .isEmpty
-                                                        ? localizations.tr(
-                                                            'emptyHighlight',
-                                                          )
-                                                        : data
-                                                              .highlights[i]
-                                                              .selectedText,
-                                                    style: const TextStyle(
-                                                      fontSize: LibraryDesignTokens
-                                                          .bookProfileCollectionTitleSize,
-                                                      fontWeight:
-                                                          FontWeight.w500,
-                                                      color: LibraryDesignTokens
-                                                          .textPrimary,
-                                                      height: 1.2,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 6),
-                                                  Text(
-                                                    data.highlights[i].color,
-                                                    style: const TextStyle(
-                                                      fontSize: LibraryDesignTokens
-                                                          .bookProfileCollectionAuthorSize,
-                                                      color: LibraryDesignTokens
-                                                          .bookProfileMutedText,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                            const SizedBox(width: 12),
-                                            const Padding(
-                                              padding: EdgeInsets.only(top: 8),
-                                              child: Text(
-                                                '->',
-                                                style: TextStyle(
-                                                  fontSize: 24,
-                                                  color: LibraryDesignTokens
-                                                      .textPrimary,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                    if (i != data.highlights.length - 1)
-                                      const Divider(
-                                        height: 20,
-                                        thickness: 1,
-                                        color: LibraryDesignTokens.borderColor,
-                                      ),
                                   ],
+                                  const SizedBox(height: 24),
                                 ],
                               ),
                             ),
-                          ],
-                        ),
+                          ),
+                          Container(
+                            color: LibraryDesignTokens.pageBackground,
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            child: Column(
+                              children: <Widget>[
+                                _buildStatsRow(
+                                  progressPercent: progressPercent,
+                                  wordCount: data.totalWordCount,
+                                  category: _mockCategory,
+                                ),
+                                const SizedBox(height: 24),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton(
+                                    onPressed:
+                                        _isDeleting ? null : _continueReading,
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor:
+                                          LibraryDesignTokens.textPrimary,
+                                      foregroundColor: Colors.white,
+                                      elevation: 0,
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 16,
+                                      ),
+                                      textStyle: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      localizations.tr('continueReading'),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 32),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     if (_isDeleting)
@@ -697,10 +558,10 @@ class _BookProfileData {
   const _BookProfileData({
     required this.book,
     required this.progress,
-    required this.highlights,
+    required this.totalWordCount,
   });
 
   final BookEntity book;
   final ReadingProgressEntity? progress;
-  final List<HighlightEntity> highlights;
+  final int totalWordCount;
 }

@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 
 import '../../entities/book-entity.dart';
 import '../../repositories/book/book-repository.dart';
+import '../../repositories/progress/progress-repository.dart';
 import '../../services/library/book-profile-color-service.dart';
 import '../../services/parser/book-import-service.dart';
 import 'library-state.dart';
@@ -15,16 +16,19 @@ class LibraryStore extends ChangeNotifier {
     required BookRepository bookRepository,
     required BookImportService bookImportService,
     required String booksDirectory,
+    required ProgressRepository progressRepository,
     BookProfileColorService? bookProfileColorService,
   }) : _bookRepository = bookRepository,
        _bookImportService = bookImportService,
        _booksDirectory = booksDirectory,
+       _progressRepository = progressRepository,
        _bookProfileColorService =
            bookProfileColorService ?? const BookProfileColorService();
 
   final BookRepository _bookRepository;
   final BookImportService _bookImportService;
   final String _booksDirectory;
+  final ProgressRepository _progressRepository;
   final BookProfileColorService _bookProfileColorService;
   LibraryState _state = LibraryState.initial();
 
@@ -36,9 +40,12 @@ class LibraryStore extends ChangeNotifier {
 
     try {
       final books = await _bookRepository.getShelfBooks();
+      final progressData = await _loadProgressData(books);
       _state = _state.copyWith(
         books: books,
         filteredBooks: _filterByCategory(books, _state.activeCategory),
+        progressMap: progressData.percentMap,
+        progressUpdatedMap: progressData.updatedMap,
         isLoading: false,
         errorMessage: null,
       );
@@ -50,6 +57,19 @@ class LibraryStore extends ChangeNotifier {
       );
       notifyListeners();
     }
+  }
+
+  Future<_ProgressData> _loadProgressData(List<BookEntity> books) async {
+    final percentMap = <String, double>{};
+    final updatedMap = <String, DateTime>{};
+    for (final book in books) {
+      final progress = await _progressRepository.getProgress(book.id);
+      if (progress != null) {
+        percentMap[book.id] = progress.percent;
+        updatedMap[book.id] = progress.updatedAt;
+      }
+    }
+    return _ProgressData(percentMap: percentMap, updatedMap: updatedMap);
   }
 
   Future<void> importBookFromPath(String filePath) async {
@@ -191,4 +211,11 @@ class LibraryStore extends ChangeNotifier {
       return null;
     }
   }
+}
+
+class _ProgressData {
+  const _ProgressData({required this.percentMap, required this.updatedMap});
+
+  final Map<String, double> percentMap;
+  final Map<String, DateTime> updatedMap;
 }

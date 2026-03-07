@@ -18,7 +18,7 @@ void main() {
     );
   }
 
-  testWidgets('LibraryBookTile renders title only with compact gray style', (tester) async {
+  testWidgets('LibraryBookTile renders fallback cover with book title', (tester) async {
     final book = createBook();
 
     await tester.pumpWidget(
@@ -27,6 +27,7 @@ void main() {
           body: Center(
             child: SizedBox(
               width: 120,
+              height: 200,
               child: LibraryBookTile(
                 book: book,
                 coverColor: Colors.blue,
@@ -39,13 +40,8 @@ void main() {
       ),
     );
 
+    // Fallback cover shows the full book title
     expect(find.text('My Title'), findsOneWidget);
-    expect(find.text('Unknown'), findsNothing);
-
-    final titleWidget = tester.widget<Text>(find.text('My Title'));
-    expect(titleWidget.style?.fontSize, 12);
-    expect(titleWidget.style?.fontWeight, FontWeight.w500);
-    expect(titleWidget.style?.color, const Color(0xFF666666));
   });
 
   testWidgets('LibraryBookTile uses BoxFit.cover for real cover image', (tester) async {
@@ -59,6 +55,7 @@ void main() {
           body: Center(
             child: SizedBox(
               width: 120,
+              height: 200,
               child: LibraryBookTile(
                 book: book,
                 coverColor: Colors.blue,
@@ -75,8 +72,12 @@ void main() {
     expect(imageWidget.fit, BoxFit.cover);
   });
 
-  testWidgets('LibraryBookGrid keeps 3 columns with larger spacing', (tester) async {
-    final books = <BookEntity>[createBook()];
+  testWidgets('LibraryBookGrid renders horizontal scroll with progress', (tester) async {
+    final now = DateTime.now();
+    final books = <BookEntity>[
+      BookEntity(id: 'b1', title: 'Book A', author: 'Author A', sourceType: 'local_epub', createdAt: now, updatedAt: now),
+      BookEntity(id: 'b2', title: 'Book B', author: 'Author B', sourceType: 'local_epub', createdAt: now, updatedAt: now),
+    ];
 
     await tester.pumpWidget(
       MaterialApp(
@@ -84,15 +85,19 @@ void main() {
           body: LibraryBookGrid(
             books: books,
             onBookTap: (_) {},
+            progressMap: const <String, double>{'b1': 0.12},
           ),
         ),
       ),
     );
 
-    final gridView = tester.widget<GridView>(find.byType(GridView));
-    final delegate = gridView.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount;
-    expect(delegate.crossAxisCount, 3);
-    expect(delegate.crossAxisSpacing, 20);
-    expect(delegate.mainAxisSpacing, 14);
+    // Uses a horizontal ListView
+    final listView = tester.widget<ListView>(find.byType(ListView));
+    expect(listView.scrollDirection, Axis.horizontal);
+    // Both book titles visible (once in cover, once below)
+    expect(find.text('Book A'), findsNWidgets(2));
+    // Progress percentage shown
+    expect(find.text('12%'), findsOneWidget);
+    expect(find.text('0%'), findsOneWidget);
   });
 }

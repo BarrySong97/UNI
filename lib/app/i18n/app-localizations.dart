@@ -69,6 +69,13 @@ class AppLocalizations {
       'readerGlobalSearch': 'Global search',
       'readerOpenNotes': 'View notes',
       'readerBookThoughts': 'Book thoughts',
+      'reading': 'Reading',
+      'addFirstBook': 'Add Your First Book',
+      'dailyGoal': 'DAILY GOAL',
+      'booksRead': 'BOOKS READ',
+      'thisYear': 'this year',
+      'wordOfTheDay': 'WORD OF THE DAY',
+      'startReadingJourney': 'Start your reading journey',
     },
     'zh': <String, String>{
       'appTitle': 'Uni Reader',
@@ -109,6 +116,13 @@ class AppLocalizations {
       'readerGlobalSearch': '全文搜索',
       'readerOpenNotes': '查看笔记',
       'readerBookThoughts': '书友想法',
+      'reading': '阅读',
+      'addFirstBook': '添加你的第一本书',
+      'dailyGoal': '每日目标',
+      'booksRead': '已读书籍',
+      'thisYear': '今年',
+      'wordOfTheDay': '每日一词',
+      'startReadingJourney': '开启你的阅读之旅',
     },
   };
 

@@ -235,10 +235,9 @@ packages:
   flureadium_platform_interface:
     dependency: transitive
     description:
-      name: flureadium_platform_interface
-      sha256: ede2e4b7d4fcd24957a64c79f908942a2e8e15accfe9f54ef8cd371e58bffaad
-      url: "https://pub.dev"
-    source: hosted
+      path: "packages/flureadium/flureadium_platform_interface"
+      relative: true
+    source: path
     version: "0.5.0"
   flutter:
     dependency: "direct main"

@@ -14,6 +14,7 @@ class LibraryBookTile extends StatelessWidget {
     required this.coverMark,
     required this.onTap,
     this.showNewBadge = false,
+    this.progress,
     super.key,
   });
 
@@ -22,6 +23,9 @@ class LibraryBookTile extends StatelessWidget {
   final String coverMark;
   final VoidCallback onTap;
   final bool showNewBadge;
+  final double? progress;
+
+  static const double _coverRadius = LibraryDesignTokens.homeGridCoverRadius;
 
   @override
   Widget build(BuildContext context) {
@@ -29,67 +33,92 @@ class LibraryBookTile extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          AspectRatio(
-            aspectRatio: LibraryDesignTokens.coverAspectRatio,
-            child: Stack(
-              fit: StackFit.expand,
-              children: <Widget>[
-                if (coverBytes != null)
-                  Image.memory(
-                    coverBytes,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) => _buildFallbackCover(),
-                  )
-                else
-                  _buildFallbackCover(),
-                if (showNewBadge)
-                  const Positioned(
-                    top: 8,
-                    right: 8,
-                    child: LibraryNewBadge(),
+      borderRadius: BorderRadius.circular(_coverRadius),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(_coverRadius),
+        child: AspectRatio(
+          aspectRatio: LibraryDesignTokens.coverAspectRatio,
+          child: Stack(
+            fit: StackFit.expand,
+            children: <Widget>[
+              if (coverBytes != null)
+                Image.memory(
+                  coverBytes,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => _buildFallbackCover(),
+                )
+              else
+                _buildFallbackCover(),
+              if (progress != null && progress! > 0)
+                Positioned(
+                  top: 6,
+                  right: 6,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: const Color(0xCC000000),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      '${(progress! * 100).round()}%',
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
                   ),
-              ],
-            ),
+                )
+              else if (showNewBadge)
+                const Positioned(
+                  top: 8,
+                  right: 8,
+                  child: LibraryNewBadge(),
+                ),
+            ],
           ),
-          const SizedBox(height: 10),
-          Text(
-            book.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: Color(0xFF666666),
-              height: 1.1,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
 
   Widget _buildFallbackCover() {
+    final textColor = _coverTextColor(coverColor);
+
     return Container(
       color: coverColor,
-      padding: const EdgeInsets.all(14),
-      child: Stack(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: <Widget>[
-          Positioned(
-            left: 8,
-            bottom: 2,
-            child: Text(
-              coverMark,
-              style: TextStyle(
-                fontSize: 42,
-                fontWeight: FontWeight.w800,
-                color: _coverTextColor(coverColor),
-                height: 1,
-              ),
+          Text(
+            book.title,
+            textAlign: TextAlign.center,
+            maxLines: 4,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: textColor,
+              height: 1.2,
             ),
           ),
+          if (book.author.isNotEmpty && book.author != 'Unknown') ...[
+            const SizedBox(height: 6),
+            Text(
+              book.author,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: textColor.withValues(alpha: 0.7),
+                letterSpacing: 0.3,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -113,9 +142,10 @@ class LibraryBookTile extends StatelessWidget {
   }
 
   Color _coverTextColor(Color cover) {
-    if (cover == LibraryDesignTokens.coverNeon || cover == LibraryDesignTokens.coverGray) {
-      return const Color(0xFF111111);
+    if (cover == LibraryDesignTokens.coverNeon ||
+        cover == LibraryDesignTokens.coverGray) {
+      return LibraryDesignTokens.coverTextDark;
     }
-    return const Color(0xFFF4F4F4);
+    return LibraryDesignTokens.coverTextLight;
   }
 }

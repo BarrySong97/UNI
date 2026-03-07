@@ -3,38 +3,40 @@ import 'package:flutter/material.dart';
 import '../../entities/book-entity.dart';
 import '../../shared/constants/library-design-tokens.dart';
 import '../../components/library/library-book-grid.dart';
-import '../../components/library/library-category-tabs.dart';
-import '../../components/library/library-top-bar.dart';
-import '../../shared/ui/empty-view.dart';
+import '../../components/library/library-header.dart';
+import '../../components/library/library-now-reading-card.dart';
+import '../../components/library/library-reading-stats.dart';
+import '../../components/library/library-word-of-day-card.dart';
+import '../../app/routes/route-names.dart';
 import '../../shared/ui/loading-view.dart';
 
 class LibraryPageLayout extends StatelessWidget {
   const LibraryPageLayout({
     required this.books,
-    required this.categories,
-    required this.activeCategory,
     required this.isImporting,
-    required this.onCategoryTap,
     required this.onBookTap,
     required this.onImportTap,
-    required this.onSearchTap,
-    required this.onMenuTap,
     required this.emptyMessage,
     required this.importingMessage,
+    this.progressMap = const <String, double>{},
+    this.nowReadingBook,
+    this.nowReadingProgress = 0,
+    this.gridBooks = const <BookEntity>[],
+    this.onContinueReadingTap,
     super.key,
   });
 
   final List<BookEntity> books;
-  final List<String> categories;
-  final String activeCategory;
   final bool isImporting;
-  final ValueChanged<String> onCategoryTap;
   final ValueChanged<BookEntity> onBookTap;
   final VoidCallback onImportTap;
-  final VoidCallback onSearchTap;
-  final VoidCallback onMenuTap;
   final String emptyMessage;
   final String importingMessage;
+  final Map<String, double> progressMap;
+  final BookEntity? nowReadingBook;
+  final double nowReadingProgress;
+  final List<BookEntity> gridBooks;
+  final VoidCallback? onContinueReadingTap;
 
   @override
   Widget build(BuildContext context) {
@@ -46,70 +48,46 @@ class LibraryPageLayout extends StatelessWidget {
             bottom: false,
             child: SingleChildScrollView(
               padding: const EdgeInsets.only(
-                left: LibraryDesignTokens.pageHorizontal,
-                right: LibraryDesignTokens.pageHorizontal,
-                top: LibraryDesignTokens.pageTopPadding,
-                bottom: 20,
+                left: 16,
+                right: 16,
+                top: 12,
+                bottom: 120,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  LibraryTopBar(
-                    onSearchTap: onSearchTap,
-                    onMenuTap: onMenuTap,
+                  LibraryHeader(
                     onImportTap: onImportTap,
                     isImporting: isImporting,
                   ),
-                  const SizedBox(height: LibraryDesignTokens.topBarBottomGap),
-                  RichText(
-                    text: const TextSpan(
-                      children: <InlineSpan>[
-                        TextSpan(
-                          text: 'Library ',
-                          style: TextStyle(
-                            fontSize: LibraryDesignTokens.libraryTitleSize,
-                            fontWeight: FontWeight.w400,
-                            color: LibraryDesignTokens.textPrimary,
-                            height: 0.96,
-                            letterSpacing: -0.8,
-                          ),
-                        ),
-                        TextSpan(
-                          text: 'Recent',
-                          style: TextStyle(
-                            fontSize: LibraryDesignTokens.libraryTitleSize,
-                            fontWeight: FontWeight.w700,
-                            color: LibraryDesignTokens.textPrimary,
-                            height: 0.96,
-                            letterSpacing: -0.8,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: LibraryDesignTokens.sectionTitleBottomGap),
-                  LibraryCategoryTabs(
-                    items: categories,
-                    active: activeCategory,
-                    onChange: onCategoryTap,
-                  ),
-                  const SizedBox(height: LibraryDesignTokens.categorySectionBottomGap),
-                  const Divider(
-                    color: LibraryDesignTokens.borderColor,
-                    thickness: LibraryDesignTokens.sectionDividerThickness,
-                    height: 1,
-                  ),
-                  const SizedBox(height: LibraryDesignTokens.sectionDividerBottomGap),
+                  const SizedBox(height: 20),
                   if (books.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 48),
-                      child: EmptyView(message: emptyMessage),
-                    )
-                  else
-                    LibraryBookGrid(
-                      books: books,
-                      onBookTap: onBookTap,
+                    _buildEmptyState()
+                  else ...[
+                    LibraryReadingStats(
+                      onTap: () => Navigator.of(
+                        context,
+                      ).pushNamed(RouteNames.statistics),
                     ),
+                    const SizedBox(height: 24),
+                    if (nowReadingBook != null) ...[
+                      _buildSectionHeader('Now Reading', showViewAll: true),
+                      const SizedBox(height: 12),
+                      NowReadingCard(
+                        book: nowReadingBook!,
+                        progress: nowReadingProgress,
+                        onContinueTap: onContinueReadingTap ?? () {},
+                      ),
+                      const SizedBox(height: 24),
+                    ],
+                    WordOfDayCard(
+                      onTap: () =>
+                          Navigator.of(context).pushNamed(RouteNames.wordOfDay),
+                    ),
+                    const SizedBox(height: 24),
+                    if (gridBooks.isNotEmpty)
+                      LibraryBookGrid(books: gridBooks, onBookTap: onBookTap),
+                  ],
                 ],
               ),
             ),
@@ -136,6 +114,67 @@ class LibraryPageLayout extends StatelessWidget {
               ),
             ),
           ),
+      ],
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 120),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(
+              Icons.menu_book_rounded,
+              size: 64,
+              color: LibraryDesignTokens.textSecondary.withValues(alpha: 0.4),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Start your reading journey',
+              style: TextStyle(
+                fontSize: 16,
+                color: LibraryDesignTokens.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: onImportTap,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: LibraryDesignTokens.continueButtonBg,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  elevation: 0,
+                ),
+                child: const Text(
+                  'Add Your First Book',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title, {bool showViewAll = false}) {
+    return Row(
+      children: <Widget>[
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: LibraryDesignTokens.sectionHeaderSize,
+            fontWeight: FontWeight.w600,
+            color: LibraryDesignTokens.sectionHeaderColor,
+          ),
+        ),
       ],
     );
   }

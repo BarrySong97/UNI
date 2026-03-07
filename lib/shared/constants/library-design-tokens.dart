@@ -14,6 +14,8 @@ abstract final class LibraryDesignTokens {
   static const Color coverNeon = Color(0xFFD7FF00);
   static const Color coverBlack = Color(0xFF13151A);
   static const Color coverGray = Color(0xFFCECCD0);
+  static const Color coverTextLight = Color(0xFFF4F4F4);
+  static const Color coverTextDark = Color(0xFF111111);
 
   static const double pageHorizontal = 10;
   static const double pageTopPadding = 8;
@@ -35,7 +37,7 @@ abstract final class LibraryDesignTokens {
   static const double tabBorderRadius = 10;
 
   static const double gridSpacing = 10;
-  static const double coverAspectRatio = 0.70;
+  static const double coverAspectRatio = 0.65;
   static const double bookTitleSize = 18;
   static const double bookAuthorSize = 12;
 
@@ -56,4 +58,58 @@ abstract final class LibraryDesignTokens {
   static const Color bookProfileMutedText = Color(0xFF6E6E6E);
   static const double bookProfileTopGradientOpacityStart = 0.42;
   static const double bookProfileTopGradientOpacityEnd = 0.10;
+
+  // Home header
+  static const double headerLabelSize = 12;
+  static const double headerTitleSize = 28;
+  static const double avatarSize = 38;
+  static const double avatarRadius = 10;
+  static const Color avatarBg = Color(0xFF2C2C2C);
+  static const Color avatarTextColor = Color(0xFFFFFFFF);
+  static const Color headerLabelColor = Color(0xFF8B7355);
+
+  // Reading stats cards
+  static const double statsCardRadius = 14;
+  static const Color statsCardBg = Color(0xFFFAF9F7);
+  static const Color statsLabelColor = Color(0xFF8B7355);
+  static const Color statsNumberColor = Color(0xFF5C4A3A);
+  static const Color statsBarColor = Color(0xFFCCC5BC);
+  static const Color statsBooksReadBg = Color(0xFF5C4A3A);
+  static const Color statsBooksReadText = Color(0xFFFAF9F7);
+
+  // Now Reading card
+  static const double nowReadingCardRadius = 18;
+  static const double nowReadingCoverWidth = 100;
+  static const double nowReadingCoverHeight = 140;
+  static const double nowReadingCoverRadius = 8;
+  static const Color nowReadingCardBg = Color(0xFFFAF9F7);
+  static const Color nowReadingCoverPlaceholderBg = Color(0xFFE8E4DF);
+  static const Color nowReadingProgressBg = Color(0xFFEDE8E0);
+  static const Color nowReadingProgressFill = Color(0xFF1A1A1A);
+  static const Color continueButtonBg = Color(0xFF1A1A1A);
+  static const Color continueButtonText = Color(0xFFFFFFFF);
+  static const double continueButtonRadius = 24;
+
+  // Word of the Day
+  static const double wordOfDayCardRadius = 16;
+  static const Color wordOfDayCardBg = Color(0xFFE8E4DF);
+  static const Color wordOfDayIconBg = Color(0xFFD5CFC6);
+  static const Color wordOfDayIconColor = Color(0xFF8B7355);
+
+  // Home book list (horizontal scroll)
+  static const double homeGridCoverRadius = 12;
+  static const int homeGridMaxItems = 8;
+  static const double homeGridItemWidth = 150;
+  static const double homeGridItemSpacing = 14;
+  static const double homeGridTitleSize = 14;
+  static const double homeGridAuthorSize = 12;
+  static const double homeGridProgressHeight = 3;
+  static const Color homeGridProgressBg = Color(0xFFE0DCD7);
+  static const Color homeGridProgressFill = Color(0xFF1A1A1A);
+
+  // Section header
+  static const double sectionHeaderSize = 18;
+  static const Color sectionHeaderColor = Color(0xFF0E0E0E);
+  static const Color viewAllColor = Color(0xFF8B7355);
+  static const double viewAllSize = 13;
 }

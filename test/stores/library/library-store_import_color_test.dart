@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uni/repositories/book/book-repository-impl.dart';
+import 'package:uni/repositories/progress/progress-repository-impl.dart';
 import 'package:uni/services/db/app-database.dart';
 import 'package:uni/services/db/daos/books-dao.dart';
+import 'package:uni/services/db/daos/progress-dao.dart';
 import 'package:uni/services/library/book-profile-color-service.dart';
 import 'package:uni/services/parser/book-import-service.dart';
 import 'package:uni/stores/library/library-store.dart';
@@ -25,10 +27,14 @@ void main() {
     final bookRepository = BookRepositoryImpl(
       booksDao: BooksDao(database: database),
     );
+    final progressRepository = ProgressRepositoryImpl(
+      progressDao: ProgressDao(database: database),
+    );
     return LibraryStore(
       bookRepository: bookRepository,
       bookImportService: _FakeBookImportService(draft),
       booksDirectory: '/tmp/test_books',
+      progressRepository: progressRepository,
       bookProfileColorService: BookProfileColorService(
         dominantColorExtractor: (bytes) async => const Color(0xFF336699),
       ),

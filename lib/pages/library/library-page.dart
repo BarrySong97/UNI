@@ -4,7 +4,9 @@ import 'package:file_picker/file_picker.dart';
 import '../../app/i18n/app-localizations.dart';
 import '../../app/providers/app-providers.dart';
 import '../../app/routes/route-names.dart';
+import '../../entities/book-entity.dart';
 import '../../services/library/book-profile-entry-service.dart';
+import '../../stores/library/library-state.dart';
 import 'library-page-layout.dart';
 
 class LibraryPage extends StatefulWidget {
@@ -38,29 +40,73 @@ class _LibraryPageState extends State<LibraryPage> {
           return const Center(child: CircularProgressIndicator());
         }
 
+        final nowReading = _computeNowReading(state);
+        final gridBooks = _computeGridBooks(state, nowReading?.id);
+
         return LibraryPageLayout(
-          books: state.filteredBooks,
-          categories: state.categories,
-          activeCategory: state.activeCategory,
+          books: state.books,
           isImporting: state.isImporting,
+          progressMap: state.progressMap,
           emptyMessage: localizations.tr('emptyLibrary'),
           importingMessage: localizations.tr('importingBook'),
-          onCategoryTap: store.setCategory,
+          nowReadingBook: nowReading,
+          nowReadingProgress: nowReading != null
+              ? (state.progressMap[nowReading.id] ?? 0)
+              : 0,
+          gridBooks: gridBooks,
           onBookTap: (book) => _openBookFromLibrary(book.id),
           onImportTap: () => _pickAndImportBook(context),
-          onSearchTap: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(localizations.tr('searchComingSoon'))),
-            );
-          },
-          onMenuTap: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(localizations.tr('menuComingSoon'))),
-            );
-          },
+          onContinueReadingTap: nowReading != null
+              ? () => _navigateToReader(nowReading.id)
+              : null,
         );
       },
     );
+  }
+
+  BookEntity? _computeNowReading(LibraryState state) {
+    if (state.books.isEmpty || state.progressUpdatedMap.isEmpty) {
+      return null;
+    }
+    String? mostRecentBookId;
+    DateTime? mostRecentTime;
+    for (final entry in state.progressUpdatedMap.entries) {
+      if (mostRecentTime == null || entry.value.isAfter(mostRecentTime)) {
+        mostRecentTime = entry.value;
+        mostRecentBookId = entry.key;
+      }
+    }
+    if (mostRecentBookId == null) {
+      return null;
+    }
+    try {
+      return state.books.firstWhere((b) => b.id == mostRecentBookId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  List<BookEntity> _computeGridBooks(LibraryState state, String? nowReadingId) {
+    final remaining = state.books
+        .where((b) => b.id != nowReadingId)
+        .toList();
+
+    remaining.sort((a, b) {
+      final aTime = state.progressUpdatedMap[a.id];
+      final bTime = state.progressUpdatedMap[b.id];
+      if (aTime == null && bTime == null) {
+        return 0;
+      }
+      if (aTime == null) {
+        return 1;
+      }
+      if (bTime == null) {
+        return -1;
+      }
+      return bTime.compareTo(aTime);
+    });
+
+    return remaining.take(8).toList();
   }
 
   Future<void> _pickAndImportBook(BuildContext context) async {
@@ -84,6 +130,18 @@ class _LibraryPageState extends State<LibraryPage> {
 
     final message = store.state.errorMessage ?? store.state.lastImportMessage ?? localizations.tr('importDone');
     messenger.showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _navigateToReader(String bookId) async {
+    if (_isNavigatingBook || !mounted) {
+      return;
+    }
+    _isNavigatingBook = true;
+    try {
+      await Navigator.of(context).pushNamed(RouteNames.reader, arguments: bookId);
+    } finally {
+      _isNavigatingBook = false;
+    }
   }
 
   Future<void> _openBookFromLibrary(String bookId) async {

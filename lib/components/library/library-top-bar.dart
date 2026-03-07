@@ -22,17 +22,8 @@ class LibraryTopBar extends StatelessWidget {
     return SizedBox(
       height: LibraryDesignTokens.topBarHeight,
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
         children: <Widget>[
-          const Text(
-            'A2A',
-            style: TextStyle(
-              fontSize: LibraryDesignTokens.headerBrandSize,
-              fontWeight: FontWeight.w900,
-              color: LibraryDesignTokens.textPrimary,
-              letterSpacing: -0.4,
-            ),
-          ),
-          const Spacer(),
           TopIconButton(icon: Icons.search, onTap: onSearchTap),
           TopIconButton(icon: Icons.menu, onTap: onMenuTap),
           TopIconButton(

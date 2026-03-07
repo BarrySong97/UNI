@@ -6,13 +6,16 @@ import 'package:uni/app/providers/app-providers.dart';
 import 'package:uni/app/routes/route-names.dart';
 import 'package:uni/entities/book-entity.dart';
 import 'package:uni/entities/reading-progress-entity.dart';
+import 'package:uni/components/library/library-book-tile.dart';
 import 'package:uni/pages/library/library-page.dart';
 import 'package:uni/repositories/book/book-repository-impl.dart';
+import 'package:uni/repositories/chapter/chapter-repository-impl.dart';
 import 'package:uni/repositories/highlight/highlight-repository-impl.dart';
 import 'package:uni/repositories/progress/progress-repository-impl.dart';
 import 'package:uni/repositories/reader-preferences/reader-preferences-repository-impl.dart';
 import 'package:uni/services/db/app-database.dart';
 import 'package:uni/services/db/daos/books-dao.dart';
+import 'package:uni/services/db/daos/chapters-dao.dart';
 import 'package:uni/services/db/daos/highlights-dao.dart';
 import 'package:uni/services/db/daos/progress-dao.dart';
 import 'package:uni/services/db/daos/reader-preferences-dao.dart';
@@ -35,11 +38,13 @@ class _RecordingNavigatorObserver extends NavigatorObserver {
 Future<AppProviders> _createProviders({required bool hasProgress}) async {
   final database = AppDatabase();
   final booksDao = BooksDao(database: database);
+  final chaptersDao = ChaptersDao(database: database);
   final progressDao = ProgressDao(database: database);
   final highlightsDao = HighlightsDao(database: database);
   final readerPreferencesDao = ReaderPreferencesDao(database: database);
 
   final bookRepository = BookRepositoryImpl(booksDao: booksDao);
+  final chapterRepository = ChapterRepositoryImpl(chaptersDao: chaptersDao);
   final progressRepository = ProgressRepositoryImpl(progressDao: progressDao);
   final highlightRepository = HighlightRepositoryImpl(
     highlightsDao: highlightsDao,
@@ -73,6 +78,7 @@ Future<AppProviders> _createProviders({required bool hasProgress}) async {
 
   final providers = AppProviders(
     bookRepository: bookRepository,
+    chapterRepository: chapterRepository,
     progressRepository: progressRepository,
     highlightRepository: highlightRepository,
     readerPreferencesRepository: readerPreferencesRepository,
@@ -86,6 +92,7 @@ Future<AppProviders> _createProviders({required bool hasProgress}) async {
       bookRepository: bookRepository,
       bookImportService: BookImportService(),
       booksDirectory: '/tmp/test_books',
+      progressRepository: progressRepository,
     ),
     readerStore: ReaderStore(
       bookRepository: bookRepository,
@@ -137,13 +144,18 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Architecture of Happiness'));
+    // Book without progress appears in the grid — scroll down to it and tap
+    final tileFinder = find.byType(LibraryBookTile);
+    expect(tileFinder, findsOneWidget);
+    await tester.ensureVisible(tileFinder);
+    await tester.pumpAndSettle();
+    await tester.tap(tileFinder);
     await tester.pumpAndSettle();
 
     expect(observer.pushedRouteNames, contains(RouteNames.bookDetail));
   });
 
-  testWidgets('book with progress routes directly to reader', (tester) async {
+  testWidgets('book with progress routes to reader via Continue button', (tester) async {
     final providers = await _createProviders(hasProgress: true);
     final observer = _RecordingNavigatorObserver();
 
@@ -152,7 +164,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Architecture of Happiness'));
+    // Book with progress appears in NowReadingCard — tap Continue button
+    await tester.tap(find.text('Continue'));
     await tester.pumpAndSettle();
 
     expect(observer.pushedRouteNames, contains(RouteNames.reader));

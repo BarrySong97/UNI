@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../../components/common/ui/floating-tab-bar.dart';
 import '../../shared/constants/library-design-tokens.dart';
-import '../discover/discover-page.dart';
 import '../library/library-page.dart';
 import '../read/read-page.dart';
+import '../settings/settings-page.dart';
 
 class MainTabShellPage extends StatefulWidget {
   const MainTabShellPage({
@@ -30,39 +31,44 @@ class _MainTabShellPageState extends State<MainTabShellPage> {
 
   @override
   Widget build(BuildContext context) {
-    final pages = widget.pages ?? const <Widget>[LibraryPage(), DiscoverPage(), ReadPage()];
+    final pages = widget.pages ??
+        const <Widget>[LibraryPage(), ReadPage(), SettingsPage()];
 
     return Scaffold(
       backgroundColor: LibraryDesignTokens.pageBackground,
-      body: IndexedStack(
-        index: currentIndex,
-        children: pages,
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: currentIndex,
-        onTap: (index) {
-          setState(() {
-            currentIndex = index;
-          });
-        },
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: const Color(0xFFF0F0F0),
-        selectedItemColor: LibraryDesignTokens.textPrimary,
-        unselectedItemColor: LibraryDesignTokens.tabInactiveText,
-        selectedLabelStyle: const TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.3,
-        ),
-        unselectedLabelStyle: const TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.3,
-        ),
-        items: const <BottomNavigationBarItem>[
-          BottomNavigationBarItem(icon: Icon(Icons.library_books_outlined), label: 'LIBRARY'),
-          BottomNavigationBarItem(icon: Icon(Icons.explore_outlined), label: 'DISCOVER'),
-          BottomNavigationBarItem(icon: Icon(Icons.menu_book_outlined), label: 'READ'),
+      body: Stack(
+        children: <Widget>[
+          IndexedStack(
+            index: currentIndex,
+            children: pages,
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: FloatingTabBar(
+              currentIndex: currentIndex,
+              onTap: (index) {
+                setState(() {
+                  currentIndex = index;
+                });
+              },
+              items: const <FloatingTabBarItem>[
+                FloatingTabBarItem(
+                  icon: Icons.library_books_outlined,
+                  activeIcon: Icons.library_books,
+                ),
+                FloatingTabBarItem(
+                  icon: Icons.auto_stories_outlined,
+                  activeIcon: Icons.auto_stories,
+                ),
+                FloatingTabBarItem(
+                  icon: Icons.settings_outlined,
+                  activeIcon: Icons.settings,
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );

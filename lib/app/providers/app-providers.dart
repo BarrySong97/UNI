@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 
 import '../../repositories/book/book-repository.dart';
+import '../../repositories/chapter/chapter-repository.dart';
 import '../../repositories/highlight/highlight-repository.dart';
 import '../../repositories/progress/progress-repository.dart';
 import '../../repositories/reader-preferences/reader-preferences-repository.dart';
@@ -13,6 +14,7 @@ import '../i18n/app-locale.dart';
 class AppProviders {
   AppProviders({
     required this.bookRepository,
+    required this.chapterRepository,
     required this.progressRepository,
     required this.highlightRepository,
     required this.readerPreferencesRepository,
@@ -21,6 +23,7 @@ class AppProviders {
   });
 
   final BookRepository bookRepository;
+  final ChapterRepository chapterRepository;
   final ProgressRepository progressRepository;
   final HighlightRepository highlightRepository;
   final ReaderPreferencesRepository readerPreferencesRepository;

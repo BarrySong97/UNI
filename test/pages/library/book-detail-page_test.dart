@@ -6,15 +6,16 @@ import 'package:uni/app/i18n/app-localizations.dart';
 import 'package:uni/app/providers/app-providers.dart';
 import 'package:uni/app/routes/route-names.dart';
 import 'package:uni/entities/book-entity.dart';
-import 'package:uni/entities/highlight-entity.dart';
 import 'package:uni/entities/reading-progress-entity.dart';
 import 'package:uni/pages/library/book-detail-page.dart';
 import 'package:uni/repositories/book/book-repository-impl.dart';
+import 'package:uni/repositories/chapter/chapter-repository-impl.dart';
 import 'package:uni/repositories/highlight/highlight-repository-impl.dart';
 import 'package:uni/repositories/progress/progress-repository-impl.dart';
 import 'package:uni/repositories/reader-preferences/reader-preferences-repository-impl.dart';
 import 'package:uni/services/db/app-database.dart';
 import 'package:uni/services/db/daos/books-dao.dart';
+import 'package:uni/services/db/daos/chapters-dao.dart';
 import 'package:uni/services/db/daos/highlights-dao.dart';
 import 'package:uni/services/db/daos/progress-dao.dart';
 import 'package:uni/services/db/daos/reader-preferences-dao.dart';
@@ -24,7 +25,6 @@ import 'package:uni/services/parser/book-import-service.dart';
 import 'package:uni/stores/highlight/highlight-store.dart';
 import 'package:uni/stores/library/library-store.dart';
 import 'package:uni/stores/reader/reader-store.dart';
-import 'package:uni/shared/constants/library-design-tokens.dart';
 
 class _RecordingNavigatorObserver extends NavigatorObserver {
   final List<String?> pushedRouteNames = <String?>[];
@@ -50,11 +50,13 @@ Future<AppProviders> _createProviders({
 }) async {
   final database = AppDatabase();
   final booksDao = BooksDao(database: database);
+  final chaptersDao = ChaptersDao(database: database);
   final progressDao = ProgressDao(database: database);
   final highlightsDao = HighlightsDao(database: database);
   final readerPreferencesDao = ReaderPreferencesDao(database: database);
 
   final bookRepository = BookRepositoryImpl(booksDao: booksDao);
+  final chapterRepository = ChapterRepositoryImpl(chaptersDao: chaptersDao);
   final progressRepository = ProgressRepositoryImpl(progressDao: progressDao);
   final highlightRepository = HighlightRepositoryImpl(
     highlightsDao: highlightsDao,
@@ -99,20 +101,9 @@ Future<AppProviders> _createProviders({
     );
   }
 
-  await highlightRepository.createHighlight(
-    HighlightEntity(
-      id: 'h-1',
-      bookId: 'book-1',
-      locatorJson: '{"href":"/chapter1.xhtml","locations":{"cssSelector":"p.intro"}}',
-      selectedText: 'Design creates emotional shelter.',
-      color: '#FFFFEB3B',
-      createdAt: now,
-      updatedAt: now,
-    ),
-  );
-
   final providers = AppProviders(
     bookRepository: bookRepository,
+    chapterRepository: chapterRepository,
     progressRepository: progressRepository,
     highlightRepository: highlightRepository,
     readerPreferencesRepository: readerPreferencesRepository,
@@ -126,6 +117,7 @@ Future<AppProviders> _createProviders({
       bookRepository: bookRepository,
       bookImportService: BookImportService(),
       booksDirectory: '/tmp/test_books',
+      progressRepository: progressRepository,
     ),
     readerStore: ReaderStore(
       bookRepository: bookRepository,
@@ -138,7 +130,7 @@ Future<AppProviders> _createProviders({
 }
 
 void main() {
-  testWidgets('BookDetailPage renders book profile sections', (tester) async {
+  testWidgets('BookDetailPage renders book profile with title and stats', (tester) async {
     final providers = await _createProviders(
       mainBookProfileBgColor: '#FFCC3344',
     );
@@ -156,26 +148,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Architecture of Happiness'), findsOneWidget);
-    expect(find.text('MY HIGHLIGHTS'), findsOneWidget);
+    expect(find.text('Progress'), findsOneWidget);
+    expect(find.text('Words'), findsOneWidget);
+    expect(find.text('Category'), findsOneWidget);
+    expect(find.text('Fiction'), findsOneWidget);
     expect(find.text('CONTINUE'), findsOneWidget);
-    expect(find.text('Design creates emotional shelter.'), findsOneWidget);
-    expect(find.text('NOW READING'), findsNothing);
-
-    final topTitleText = tester.widget<Text>(
-      find.text('Architecture of Happiness'),
-    );
-    expect(
-      topTitleText.style?.fontSize,
-      LibraryDesignTokens.bookProfileTopTitleSize,
-    );
-
-    final mainTitleText = tester.widget<Text>(
-      find.text('ARCHITECTURE OF HAPPINESS'),
-    );
-    expect(
-      mainTitleText.style?.fontSize,
-      LibraryDesignTokens.bookProfileBookTitleSize,
-    );
 
     final gradientFinder = find.byWidgetPredicate((widget) {
       if (widget is! Container) {
@@ -251,51 +228,6 @@ void main() {
     expect(observer.pushedRouteNames, contains(RouteNames.reader));
   });
 
-  testWidgets('highlight item opens highlights route', (tester) async {
-    final providers = await _createProviders(secondBookHasProgress: false);
-    final observer = _RecordingNavigatorObserver();
-
-    await tester.pumpWidget(
-      AppProvidersScope(
-        providers: providers,
-        child: MaterialApp(
-          supportedLocales: AppLocaleController.supportedLocales,
-          localizationsDelegates: AppLocalizations.delegates,
-          navigatorObservers: <NavigatorObserver>[observer],
-          onGenerateRoute: (settings) {
-            if (settings.name == RouteNames.bookDetail) {
-              final bookId = settings.arguments as String? ?? '';
-              return MaterialPageRoute<void>(
-                settings: settings,
-                builder: (_) => BookDetailPage(bookId: bookId),
-              );
-            }
-            if (settings.name == RouteNames.highlights) {
-              return MaterialPageRoute<void>(
-                settings: settings,
-                builder: (_) => const Scaffold(body: Text('highlights')),
-              );
-            }
-            if (settings.name == RouteNames.reader) {
-              return MaterialPageRoute<void>(
-                settings: settings,
-                builder: (_) => const Scaffold(body: Text('reader')),
-              );
-            }
-            return null;
-          },
-          home: const BookDetailPage(bookId: 'book-1'),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Design creates emotional shelter.'));
-    await tester.pumpAndSettle();
-
-    expect(observer.pushedRouteNames, contains(RouteNames.highlights));
-  });
-
   testWidgets('settings menu can delete book and navigate to main tabs', (
     tester,
   ) async {
@@ -330,7 +262,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.settings_outlined));
+    await tester.tap(find.byIcon(Icons.more_vert));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Delete book'));
     await tester.pumpAndSettle();

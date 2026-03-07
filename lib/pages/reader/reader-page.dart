@@ -52,6 +52,7 @@ class _ReaderPageState extends State<ReaderPage> {
       if (!mounted) return;
 
       final epubPath = _readerStore!.state.book?.epubFilePath;
+      debugPrint('DEBUG: epubPath = $epubPath');
       if (epubPath == null) return;
 
       try {

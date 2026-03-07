@@ -1,42 +1,51 @@
-# 模块：shell-navigation
+# Module: shell-navigation
 
-## 模块目的
-提供应用级页面容器与底部 Tab 导航，保障多 Tab 页面状态保留。
+## Module Purpose
+Provide app-level page container and floating bottom tab navigation with state preservation across tabs.
 
-## 边界
+## Boundary
 ### In
-- 底部导航切换
-- 页面容器管理
-- Tab 状态保留（IndexedStack）
-- 支持业务子路由（如 `/book-detail`）从 tab 页面继续导航
+- Bottom floating tab bar navigation
+- Page container management
+- Tab state preservation (IndexedStack)
+- Support nested routes from tab pages (e.g., `/book-detail`)
 
 ### Out
-- 模块内部业务逻辑（library/reader/highlight/import）
-- 深链复杂分发
+- Internal business logic (library/reader/highlight/import)
+- Deep link complex routing
 
-## 核心流程
-1. App 入口进入 `MainTabShellPage`。
-2. 使用 `IndexedStack` 承载 `Library/Discover/Read`。
-3. 点击底部 Tab 更新 `currentIndex`。
-4. 未激活页面状态继续保留。
-5. Library 内部可继续导航到 `Book Profile`（`/book-detail`）与阅读页。
+## Core Flow
+1. App entry navigates to `MainTabShellPage`.
+2. Uses `IndexedStack` to host `Reading/Library/Settings`.
+3. Floating tab bar at bottom displays icon-only tabs (Library is first tab).
+4. Tap tab icon updates `currentIndex`.
+5. Inactive page states remain preserved.
+6. Library can navigate to `Book Profile` (`/book-detail`) and reader page.
 
-## 关键状态与数据
+## Key State & Data
 - `MainTabShellPage.currentIndex`
 - `IndexedStack.children`
-- `BottomNavigationBar.currentIndex`
+- `FloatingTabBar.currentIndex`
 
-## 交互与异常
-- 切换 Tab 不丢状态。
-- 页面切换平滑，不重新初始化已激活页面。
-- 导航组件与页面背景风格一致。
+## Tab Configuration
+| Index | Page | Icon (Inactive) | Icon (Active) |
+|-------|------|-----------------|---------------|
+| 0 | Library | `library_books_outlined` | `library_books` |
+| 1 | Reading | `auto_stories_outlined` | `auto_stories` |
+| 2 | Settings | `settings_outlined` | `settings` |
 
-## 验收标准
-- 三个 Tab 均可切换。
-- 回切后状态保留。
-- 路由入口指向 shell。
-- `flutter analyze` / `flutter test` 通过。
+## Interaction & Exceptions
+- Switching tabs does not lose state.
+- Page transitions are smooth, no reinitialization of active pages.
+- Floating tab bar uses dark background with white icons.
+- Active tab shows filled icon with white background pill.
 
-## 非目标
-- 不实现多层嵌套路由守卫。
-- 不实现动态 Tab 配置下发。
+## Acceptance Criteria
+- Three tabs switchable.
+- State preserved when switching back.
+- Route entry points to shell.
+- `flutter analyze` / `flutter test` passes.
+
+## Non-Goals
+- Multi-layer nested route guards not implemented.
+- Dynamic tab configuration not supported.

@@ -7,4 +7,6 @@ abstract final class RouteNames {
   static const String reader = '/reader';
   static const String readerSettings = '/reader-settings';
   static const String highlights = '/highlights';
+  static const String statistics = '/statistics';
+  static const String wordOfDay = '/word-of-day';
 }
