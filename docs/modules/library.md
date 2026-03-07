@@ -1,89 +1,122 @@
-# 模块：library
+# Module: library
 
-## 模块目的
-承载首页阅读仪表板体验，提供阅读统计概览、当前在读书籍快捷入口、书架网格浏览、导入入口和基础首页交互。
+## Module Purpose
+The app has two main book-related pages:
+- **Shelf** (`ShelfPage`, tab 0): The home dashboard with reading stats, Now Reading card, Word of Day, and a book grid (no category filters).
+- **Library** (`LibraryPage`, tab 1): A dedicated book browsing page with category tabs (All/Reading/Finished) and a 2-column book grid.
 
-## 边界
+Both pages share the same data source (`LibraryStore`) and reusable components (`LibraryBookGrid`, `LibraryHeader`, etc.).
+
+## Boundary
 ### In
-- 首页仪表板布局（Header / Stats / Now Reading / Word of the Day / Book Grid）
-- 书籍列表加载与展示
-- "Now Reading" 当前在读书籍卡片（基于最近阅读进度 updatedAt；无进度时使用第一本书）
-- 书架 2 列网格（最多 8 本，按最近阅读时间排序）
-- 点书后根据规则进入 `Book Profile` 或阅读页
-- 触发导入流程入口（Header "+" 按钮）
-- 空状态处理（无书时隐藏统计和功能区，显示 "Add Your First Book" 按钮）
-- 书架封面渲染（优先真实封面，缺失时占位；真实封面无灰边优先；封面卡片使用双层圆角容器设计，外层为浅色调背景）
-- `Book Profile` 首屏背景渐变（优先使用导入存储色，缺失时再提取并回填）
-- `Book Profile` 设置菜单删除书籍（级联删除章节/进度/划线）
+- Shelf dashboard layout (Header / Stats / Now Reading / Word of the Day / Book Grid)
+- Library page with category filter tabs and 2-column grid
+- Book list loading and display
+- "Now Reading" card (based on most recent reading progress; falls back to first book when no progress exists)
+- Book grid with cover tiles, title, author, and progress percentage badge
+- Book tap routing to Book Profile or reader based on progress
+- Import flow entry (Header "+" button on Shelf)
+- Empty state handling (no books: "Add Your First Book" button)
+- Cover rendering (real cover preferred, fallback placeholder)
+- `Book Profile` background gradient and delete functionality
+- Category-based filtering (All / Reading / Finished) on Library page
 
 ### Out
-- 阅读器正文渲染与分页
-- 划线创建与删除
-- 书籍格式解析细节
-- 用户档案与头像管理
+- Reader text rendering and pagination
+- Highlight creation and deletion
+- Book format parsing details
+- User profile and avatar management
 
-## 核心流程
-1. 页面初始化时触发 `LibraryStore.loadShelf()`。
-2. store 从数据库读取书籍，加载阅读进度（percent + updatedAt）。
-3. `LibraryPage` 计算派生数据：
-   - `nowReadingBook`：`progressUpdatedMap` 中 updatedAt 最新的书；无进度时使用第一本书。
-   - `gridBooks`：排除 nowReadingBook 后，按 updatedAt 降序排列，取前 8 本。
-4. 用户点击 "Continue" 按钮直接进入阅读器。
-5. 用户点击网格中的书籍由 `BookProfileEntryService` 判定入口：
-   - 无阅读进度：进入 `Book Profile`（`/book-detail`）。
-   - 有阅读进度：直接进入 `reader`。
-6. 用户点击 "+" 导入按钮进入 `import` 模块流程。
-
-## 首页布局结构
+## File Structure
 ```
-LibraryHeader ("MY LIBRARY" + "Reading" 标题 + "+" 导入按钮 + 用户头像)
-LibraryReadingStats (DAILY GOAL 卡片 + BOOKS READ 卡片) — 无进度时显示 empty state
-Now Reading 区域 (Section Header + NowReadingCard) — 无进度时使用第一本书
-WordOfDayCard (静态占位) — 无进度时替换为阅读提示文字
-LibraryBookGrid (2 列网格，最多 8 本)
+lib/pages/shelf/
+  shelf-page.dart         — ShelfPage (tab 0, home dashboard)
+  shelf-page-layout.dart  — ShelfPageLayout (stateless layout)
+  index.dart
+
+lib/pages/library/
+  library-page.dart       — LibraryPage (tab 1, category grid)
+  book-detail-page.dart   — BookDetailPage (book profile)
+  index.dart
+
+lib/components/library/   — Shared components (grid, header, tiles, etc.)
+lib/stores/library/       — LibraryStore + LibraryState
 ```
 
-无书时仅显示 Header + "Add Your First Book" 按钮。
-有书但无阅读进度时显示统计 empty state、第一本书为 Now Reading、阅读提示替代 Word of Day。
+## Core Flow
+1. Page init triggers `LibraryStore.loadShelf()`.
+2. Store loads books from DB with reading progress (percent + updatedAt).
+3. **ShelfPage** computes derived data:
+   - `nowReadingBook`: book with most recent `updatedAt` in `progressUpdatedMap`; first book if no progress.
+   - `gridBooks`: remaining books excluding nowReadingBook, sorted by updatedAt descending.
+4. **LibraryPage** displays `state.filteredBooks` based on active category:
+   - All: all books
+   - Reading: progress > 0 and < 1.0
+   - Finished: progress >= 1.0
+5. User taps "Continue" on Now Reading card → opens reader directly.
+6. User taps a book in the grid → `BookProfileEntryService` determines entry:
+   - No progress: Book Profile (`/book-detail`)
+   - Has progress: reader directly
 
-## 关键状态与数据
+## Page Layout
+
+### Shelf (tab 0)
+```
+LibraryHeader ("IMMERSED" label + "Shelf" title + "+" import button)
+LibraryReadingStats (DAILY GOAL + BOOKS READ) — empty state when no progress
+Now Reading (Section Header + NowReadingCard) — first book when no progress
+WordOfDayCard — replaced by reading prompt when no progress
+LibraryBookGrid (2-column grid, no category tabs)
+```
+
+### Library (tab 1)
+```
+LibraryHeader ("IMMERSED" label + "Library" title, no import button)
+LibraryBookGrid (category tabs: All/Reading/Finished + 2-column grid)
+```
+
+### Empty state (no books)
+Header + "Add Your First Book" button (on Shelf only).
+
+## Key State & Data
 - `LibraryState.books`
-- `LibraryState.filteredBooks`
-- `LibraryState.progressMap`（Map<String, double>）
-- `LibraryState.progressUpdatedMap`（Map<String, DateTime>）
+- `LibraryState.filteredBooks` (filtered by active category)
+- `LibraryState.categories` (`['All', 'Reading', 'Finished']`)
+- `LibraryState.activeCategory`
+- `LibraryState.progressMap` (Map<String, double>)
+- `LibraryState.progressUpdatedMap` (Map<String, DateTime>)
 - `LibraryState.isLoading / isImporting`
-- `BookEntity.coverUrl`（data url 封面）
-- `BookEntity.profileBgColor`（`#AARRGGBB`）
-- `BookEntity.epubFilePath`（相对路径，如 `books/book_xxx.epub`，运行时解析为绝对路径）
+- `BookEntity.coverUrl` (data url cover)
+- `BookEntity.profileBgColor` (`#AARRGGBB`)
+- `BookEntity.epubFilePath` (relative path, e.g. `books/book_xxx.epub`, resolved at runtime)
 - `BookProfileEntryService.resolveEntry(bookId)`
 
-## 交互与异常
-- 加载态：显示 loading。
-- 空态：无书籍时展示 "Add Your First Book" 按钮，隐藏统计和功能模块。
-- 导入失败：通过消息提示错误。
-- 封面异常：真实封面解码失败时回退到占位封面。
-- Now Reading 卡片：无阅读进度时使用第一本书，始终显示。
-- 真实封面显示策略：`BoxFit.cover`，优先填满封面区域（允许轻微裁切）。
-- `Book Profile` 顶部背景优先使用 `profileBgColor` 生成渐变。
-- `Book Profile` 设置菜单可删除图书，删除确认后级联清理该书关联数据。
-- `Book Profile` 布局：居中封面 → 书名 → 作者 → 三个统计项 → Continue Reading 按钮。
-- `Book Profile` 作者为 `Unknown` 时不展示作者行。
-- 导入中：页面显示遮罩 loading，避免用户误操作。
+## Interaction & Exceptions
+- Loading: shows spinner.
+- Empty: no books shows "Add Your First Book" button, hides stats and features.
+- Import failure: snackbar error message.
+- Cover decode failure: falls back to placeholder cover.
+- Now Reading: uses first book when no progress, always shown on Shelf.
+- Real cover uses `BoxFit.cover`.
+- Book Profile top background uses `profileBgColor` gradient.
+- Book Profile settings menu can delete book with cascading cleanup.
+- Importing: overlay loading to prevent user interaction.
+- Grid items show progress percentage badge (top-right) on cover.
 
-## 验收标准
-- 首页结构稳定渲染（Header / Stats / Now Reading / Word of the Day / Grid）。
-- Now Reading 显示最近阅读的书（基于 progressUpdatedMap 最新 updatedAt）；无进度时显示第一本书。
-- 网格为 2 列布局，每个 tile 下方显示书名和作者。
-- 网格最多显示 8 本，按最近阅读时间排序。
-- 空状态显示 "Add Your First Book" 按钮。
-- 点击 "Continue" 按钮直接进入阅读器。
-- 导入 EPUB 后书架可显示真实封面；其他格式显示占位封面。
-- 重启应用后导入书籍仍可见且可打开阅读（iOS 容器路径变化不影响）。
-- 删除图书后，该图书及关联数据不再可见。
-- `flutter analyze` / `flutter test` 通过。
+## Acceptance Criteria
+- Shelf renders stable dashboard (Header / Stats / Now Reading / Word of Day / Grid).
+- Library renders category tabs and filtered 2-column grid.
+- Now Reading shows most recently read book; first book when no progress.
+- Grid tiles show cover, title, author, and progress badge.
+- Empty state shows "Add Your First Book" button.
+- "Continue" button opens reader directly.
+- Imported EPUB shows real cover; other formats show placeholder.
+- App restart on iOS doesn't break book file access (relative paths).
+- Book deletion cascades to associated data.
+- `flutter analyze` / `flutter test` passes.
 
-## 非目标
-- 不负责推荐算法与书城排序。
-- 不负责账号和云同步。
-- Word of the Day 为静态占位，不接入真实词频数据。
-- 阅读时长统计为 mock 数据，不接入真实时长追踪。
+## Non-Goals
+- No recommendation algorithm or bookstore sorting.
+- No account or cloud sync.
+- Word of the Day is static placeholder.
+- Reading duration stats are mock data.

@@ -4,8 +4,8 @@ import '../../pages/highlight/highlight-list-page.dart';
 import '../../pages/statistics/statistics-page.dart';
 import '../../pages/word-of-day/word-of-day-page.dart';
 import '../../pages/library/book-detail-page.dart';
-import '../../pages/library/library-page.dart';
 import '../../pages/reader/reader-page.dart';
+import '../../pages/shelf/shelf-page.dart';
 import '../../pages/reader/reader-settings-page.dart';
 import '../../pages/shell/main-tab-shell-page.dart';
 import 'route-guards.dart';
@@ -16,11 +16,11 @@ class AppRouter {
     switch (settings.name) {
       case RouteNames.mainTabs:
         return MaterialPageRoute<void>(builder: (_) => const MainTabShellPage());
+      case RouteNames.shelf:
+        return MaterialPageRoute<void>(builder: (_) => const ShelfPage());
       case RouteNames.library:
-        return MaterialPageRoute<void>(builder: (_) => const LibraryPage());
-      case RouteNames.discover:
         return MaterialPageRoute<void>(builder: (_) => const MainTabShellPage(initialIndex: 1));
-      case RouteNames.read:
+      case RouteNames.discover:
         return MaterialPageRoute<void>(builder: (_) => const MainTabShellPage(initialIndex: 2));
       case RouteNames.bookDetail:
         final bookId = settings.arguments as String?;

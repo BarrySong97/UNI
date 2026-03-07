@@ -6,7 +6,7 @@ import 'package:uni/app/providers/app-providers.dart';
 import 'package:uni/app/routes/route-names.dart';
 import 'package:uni/entities/book-entity.dart';
 import 'package:uni/entities/reading-progress-entity.dart';
-import 'package:uni/pages/library/library-page.dart';
+import 'package:uni/pages/shelf/shelf-page.dart';
 import 'package:uni/repositories/book/book-repository-impl.dart';
 import 'package:uni/repositories/chapter/chapter-repository-impl.dart';
 import 'package:uni/repositories/highlight/highlight-repository-impl.dart';
@@ -128,7 +128,7 @@ Widget _buildApp({
         }
         return null;
       },
-      home: const Scaffold(body: LibraryPage()),
+      home: const Scaffold(body: ShelfPage()),
     ),
   );
 }

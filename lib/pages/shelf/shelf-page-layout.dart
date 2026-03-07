@@ -11,8 +11,8 @@ import '../../components/library/library-word-of-day-card.dart';
 import '../../app/routes/route-names.dart';
 import '../../shared/ui/loading-view.dart';
 
-class LibraryPageLayout extends StatelessWidget {
-  const LibraryPageLayout({
+class ShelfPageLayout extends StatelessWidget {
+  const ShelfPageLayout({
     required this.books,
     required this.isImporting,
     required this.onBookTap,

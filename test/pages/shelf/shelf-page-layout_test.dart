@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uni/entities/book-entity.dart';
-import 'package:uni/pages/library/library-page-layout.dart';
+import 'package:uni/pages/shelf/shelf-page-layout.dart';
 
 void main() {
   testWidgets('shows empty state button when shelf has no books', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: LibraryPageLayout(
+          body: ShelfPageLayout(
             books: const <BookEntity>[],
             isImporting: false,
             emptyMessage: 'No books yet',
@@ -27,7 +27,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: LibraryPageLayout(
+          body: ShelfPageLayout(
             books: const <BookEntity>[],
             isImporting: true,
             emptyMessage: 'No books yet',

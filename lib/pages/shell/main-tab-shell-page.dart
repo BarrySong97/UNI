@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import '../../components/common/ui/floating-tab-bar.dart';
 import '../../shared/constants/library-design-tokens.dart';
 import '../library/library-page.dart';
-import '../read/read-page.dart';
 import '../settings/settings-page.dart';
+import '../shelf/shelf-page.dart';
 
 class MainTabShellPage extends StatefulWidget {
   const MainTabShellPage({
@@ -32,7 +32,7 @@ class _MainTabShellPageState extends State<MainTabShellPage> {
   @override
   Widget build(BuildContext context) {
     final pages = widget.pages ??
-        const <Widget>[LibraryPage(), ReadPage(), SettingsPage()];
+        const <Widget>[ShelfPage(), LibraryPage(), SettingsPage()];
 
     return Scaffold(
       backgroundColor: LibraryDesignTokens.pageBackground,

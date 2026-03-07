@@ -16,8 +16,8 @@ Provide app-level page container and floating bottom tab navigation with state p
 
 ## Core Flow
 1. App entry navigates to `MainTabShellPage`.
-2. Uses `IndexedStack` to host `Reading/Library/Settings`.
-3. Floating tab bar at bottom displays icon-only tabs (Library is first tab).
+2. Uses `IndexedStack` to host `Shelf/Library/Settings`.
+3. Floating tab bar at bottom displays icon-only tabs (Shelf is first tab).
 4. Tap tab icon updates `currentIndex`.
 5. Inactive page states remain preserved.
 6. Library can navigate to `Book Profile` (`/book-detail`) and reader page.
@@ -30,8 +30,8 @@ Provide app-level page container and floating bottom tab navigation with state p
 ## Tab Configuration
 | Index | Page | Icon (Inactive) | Icon (Active) |
 |-------|------|-----------------|---------------|
-| 0 | Library | `library_books_outlined` | `library_books` |
-| 1 | Reading | `auto_stories_outlined` | `auto_stories` |
+| 0 | Shelf (`ShelfPage`) | `library_books_outlined` | `library_books` |
+| 1 | Library (`LibraryPage`) | `auto_stories_outlined` | `auto_stories` |
 | 2 | Settings | `settings_outlined` | `settings` |
 
 ## Interaction & Exceptions
