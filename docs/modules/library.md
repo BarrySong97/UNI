@@ -15,7 +15,8 @@ Both pages share the same data source (`LibraryStore`) and reusable components (
 - "Now Reading" card (based on most recent reading progress; falls back to first book when no progress exists)
 - Book grid with cover tiles, title, author, and progress percentage badge
 - Book tap routing to Book Profile or reader based on progress
-- Import flow entry (Header "+" button on Shelf)
+- Import flow entry (Header "+" button on Shelf and Library)
+- Import feedback: new book pops in (scale + fade), existing grid items slide to new positions (AnimatedPositioned)
 - Empty state handling (no books: "Add Your First Book" button)
 - Cover rendering (real cover preferred, fallback placeholder)
 - `Book Profile` background gradient and delete functionality
@@ -66,17 +67,17 @@ LibraryHeader ("IMMERSED" label + "Shelf" title + "+" import button)
 LibraryReadingStats (DAILY GOAL + BOOKS READ) — empty state when no progress
 Now Reading (Section Header + NowReadingCard) — first book when no progress
 WordOfDayCard — replaced by reading prompt when no progress
-LibraryBookGrid (2-column grid, no category tabs)
+Horizontal book scroll (fixed-width items, edge-to-edge)
 ```
 
 ### Library (tab 1)
 ```
-LibraryHeader ("IMMERSED" label + "Library" title, no import button)
+LibraryHeader ("IMMERSED" label + "Library" title + "+" import button)
 LibraryBookGrid (category tabs: All/Reading/Finished + 2-column grid)
 ```
 
 ### Empty state (no books)
-Header + "Add Your First Book" button (on Shelf only).
+Header + "Add Your First Book" button (on Shelf).
 
 ## Key State & Data
 - `LibraryState.books`
@@ -94,13 +95,13 @@ Header + "Add Your First Book" button (on Shelf only).
 ## Interaction & Exceptions
 - Loading: shows spinner.
 - Empty: no books shows "Add Your First Book" button, hides stats and features.
-- Import failure: snackbar error message.
+- Import success: new book pops in (scale + fade), existing items smoothly slide to new positions (no snackbar).
 - Cover decode failure: falls back to placeholder cover.
 - Now Reading: uses first book when no progress, always shown on Shelf.
 - Real cover uses `BoxFit.cover`.
 - Book Profile top background uses `profileBgColor` gradient.
 - Book Profile settings menu can delete book with cascading cleanup.
-- Importing: overlay loading to prevent user interaction.
+- Importing: top linear progress indicator (no blocking overlay).
 - Grid items show progress percentage badge (top-right) on cover.
 
 ## Acceptance Criteria

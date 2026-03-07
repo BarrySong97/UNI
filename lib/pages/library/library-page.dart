@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 
 import '../../app/providers/app-providers.dart';
 import '../../app/routes/route-names.dart';
@@ -33,6 +34,12 @@ class _LibraryPageState extends State<LibraryPage> {
       animation: store,
       builder: (context, _) {
         final state = store.state;
+        final lastImportedBookId = state.lastImportedBookId;
+        if (lastImportedBookId != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            store.clearLastImportedBookId();
+          });
+        }
 
         if (state.isLoading) {
           return Container(
@@ -41,40 +48,78 @@ class _LibraryPageState extends State<LibraryPage> {
           );
         }
 
-        return Container(
-          color: LibraryDesignTokens.pageBackground,
-          child: SafeArea(
-            bottom: false,
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.only(
-                left: 16,
-                right: 16,
-                top: 12,
-                bottom: 120,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  const LibraryHeader(
-                    headerTitle: 'Library',
-                    showImportButton: false,
+        return Stack(
+          children: <Widget>[
+            Container(
+              color: LibraryDesignTokens.pageBackground,
+              child: SafeArea(
+                bottom: false,
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.only(
+                    left: 16,
+                    right: 16,
+                    top: 12,
+                    bottom: 120,
                   ),
-                  const SizedBox(height: 20),
-                  LibraryBookGrid(
-                    books: state.filteredBooks,
-                    progressMap: state.progressMap,
-                    onBookTap: (book) => _openBook(book.id),
-                    categories: state.categories,
-                    activeCategory: state.activeCategory,
-                    onCategoryTap: (category) => store.setCategory(category),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      LibraryHeader(
+                        headerTitle: 'Library',
+                        showImportButton: true,
+                        isImporting: state.isImporting,
+                        onImportTap: () => _pickAndImportBook(context),
+                      ),
+                      const SizedBox(height: 20),
+                      LibraryBookGrid(
+                        books: state.filteredBooks,
+                        progressMap: state.progressMap,
+                        onBookTap: (book) => _openBook(book.id),
+                        categories: state.categories,
+                        activeCategory: state.activeCategory,
+                        onCategoryTap: (category) => store.setCategory(category),
+                        lastImportedBookId: lastImportedBookId,
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
-          ),
+            if (state.isImporting)
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: SafeArea(
+                  bottom: false,
+                  child: LinearProgressIndicator(
+                    minHeight: 3,
+                    backgroundColor: LibraryDesignTokens.pageBackground,
+                    valueColor: const AlwaysStoppedAnimation<Color>(
+                      LibraryDesignTokens.textPrimary,
+                    ),
+                  ),
+                ),
+              ),
+          ],
         );
       },
     );
+  }
+
+  Future<void> _pickAndImportBook(BuildContext context) async {
+    final store = AppProvidersScope.of(context).libraryStore;
+
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const <String>['epub', 'txt', 'pdf', 'mobi', 'azw', 'azw3', 'fb2'],
+      allowMultiple: false,
+    );
+    if (!mounted || picked == null || picked.files.single.path == null) {
+      return;
+    }
+
+    await store.importBookFromPath(picked.files.single.path!);
   }
 
   Future<void> _openBook(String bookId) async {

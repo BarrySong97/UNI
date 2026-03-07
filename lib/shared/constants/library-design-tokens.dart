@@ -37,6 +37,7 @@ abstract final class LibraryDesignTokens {
   static const double tabBorderRadius = 10;
 
   static const double gridSpacing = 10;
+  static const double gridRowSpacing = 16;
   static const double coverAspectRatio = 0.65;
   static const double bookTitleSize = 18;
   static const double bookAuthorSize = 12;

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../entities/book-entity.dart';
 import '../../shared/constants/library-design-tokens.dart';
+import 'book-pop-in-wrapper.dart';
 import 'library-book-tile.dart';
 
 class LibraryBookGrid extends StatelessWidget {
@@ -12,6 +13,7 @@ class LibraryBookGrid extends StatelessWidget {
     required this.activeCategory,
     required this.onCategoryTap,
     this.progressMap = const <String, double>{},
+    this.lastImportedBookId,
     super.key,
   });
 
@@ -21,6 +23,7 @@ class LibraryBookGrid extends StatelessWidget {
   final List<String> categories;
   final String activeCategory;
   final ValueChanged<String> onCategoryTap;
+  final String? lastImportedBookId;
 
   static const _palette = <Color>[
     LibraryDesignTokens.coverBlue,
@@ -100,7 +103,7 @@ class LibraryBookGrid extends StatelessWidget {
         ),
       );
       if (i + 2 < books.length) {
-        rows.add(const SizedBox(height: 16));
+        rows.add(const SizedBox(height: LibraryDesignTokens.gridRowSpacing));
       }
     }
 
@@ -110,75 +113,82 @@ class LibraryBookGrid extends StatelessWidget {
   Widget _buildItem(BookEntity book, int index) {
     final progress = progressMap[book.id] ?? 0;
     final percent = (progress * 100).round();
+    final isNewBook = book.id == lastImportedBookId;
+    final shouldSlide = !isNewBook && lastImportedBookId != null;
 
-    return GestureDetector(
-      onTap: () => onBookTap(book),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          ClipRRect(
-            borderRadius: BorderRadius.circular(
-              LibraryDesignTokens.homeGridCoverRadius,
-            ),
-            child: Stack(
-              children: <Widget>[
-                LibraryBookTile(
-                  book: book,
-                  coverColor: _palette[index % _palette.length],
-                  coverMark: book.title.isEmpty
-                      ? 'B'
-                      : book.title.substring(0, 1).toUpperCase(),
-                  onTap: () => onBookTap(book),
-                ),
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xAA000000),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      '$percent%',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
+    return BookPopInWrapper(
+      key: ValueKey<String>(book.id),
+      animate: isNewBook,
+      slideRight: shouldSlide,
+      child: GestureDetector(
+        onTap: () => onBookTap(book),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(
+                LibraryDesignTokens.homeGridCoverRadius,
+              ),
+              child: Stack(
+                children: <Widget>[
+                  LibraryBookTile(
+                    book: book,
+                    coverColor: _palette[index % _palette.length],
+                    coverMark: book.title.isEmpty
+                        ? 'B'
+                        : book.title.substring(0, 1).toUpperCase(),
+                    onTap: () => onBookTap(book),
+                  ),
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xAA000000),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        '$percent%',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            book.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: LibraryDesignTokens.textPrimary,
-            ),
-          ),
-          if (book.author.isNotEmpty && book.author != 'Unknown') ...[
-            const SizedBox(height: 2),
+            const SizedBox(height: 8),
             Text(
-              book.author,
+              book.title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                fontSize: 12,
-                color: LibraryDesignTokens.textSecondary,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: LibraryDesignTokens.textPrimary,
               ),
             ),
+            if (book.author.isNotEmpty && book.author != 'Unknown') ...[
+              const SizedBox(height: 2),
+              Text(
+                book.author,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: LibraryDesignTokens.textSecondary,
+                ),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }

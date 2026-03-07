@@ -2,14 +2,14 @@ import 'package:flutter/material.dart';
 
 import '../../entities/book-entity.dart';
 import '../../shared/constants/library-design-tokens.dart';
-import '../../components/library/library-book-grid.dart';
+import '../../components/library/book-pop-in-wrapper.dart';
+import '../../components/library/library-book-tile.dart';
 import '../../components/library/library-empty-state.dart';
 import '../../components/library/library-header.dart';
 import '../../components/library/library-now-reading-card.dart';
 import '../../components/library/library-reading-stats.dart';
 import '../../components/library/library-word-of-day-card.dart';
 import '../../app/routes/route-names.dart';
-import '../../shared/ui/loading-view.dart';
 
 class ShelfPageLayout extends StatelessWidget {
   const ShelfPageLayout({
@@ -25,6 +25,7 @@ class ShelfPageLayout extends StatelessWidget {
     this.nowReadingProgress = 0,
     this.gridBooks = const <BookEntity>[],
     this.onContinueReadingTap,
+    this.lastImportedBookId,
     super.key,
   });
 
@@ -40,6 +41,14 @@ class ShelfPageLayout extends StatelessWidget {
   final double nowReadingProgress;
   final List<BookEntity> gridBooks;
   final VoidCallback? onContinueReadingTap;
+  final String? lastImportedBookId;
+
+  static const _palette = <Color>[
+    LibraryDesignTokens.coverBlue,
+    LibraryDesignTokens.coverNeon,
+    LibraryDesignTokens.coverBlack,
+    LibraryDesignTokens.coverGray,
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -51,59 +60,75 @@ class ShelfPageLayout extends StatelessWidget {
             bottom: false,
             child: SingleChildScrollView(
               padding: const EdgeInsets.only(
-                left: 16,
-                right: 16,
                 top: 12,
                 bottom: 120,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  LibraryHeader(
-                    onImportTap: onImportTap,
-                    isImporting: isImporting,
-                    showImportButton: books.isNotEmpty,
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: LibraryHeader(
+                      onImportTap: onImportTap,
+                      isImporting: isImporting,
+                      showImportButton: books.isNotEmpty,
+                    ),
                   ),
                   const SizedBox(height: 20),
                   if (books.isEmpty)
-                    LibraryEmptyState(onImportTap: onImportTap)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: LibraryEmptyState(onImportTap: onImportTap),
+                    )
                   else ...[
-                    if (hasReadingProgress)
-                      LibraryReadingStats(
-                        onTap: () => Navigator.of(
-                          context,
-                        ).pushNamed(RouteNames.statistics),
-                      )
-                    else
-                      _buildStatsEmptyState(),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: hasReadingProgress
+                          ? LibraryReadingStats(
+                              onTap: () => Navigator.of(
+                                context,
+                              ).pushNamed(RouteNames.statistics),
+                            )
+                          : _buildStatsEmptyState(),
+                    ),
                     const SizedBox(height: 24),
                     if (nowReadingBook != null) ...[
-                      _buildSectionHeader('Now Reading', showViewAll: true),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: _buildSectionHeader('Now Reading', showViewAll: true),
+                      ),
                       const SizedBox(height: 12),
-                      NowReadingCard(
-                        book: nowReadingBook!,
-                        progress: nowReadingProgress,
-                        onContinueTap: onContinueReadingTap ?? () {},
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: BookPopInWrapper(
+                          animate: nowReadingBook!.id == lastImportedBookId,
+                          child: NowReadingCard(
+                            book: nowReadingBook!,
+                            progress: nowReadingProgress,
+                            onContinueTap: onContinueReadingTap ?? () {},
+                          ),
+                        ),
                       ),
                       const SizedBox(height: 24),
                     ],
-                    if (hasReadingProgress) ...[
-                      WordOfDayCard(
-                        onTap: () =>
-                            Navigator.of(context).pushNamed(RouteNames.wordOfDay),
-                      ),
-                    ] else ...[
-                      _buildReadingPrompt(),
-                    ],
-                    const SizedBox(height: 24),
-                    LibraryBookGrid(
-                      books: gridBooks,
-                      onBookTap: onBookTap,
-                      progressMap: progressMap,
-                      categories: const <String>[],
-                      activeCategory: '',
-                      onCategoryTap: (_) {},
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: hasReadingProgress
+                          ? WordOfDayCard(
+                              onTap: () => Navigator.of(context)
+                                  .pushNamed(RouteNames.wordOfDay),
+                            )
+                          : _buildReadingPrompt(),
                     ),
+                    if (gridBooks.isNotEmpty) ...[
+                      const SizedBox(height: 24),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: _buildSectionHeader('Your Books'),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildHorizontalBookList(),
+                    ],
                   ],
                 ],
               ),
@@ -111,27 +136,129 @@ class ShelfPageLayout extends StatelessWidget {
           ),
         ),
         if (isImporting)
-          Positioned.fill(
-            child: ColoredBox(
-              color: const Color(0x99000000),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: <Widget>[
-                  const LoadingView(),
-                  const SizedBox(height: 12),
-                  Text(
-                    importingMessage,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              bottom: false,
+              child: LinearProgressIndicator(
+                minHeight: 3,
+                backgroundColor: LibraryDesignTokens.pageBackground,
+                valueColor: const AlwaysStoppedAnimation<Color>(
+                  LibraryDesignTokens.textPrimary,
+                ),
               ),
             ),
           ),
       ],
+    );
+  }
+
+  Widget _buildHorizontalBookList() {
+    final displayBooks = gridBooks.length > LibraryDesignTokens.homeGridMaxItems
+        ? gridBooks.sublist(0, LibraryDesignTokens.homeGridMaxItems)
+        : gridBooks;
+
+    return SizedBox(
+      height: LibraryDesignTokens.homeGridItemWidth /
+              LibraryDesignTokens.coverAspectRatio +
+          50,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: displayBooks.length,
+        separatorBuilder: (_, _) => const SizedBox(
+          width: LibraryDesignTokens.homeGridItemSpacing,
+        ),
+        itemBuilder: (context, index) {
+          final book = displayBooks[index];
+          final progress = progressMap[book.id] ?? 0;
+          final percent = (progress * 100).round();
+
+          final isNewBook = book.id == lastImportedBookId;
+          final shouldSlide = !isNewBook && lastImportedBookId != null;
+
+          return BookPopInWrapper(
+            key: ValueKey<String>(book.id),
+            animate: isNewBook,
+            slideRight: shouldSlide,
+            child: GestureDetector(
+              onTap: () => onBookTap(book),
+              child: SizedBox(
+                width: LibraryDesignTokens.homeGridItemWidth,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(
+                        LibraryDesignTokens.homeGridCoverRadius,
+                      ),
+                      child: Stack(
+                        children: <Widget>[
+                          LibraryBookTile(
+                            book: book,
+                            coverColor: _palette[index % _palette.length],
+                            coverMark: book.title.isEmpty
+                                ? 'B'
+                                : book.title.substring(0, 1).toUpperCase(),
+                            onTap: () => onBookTap(book),
+                          ),
+                          Positioned(
+                            top: 8,
+                            right: 8,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xAA000000),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                '$percent%',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      book.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: LibraryDesignTokens.homeGridTitleSize,
+                        fontWeight: FontWeight.w600,
+                        color: LibraryDesignTokens.textPrimary,
+                      ),
+                    ),
+                    if (book.author.isNotEmpty && book.author != 'Unknown') ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        book.author,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: LibraryDesignTokens.homeGridAuthorSize,
+                          color: LibraryDesignTokens.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 

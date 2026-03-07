@@ -12,6 +12,7 @@ class LibraryState {
     this.errorMessage,
     this.progressMap = const <String, double>{},
     this.progressUpdatedMap = const <String, DateTime>{},
+    this.lastImportedBookId,
   });
 
   final List<BookEntity> books;
@@ -24,6 +25,7 @@ class LibraryState {
   final String? errorMessage;
   final Map<String, double> progressMap;
   final Map<String, DateTime> progressUpdatedMap;
+  final String? lastImportedBookId;
 
   factory LibraryState.initial() => const LibraryState(
     books: <BookEntity>[],
@@ -44,6 +46,7 @@ class LibraryState {
     String? errorMessage,
     Map<String, double>? progressMap,
     Map<String, DateTime>? progressUpdatedMap,
+    String? lastImportedBookId,
   }) {
     return LibraryState(
       books: books ?? this.books,
@@ -56,6 +59,7 @@ class LibraryState {
       errorMessage: errorMessage,
       progressMap: progressMap ?? this.progressMap,
       progressUpdatedMap: progressUpdatedMap ?? this.progressUpdatedMap,
+      lastImportedBookId: lastImportedBookId,
     );
   }
 }

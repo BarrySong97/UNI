@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,6 +7,7 @@ import '../../app/i18n/app-localizations.dart';
 import '../../app/providers/app-providers.dart';
 import '../../app/routes/route-names.dart';
 import '../../entities/book-entity.dart';
+import '../../shared/utils/cover-image-cache.dart';
 import '../../entities/reading-progress-entity.dart';
 import '../../services/library/book-profile-color-service.dart';
 import '../../shared/constants/library-design-tokens.dart';
@@ -76,22 +76,6 @@ class _BookDetailPageState extends State<BookDetailPage> {
     }
   }
 
-  Uint8List? _decodeCoverDataUrl(String? dataUrl) {
-    if (dataUrl == null || !dataUrl.startsWith('data:image/')) {
-      return null;
-    }
-    const marker = ';base64,';
-    final markerIndex = dataUrl.indexOf(marker);
-    if (markerIndex <= 0 || markerIndex + marker.length >= dataUrl.length) {
-      return null;
-    }
-    final payload = dataUrl.substring(markerIndex + marker.length);
-    try {
-      return base64Decode(payload);
-    } catch (_) {
-      return null;
-    }
-  }
 
   void _ensureTopGradientFuture({
     required String gradientKey,
@@ -333,7 +317,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
 
         final data = snapshot.data!;
         final progressPercent = data.progress?.percent ?? 0;
-        final coverBytes = _decodeCoverDataUrl(data.book.coverUrl);
+        final coverBytes = CoverImageCache.decode(data.book.coverUrl);
         _ensureTopGradientFuture(
           gradientKey:
               '${data.book.id}_${data.book.coverUrl}_${data.book.profileBgColor}',

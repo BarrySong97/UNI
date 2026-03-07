@@ -1,10 +1,8 @@
-import 'dart:convert';
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 
 import '../../entities/book-entity.dart';
 import '../../shared/constants/library-design-tokens.dart';
+import '../../shared/utils/cover-image-cache.dart';
 
 class NowReadingCard extends StatelessWidget {
   const NowReadingCard({
@@ -38,7 +36,7 @@ class NowReadingCard extends StatelessWidget {
   }
 
   Widget _buildCover() {
-    final coverBytes = _decodeCoverDataUrl(book.coverUrl);
+    final coverBytes = CoverImageCache.decode(book.coverUrl);
 
     return Container(
       width: LibraryDesignTokens.nowReadingCoverWidth,
@@ -202,20 +200,4 @@ class NowReadingCard extends StatelessWidget {
     );
   }
 
-  Uint8List? _decodeCoverDataUrl(String? dataUrl) {
-    if (dataUrl == null || !dataUrl.startsWith('data:image/')) {
-      return null;
-    }
-    const marker = ';base64,';
-    final markerIndex = dataUrl.indexOf(marker);
-    if (markerIndex <= 0 || markerIndex + marker.length >= dataUrl.length) {
-      return null;
-    }
-    final payload = dataUrl.substring(markerIndex + marker.length);
-    try {
-      return base64Decode(payload);
-    } catch (_) {
-      return null;
-    }
-  }
 }

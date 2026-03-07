@@ -11,6 +11,7 @@ import '../../app/i18n/app-localizations.dart';
 import '../../app/providers/app-providers.dart';
 import '../../app/routes/route-names.dart';
 import '../../entities/book-entity.dart';
+import '../../shared/utils/cover-image-cache.dart';
 import '../../entities/highlight-entity.dart';
 import '../../entities/reader-preferences-entity.dart';
 import '../../services/reader/reader-theme-service.dart';
@@ -710,7 +711,7 @@ class _ReaderPageState extends State<ReaderPage> {
     BookEntity book,
     AppLocalizations localizations,
   ) async {
-    final coverBytes = _decodeCoverDataUrl(book.coverUrl);
+    final coverBytes = CoverImageCache.decode(book.coverUrl);
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -806,23 +807,6 @@ class _ReaderPageState extends State<ReaderPage> {
         );
       },
     );
-  }
-
-  Uint8List? _decodeCoverDataUrl(String? dataUrl) {
-    if (dataUrl == null || !dataUrl.startsWith('data:image/')) {
-      return null;
-    }
-    const marker = ';base64,';
-    final markerIndex = dataUrl.indexOf(marker);
-    if (markerIndex <= 0 || markerIndex + marker.length >= dataUrl.length) {
-      return null;
-    }
-    final payload = dataUrl.substring(markerIndex + marker.length);
-    try {
-      return base64Decode(payload);
-    } catch (_) {
-      return null;
-    }
   }
 
   void _showComingSoon() {

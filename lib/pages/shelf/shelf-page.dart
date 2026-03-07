@@ -40,6 +40,13 @@ class _ShelfPageState extends State<ShelfPage> {
           return const Center(child: CircularProgressIndicator());
         }
 
+        final lastImportedBookId = state.lastImportedBookId;
+        if (lastImportedBookId != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            store.clearLastImportedBookId();
+          });
+        }
+
         final nowReading = _computeNowReading(state);
         final gridBooks = _computeGridBooks(state, nowReading?.id);
 
@@ -60,6 +67,7 @@ class _ShelfPageState extends State<ShelfPage> {
           onContinueReadingTap: nowReading != null
               ? () => _navigateToReader(nowReading.id)
               : null,
+          lastImportedBookId: lastImportedBookId,
         );
       },
     );
@@ -115,8 +123,6 @@ class _ShelfPageState extends State<ShelfPage> {
 
   Future<void> _pickAndImportBook(BuildContext context) async {
     final store = AppProvidersScope.of(context).libraryStore;
-    final localizations = AppLocalizations.of(context);
-    final messenger = ScaffoldMessenger.of(context);
 
     final picked = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -128,12 +134,6 @@ class _ShelfPageState extends State<ShelfPage> {
     }
 
     await store.importBookFromPath(picked.files.single.path!);
-    if (!mounted) {
-      return;
-    }
-
-    final message = store.state.errorMessage ?? store.state.lastImportMessage ?? localizations.tr('importDone');
-    messenger.showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _navigateToReader(String bookId) async {

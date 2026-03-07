@@ -113,6 +113,7 @@ class LibraryStore extends ChangeNotifier {
         isImporting: false,
         lastImportMessage: 'Imported ${imported.title} (${imported.format})',
         errorMessage: null,
+        lastImportedBookId: bookId,
       );
       notifyListeners();
     } catch (error) {
@@ -208,6 +209,11 @@ class LibraryStore extends ChangeNotifier {
       filteredBooks: _filterByCategory(_state.books, category),
     );
     notifyListeners();
+  }
+
+  void clearLastImportedBookId() {
+    if (_state.lastImportedBookId == null) return;
+    _state = _state.copyWith(lastImportedBookId: null);
   }
 
   List<BookEntity> _filterByCategory(List<BookEntity> books, String category) {
