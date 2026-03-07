@@ -1,5 +1,3 @@
-import 'dart:math';
-
 import 'package:flutter/material.dart';
 
 import '../../entities/book-entity.dart';
@@ -10,129 +8,114 @@ class LibraryBookGrid extends StatelessWidget {
   const LibraryBookGrid({
     required this.books,
     required this.onBookTap,
+    required this.categories,
+    required this.activeCategory,
+    required this.onCategoryTap,
     this.progressMap = const <String, double>{},
-    this.maxItems = LibraryDesignTokens.homeGridMaxItems,
     super.key,
   });
 
   final List<BookEntity> books;
   final ValueChanged<BookEntity> onBookTap;
   final Map<String, double> progressMap;
-  final int maxItems;
+  final List<String> categories;
+  final String activeCategory;
+  final ValueChanged<String> onCategoryTap;
+
+  static const _palette = <Color>[
+    LibraryDesignTokens.coverBlue,
+    LibraryDesignTokens.coverNeon,
+    LibraryDesignTokens.coverBlack,
+    LibraryDesignTokens.coverGray,
+  ];
 
   @override
   Widget build(BuildContext context) {
-    final displayCount = min(books.length, maxItems);
-
-    return SizedBox(
-      height: _estimateHeight(),
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: displayCount,
-        separatorBuilder: (_, _) =>
-            const SizedBox(width: LibraryDesignTokens.homeGridItemSpacing),
-        itemBuilder: (_, index) => SizedBox(
-          width: LibraryDesignTokens.homeGridItemWidth,
-          child: _buildItem(books[index], index),
-        ),
-      ),
-    );
-  }
-
-  double _estimateHeight() {
-    // cover height + gap + title + author + gap + progress row
-    final coverHeight = LibraryDesignTokens.homeGridItemWidth /
-        LibraryDesignTokens.coverAspectRatio;
-    return coverHeight + 8 + 18 + 16 + 6 + 20;
-  }
-
-  Widget _buildItem(BookEntity book, int index) {
-    final palette = <Color>[
-      LibraryDesignTokens.coverBlue,
-      LibraryDesignTokens.coverNeon,
-      LibraryDesignTokens.coverBlack,
-      LibraryDesignTokens.coverGray,
-    ];
-    final progress = progressMap[book.id] ?? 0;
-
-    return GestureDetector(
-      onTap: () => onBookTap(book),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          LibraryBookTile(
-            book: book,
-            coverColor: palette[index % palette.length],
-            coverMark: _coverMarkForBook(book),
-            showNewBadge: false,
-            onTap: () => onBookTap(book),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            book.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: LibraryDesignTokens.homeGridTitleSize,
-              fontWeight: FontWeight.w600,
-              color: LibraryDesignTokens.textPrimary,
-              height: 1.2,
-            ),
-          ),
-          if (book.author.isNotEmpty && book.author != 'Unknown') ...[
-            const SizedBox(height: 2),
-            Text(
-              book.author,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: LibraryDesignTokens.homeGridAuthorSize,
-                color: LibraryDesignTokens.textSecondary,
-              ),
-            ),
-          ],
-          const SizedBox(height: 6),
-          _buildProgressRow(progress),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildProgressRow(double progress) {
-    final percent = (progress * 100).round();
-
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Expanded(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(2),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: LibraryDesignTokens.homeGridProgressHeight,
-              backgroundColor: LibraryDesignTokens.homeGridProgressBg,
-              valueColor: const AlwaysStoppedAnimation<Color>(
-                LibraryDesignTokens.homeGridProgressFill,
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 6),
-        Text(
-          '$percent%',
-          style: const TextStyle(
-            fontSize: 11,
-            color: LibraryDesignTokens.textSecondary,
-          ),
-        ),
+        _buildCategoryTabs(),
+        const SizedBox(height: 20),
+        _buildGrid(),
       ],
     );
   }
 
-  String _coverMarkForBook(BookEntity book) {
-    final trimmed = book.title.trim();
-    if (trimmed.isEmpty) {
-      return 'B';
+  Widget _buildCategoryTabs() {
+    return Row(
+      children: categories.map((category) {
+        final isActive = category == activeCategory;
+        return Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: GestureDetector(
+            onTap: () => onCategoryTap(category),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: isActive
+                    ? LibraryDesignTokens.tabActiveBg
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                category,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+                  color: isActive
+                      ? LibraryDesignTokens.tabActiveText
+                      : LibraryDesignTokens.textSecondary,
+                ),
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildGrid() {
+    if (books.isEmpty) {
+      return const SizedBox.shrink();
     }
-    return trimmed.substring(0, 1).toUpperCase();
+
+    final rows = <Widget>[];
+    for (var i = 0; i < books.length; i += 2) {
+      final left = books[i];
+      final right = i + 1 < books.length ? books[i + 1] : null;
+      rows.add(
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Expanded(child: _buildItem(left, i)),
+            const SizedBox(width: LibraryDesignTokens.gridSpacing),
+            Expanded(
+              child: right != null
+                  ? _buildItem(right, i + 1)
+                  : const SizedBox.shrink(),
+            ),
+          ],
+        ),
+      );
+      if (i + 2 < books.length) {
+        rows.add(const SizedBox(height: 16));
+      }
+    }
+
+    return Column(children: rows);
+  }
+
+  Widget _buildItem(BookEntity book, int index) {
+    return GestureDetector(
+      onTap: () => onBookTap(book),
+      child: LibraryBookTile(
+        book: book,
+        coverColor: _palette[index % _palette.length],
+        coverMark: book.title.isEmpty
+            ? 'B'
+            : book.title.substring(0, 1).toUpperCase(),
+        onTap: () => onBookTap(book),
+      ),
+    );
   }
 }

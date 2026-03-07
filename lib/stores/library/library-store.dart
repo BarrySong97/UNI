@@ -211,26 +211,18 @@ class LibraryStore extends ChangeNotifier {
   }
 
   List<BookEntity> _filterByCategory(List<BookEntity> books, String category) {
-    if (category == 'ALL') {
+    if (category == 'All') {
       return books;
     }
-    return books
-        .where((book) => _mapCategory(book) == category)
-        .toList(growable: false);
-  }
-
-  String _mapCategory(BookEntity book) {
-    final bucket = book.id.hashCode.abs() % 4;
-    switch (bucket) {
-      case 0:
-        return 'FICTION';
-      case 1:
-        return 'NON-FICTION';
-      case 2:
-        return 'DESIGN';
-      default:
-        return 'HISTORY';
-    }
+    final progressMap = _state.progressMap;
+    return books.where((book) {
+      final progress = progressMap[book.id] ?? 0;
+      if (category == 'Finished') {
+        return progress >= 1.0;
+      }
+      // "Reading" — has some progress but not finished
+      return progress > 0 && progress < 1.0;
+    }).toList(growable: false);
   }
 
   Uint8List? _decodeCoverDataUrl(String? dataUrl) {

@@ -28,8 +28,8 @@ class LibraryState {
   factory LibraryState.initial() => const LibraryState(
     books: <BookEntity>[],
     filteredBooks: <BookEntity>[],
-    categories: <String>['ALL', 'FICTION', 'NON-FICTION', 'DESIGN', 'HISTORY'],
-    activeCategory: 'ALL',
+    categories: <String>['All', 'Reading', 'Finished'],
+    activeCategory: 'All',
     isLoading: false,
   );
 

@@ -55,6 +55,9 @@ class _LibraryPageState extends State<LibraryPage> {
               ? (state.progressMap[nowReading.id] ?? 0)
               : 0,
           gridBooks: gridBooks,
+          categories: state.categories,
+          activeCategory: state.activeCategory,
+          onCategoryTap: (category) => store.setCategory(category),
           onBookTap: (book) => _openBookFromLibrary(book.id),
           onImportTap: () => _pickAndImportBook(context),
           onContinueReadingTap: nowReading != null
@@ -91,7 +94,7 @@ class _LibraryPageState extends State<LibraryPage> {
   }
 
   List<BookEntity> _computeGridBooks(LibraryState state, String? nowReadingId) {
-    final remaining = state.books
+    final remaining = state.filteredBooks
         .where((b) => b.id != nowReadingId)
         .toList();
 
@@ -110,7 +113,7 @@ class _LibraryPageState extends State<LibraryPage> {
       return bTime.compareTo(aTime);
     });
 
-    return remaining.take(8).toList();
+    return remaining;
   }
 
   Future<void> _pickAndImportBook(BuildContext context) async {

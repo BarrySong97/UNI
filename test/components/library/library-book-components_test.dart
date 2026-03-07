@@ -72,7 +72,7 @@ void main() {
     expect(imageWidget.fit, BoxFit.cover);
   });
 
-  testWidgets('LibraryBookGrid renders horizontal scroll with progress', (tester) async {
+  testWidgets('LibraryBookGrid renders 2-column grid with category tabs', (tester) async {
     final now = DateTime.now();
     final books = <BookEntity>[
       BookEntity(id: 'b1', title: 'Book A', author: 'Author A', sourceType: 'local_epub', createdAt: now, updatedAt: now),
@@ -82,22 +82,25 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: LibraryBookGrid(
-            books: books,
-            onBookTap: (_) {},
-            progressMap: const <String, double>{'b1': 0.12},
+          body: SingleChildScrollView(
+            child: LibraryBookGrid(
+              books: books,
+              onBookTap: (_) {},
+              categories: const <String>['All', 'Reading', 'Finished'],
+              activeCategory: 'All',
+              onCategoryTap: (_) {},
+            ),
           ),
         ),
       ),
     );
 
-    // Uses a horizontal ListView
-    final listView = tester.widget<ListView>(find.byType(ListView));
-    expect(listView.scrollDirection, Axis.horizontal);
-    // Both book titles visible (once in cover, once below)
-    expect(find.text('Book A'), findsNWidgets(2));
-    // Progress percentage shown
-    expect(find.text('12%'), findsOneWidget);
-    expect(find.text('0%'), findsOneWidget);
+    // Category tabs are rendered
+    expect(find.text('All'), findsOneWidget);
+    expect(find.text('Reading'), findsOneWidget);
+    expect(find.text('Finished'), findsOneWidget);
+    // Both book titles visible in fallback covers
+    expect(find.text('Book A'), findsOneWidget);
+    expect(find.text('Book B'), findsOneWidget);
   });
 }

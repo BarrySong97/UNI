@@ -17,15 +17,30 @@ class LibraryHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.end,
       children: <Widget>[
-        const Text(
-          'Immersed',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-            color: LibraryDesignTokens.textPrimary,
-          ),
+        const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              'IMMERSED',
+              style: TextStyle(
+                fontSize: LibraryDesignTokens.headerLabelSize,
+                fontWeight: FontWeight.w600,
+                color: LibraryDesignTokens.headerLabelColor,
+                letterSpacing: 0.5,
+              ),
+            ),
+            SizedBox(height: 2),
+            Text(
+              'Shelf',
+              style: TextStyle(
+                fontSize: LibraryDesignTokens.headerTitleSize,
+                fontWeight: FontWeight.w700,
+                color: LibraryDesignTokens.textPrimary,
+              ),
+            ),
+          ],
         ),
         const Spacer(),
         if (showImportButton)
