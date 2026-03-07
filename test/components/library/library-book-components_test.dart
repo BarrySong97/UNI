@@ -99,8 +99,8 @@ void main() {
     expect(find.text('All'), findsOneWidget);
     expect(find.text('Reading'), findsOneWidget);
     expect(find.text('Finished'), findsOneWidget);
-    // Both book titles visible in fallback covers
-    expect(find.text('Book A'), findsOneWidget);
-    expect(find.text('Book B'), findsOneWidget);
+    // Both book titles visible (once in fallback cover, once in label below)
+    expect(find.text('Book A'), findsNWidgets(2));
+    expect(find.text('Book B'), findsNWidgets(2));
   });
 }

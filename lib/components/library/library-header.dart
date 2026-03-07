@@ -4,13 +4,15 @@ import '../../shared/constants/library-design-tokens.dart';
 
 class LibraryHeader extends StatelessWidget {
   const LibraryHeader({
-    required this.onImportTap,
-    required this.isImporting,
+    this.headerTitle = 'Shelf',
+    this.onImportTap,
+    this.isImporting = false,
     this.showImportButton = true,
     super.key,
   });
 
-  final VoidCallback onImportTap;
+  final String headerTitle;
+  final VoidCallback? onImportTap;
   final bool isImporting;
   final bool showImportButton;
 
@@ -19,10 +21,10 @@ class LibraryHeader extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: <Widget>[
-        const Column(
+        Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text(
+            const Text(
               'IMMERSED',
               style: TextStyle(
                 fontSize: LibraryDesignTokens.headerLabelSize,
@@ -31,10 +33,10 @@ class LibraryHeader extends StatelessWidget {
                 letterSpacing: 0.5,
               ),
             ),
-            SizedBox(height: 2),
+            const SizedBox(height: 2),
             Text(
-              'Shelf',
-              style: TextStyle(
+              headerTitle,
+              style: const TextStyle(
                 fontSize: LibraryDesignTokens.headerTitleSize,
                 fontWeight: FontWeight.w700,
                 color: LibraryDesignTokens.textPrimary,

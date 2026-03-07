@@ -25,9 +25,6 @@ class LibraryPageLayout extends StatelessWidget {
     this.nowReadingProgress = 0,
     this.gridBooks = const <BookEntity>[],
     this.onContinueReadingTap,
-    this.categories = const <String>[],
-    this.activeCategory = 'All',
-    this.onCategoryTap,
     super.key,
   });
 
@@ -43,9 +40,6 @@ class LibraryPageLayout extends StatelessWidget {
   final double nowReadingProgress;
   final List<BookEntity> gridBooks;
   final VoidCallback? onContinueReadingTap;
-  final List<String> categories;
-  final String activeCategory;
-  final ValueChanged<String>? onCategoryTap;
 
   @override
   Widget build(BuildContext context) {
@@ -105,9 +99,10 @@ class LibraryPageLayout extends StatelessWidget {
                     LibraryBookGrid(
                       books: gridBooks,
                       onBookTap: onBookTap,
-                      categories: categories,
-                      activeCategory: activeCategory,
-                      onCategoryTap: onCategoryTap ?? (_) {},
+                      progressMap: progressMap,
+                      categories: const <String>[],
+                      activeCategory: '',
+                      onCategoryTap: (_) {},
                     ),
                   ],
                 ],

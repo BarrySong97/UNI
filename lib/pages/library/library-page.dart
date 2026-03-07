@@ -55,9 +55,6 @@ class _LibraryPageState extends State<LibraryPage> {
               ? (state.progressMap[nowReading.id] ?? 0)
               : 0,
           gridBooks: gridBooks,
-          categories: state.categories,
-          activeCategory: state.activeCategory,
-          onCategoryTap: (category) => store.setCategory(category),
           onBookTap: (book) => _openBookFromLibrary(book.id),
           onImportTap: () => _pickAndImportBook(context),
           onContinueReadingTap: nowReading != null
