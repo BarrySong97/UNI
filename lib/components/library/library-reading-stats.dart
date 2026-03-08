@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../shared/constants/common-design-tokens.dart';
 import '../../shared/constants/shelf-design-tokens.dart';
 
 class LibraryReadingStats extends StatelessWidget {
@@ -38,8 +39,8 @@ class LibraryReadingStats extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: ShelfDesignTokens.statsCardBg,
-        borderRadius: BorderRadius.circular(ShelfDesignTokens.statsCardRadius),
+        color: CommonDesignTokens.cardBg,
+        borderRadius: BorderRadius.circular(CommonDesignTokens.cardRadius),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -89,7 +90,7 @@ class LibraryReadingStats extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: ShelfDesignTokens.statsBooksReadBg,
-        borderRadius: BorderRadius.circular(ShelfDesignTokens.statsCardRadius),
+        borderRadius: BorderRadius.circular(CommonDesignTokens.cardRadius),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

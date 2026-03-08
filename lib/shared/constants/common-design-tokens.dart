@@ -25,7 +25,7 @@ abstract final class CommonDesignTokens {
 
   // Common card
   static const double cardRadius = 18;
-  static const Color cardBg = Color(0xFFFAF9F7);
+  static const Color cardBg = Color(0xFFFFFFFF);
 
   // Common typography sizes
   static const double bookTitleSize = 18;

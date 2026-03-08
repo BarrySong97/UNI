@@ -22,8 +22,8 @@ class NowReadingCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: ShelfDesignTokens.nowReadingCardBg,
-        borderRadius: BorderRadius.circular(ShelfDesignTokens.nowReadingCardRadius),
+        color: CommonDesignTokens.cardBg,
+        borderRadius: BorderRadius.circular(CommonDesignTokens.cardRadius),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,

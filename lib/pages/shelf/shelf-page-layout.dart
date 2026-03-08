@@ -271,9 +271,9 @@ class ShelfPageLayout extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: ShelfDesignTokens.statsCardBg,
+              color: CommonDesignTokens.cardBg,
               borderRadius: BorderRadius.circular(
-                ShelfDesignTokens.statsCardRadius,
+                CommonDesignTokens.cardRadius,
               ),
             ),
             child: Column(
@@ -310,7 +310,7 @@ class ShelfPageLayout extends StatelessWidget {
             decoration: BoxDecoration(
               color: ShelfDesignTokens.statsBooksReadBg,
               borderRadius: BorderRadius.circular(
-                ShelfDesignTokens.statsCardRadius,
+                CommonDesignTokens.cardRadius,
               ),
             ),
             child: Column(
