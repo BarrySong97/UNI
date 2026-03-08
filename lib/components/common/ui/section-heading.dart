@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../shared/constants/library-design-tokens.dart';
+import '../../../shared/constants/common-design-tokens.dart';
 
 class SectionHeading extends StatelessWidget {
   const SectionHeading({
@@ -23,10 +23,10 @@ class SectionHeading extends StatelessWidget {
         Text(
           title,
           style: const TextStyle(
-            fontSize: LibraryDesignTokens.recentTitleSize,
+            fontSize: CommonDesignTokens.recentTitleSize,
             fontWeight: FontWeight.w700,
             letterSpacing: -0.6,
-            color: LibraryDesignTokens.textPrimary,
+            color: CommonDesignTokens.textPrimary,
             height: 0.95,
           ),
         ),
@@ -41,7 +41,7 @@ class SectionHeading extends StatelessWidget {
                 style: const TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.w500,
-                  color: LibraryDesignTokens.textPrimary,
+                  color: CommonDesignTokens.textPrimary,
                   height: 1,
                 ),
               ),

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../shared/constants/library-design-tokens.dart';
+import '../../shared/constants/common-design-tokens.dart';
 
 class StatisticsPage extends StatelessWidget {
   const StatisticsPage({super.key});
@@ -8,10 +8,10 @@ class StatisticsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: LibraryDesignTokens.pageBackground,
+      backgroundColor: CommonDesignTokens.pageBackground,
       appBar: AppBar(
         title: const Text('Statistics'),
-        backgroundColor: LibraryDesignTokens.pageBackground,
+        backgroundColor: CommonDesignTokens.pageBackground,
         elevation: 0,
       ),
       body: const SizedBox.shrink(),

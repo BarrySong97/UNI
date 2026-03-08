@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../../shared/constants/library-design-tokens.dart';
+import '../../../shared/constants/common-design-tokens.dart';
+import '../../../shared/constants/shell-design-tokens.dart';
 
 class AppBottomTabItem {
   const AppBottomTabItem({
@@ -27,10 +28,10 @@ class AppBottomTabBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: LibraryDesignTokens.bottomBarHeight,
+      height: ShellDesignTokens.bottomBarHeight,
       decoration: const BoxDecoration(
         color: Color(0xFFF0F0F0),
-        border: Border(top: BorderSide(color: LibraryDesignTokens.borderColor)),
+        border: Border(top: BorderSide(color: CommonDesignTokens.borderColor)),
       ),
       child: Row(
         children: List<Widget>.generate(items.length, (index) {
@@ -44,16 +45,16 @@ class AppBottomTabBar extends StatelessWidget {
                 children: <Widget>[
                   Icon(
                     item.icon,
-                    size: LibraryDesignTokens.bottomIconSize,
-                    color: isActive ? LibraryDesignTokens.textPrimary : LibraryDesignTokens.tabInactiveText,
+                    size: ShellDesignTokens.bottomIconSize,
+                    color: isActive ? CommonDesignTokens.textPrimary : CommonDesignTokens.tabInactiveText,
                   ),
                   const SizedBox(height: 6),
                   Text(
                     item.label,
                     style: TextStyle(
-                      fontSize: LibraryDesignTokens.bottomLabelSize,
+                      fontSize: ShellDesignTokens.bottomLabelSize,
                       fontWeight: FontWeight.w700,
-                      color: isActive ? LibraryDesignTokens.textPrimary : LibraryDesignTokens.tabInactiveText,
+                      color: isActive ? CommonDesignTokens.textPrimary : CommonDesignTokens.tabInactiveText,
                       letterSpacing: 0.4,
                     ),
                   ),

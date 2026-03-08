@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../entities/book-entity.dart';
-import '../../shared/constants/library-design-tokens.dart';
+import '../../shared/constants/common-design-tokens.dart';
+import '../../shared/constants/shelf-design-tokens.dart';
 import '../../shared/utils/cover-image-cache.dart';
 import 'library-new-badge.dart';
 
@@ -23,7 +24,7 @@ class LibraryBookTile extends StatelessWidget {
   final bool showNewBadge;
   final double? progress;
 
-  static const double _coverRadius = LibraryDesignTokens.homeGridCoverRadius;
+  static const double _coverRadius = ShelfDesignTokens.homeGridCoverRadius;
 
   @override
   Widget build(BuildContext context) {
@@ -35,7 +36,7 @@ class LibraryBookTile extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(_coverRadius),
         child: AspectRatio(
-          aspectRatio: LibraryDesignTokens.coverAspectRatio,
+          aspectRatio: CommonDesignTokens.coverAspectRatio,
           child: Stack(
             fit: StackFit.expand,
             children: <Widget>[
@@ -123,10 +124,10 @@ class LibraryBookTile extends StatelessWidget {
   }
 
   Color _coverTextColor(Color cover) {
-    if (cover == LibraryDesignTokens.coverNeon ||
-        cover == LibraryDesignTokens.coverGray) {
-      return LibraryDesignTokens.coverTextDark;
+    if (cover == CommonDesignTokens.coverNeon ||
+        cover == CommonDesignTokens.coverGray) {
+      return CommonDesignTokens.coverTextDark;
     }
-    return LibraryDesignTokens.coverTextLight;
+    return CommonDesignTokens.coverTextLight;
   }
 }

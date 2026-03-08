@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../shared/constants/library-design-tokens.dart';
+import '../../shared/constants/shelf-design-tokens.dart';
 
 class LibraryReadingStats extends StatelessWidget {
   const LibraryReadingStats({this.onTap, super.key});
@@ -38,8 +38,8 @@ class LibraryReadingStats extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: LibraryDesignTokens.statsCardBg,
-        borderRadius: BorderRadius.circular(LibraryDesignTokens.statsCardRadius),
+        color: ShelfDesignTokens.statsCardBg,
+        borderRadius: BorderRadius.circular(ShelfDesignTokens.statsCardRadius),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -50,7 +50,7 @@ class LibraryReadingStats extends StatelessWidget {
                 _currentMonthLabel(),
                 style: const TextStyle(
                   fontSize: 12,
-                  color: LibraryDesignTokens.statsLabelColor,
+                  color: ShelfDesignTokens.statsLabelColor,
                   fontWeight: FontWeight.w600,
                   letterSpacing: 0.3,
                 ),
@@ -71,7 +71,7 @@ class LibraryReadingStats extends StatelessWidget {
                     margin: const EdgeInsets.symmetric(horizontal: 0.5),
                     height: 36 * h,
                     decoration: BoxDecoration(
-                      color: LibraryDesignTokens.statsBarColor,
+                      color: ShelfDesignTokens.statsBarColor,
                       borderRadius: BorderRadius.circular(1),
                     ),
                   ),
@@ -88,8 +88,8 @@ class LibraryReadingStats extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: LibraryDesignTokens.statsBooksReadBg,
-        borderRadius: BorderRadius.circular(LibraryDesignTokens.statsCardRadius),
+        color: ShelfDesignTokens.statsBooksReadBg,
+        borderRadius: BorderRadius.circular(ShelfDesignTokens.statsCardRadius),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -100,13 +100,13 @@ class LibraryReadingStats extends StatelessWidget {
                 'BOOKS READ',
                 style: TextStyle(
                   fontSize: 12,
-                  color: LibraryDesignTokens.statsBooksReadText,
+                  color: ShelfDesignTokens.statsBooksReadText,
                   fontWeight: FontWeight.w600,
                   letterSpacing: 0.3,
                 ),
               ),
               const Spacer(),
-              Icon(Icons.menu_book_rounded, size: 18, color: LibraryDesignTokens.statsBooksReadText.withValues(alpha: 0.6)),
+              Icon(Icons.menu_book_rounded, size: 18, color: ShelfDesignTokens.statsBooksReadText.withValues(alpha: 0.6)),
             ],
           ),
           const SizedBox(height: 8),
@@ -118,7 +118,7 @@ class LibraryReadingStats extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 32,
                     fontWeight: FontWeight.w700,
-                    color: LibraryDesignTokens.statsBooksReadText,
+                    color: ShelfDesignTokens.statsBooksReadText,
                     height: 1.1,
                   ),
                 ),
@@ -126,7 +126,7 @@ class LibraryReadingStats extends StatelessWidget {
                   text: '  this year',
                   style: TextStyle(
                     fontSize: 14,
-                    color: LibraryDesignTokens.statsBooksReadText,
+                    color: ShelfDesignTokens.statsBooksReadText,
                     fontWeight: FontWeight.w400,
                   ),
                 ),
@@ -140,7 +140,7 @@ class LibraryReadingStats extends StatelessWidget {
             child: Icon(
               Icons.auto_stories_outlined,
               size: 36,
-              color: LibraryDesignTokens.statsBooksReadText.withValues(alpha: 0.15),
+              color: ShelfDesignTokens.statsBooksReadText.withValues(alpha: 0.15),
             ),
           ),
         ],
@@ -161,7 +161,7 @@ class LibraryReadingStats extends StatelessWidget {
       text: TextSpan(
         style: const TextStyle(
           fontSize: 14,
-          color: LibraryDesignTokens.statsNumberColor,
+          color: ShelfDesignTokens.statsNumberColor,
           height: 1.2,
         ),
         children: <InlineSpan>[

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../components/common/ui/floating-tab-bar.dart';
-import '../../shared/constants/library-design-tokens.dart';
+import '../../shared/constants/common-design-tokens.dart';
 import '../library/library-page.dart';
 import '../settings/settings-page.dart';
 import '../shelf/shelf-page.dart';
@@ -35,7 +35,7 @@ class _MainTabShellPageState extends State<MainTabShellPage> {
         const <Widget>[ShelfPage(), LibraryPage(), SettingsPage()];
 
     return Scaffold(
-      backgroundColor: LibraryDesignTokens.pageBackground,
+      backgroundColor: CommonDesignTokens.pageBackground,
       body: Stack(
         children: <Widget>[
           IndexedStack(

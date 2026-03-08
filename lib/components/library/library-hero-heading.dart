@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../shared/constants/library-design-tokens.dart';
+import '../../shared/constants/common-design-tokens.dart';
 
 class LibraryHeroHeading extends StatelessWidget {
   const LibraryHeroHeading({super.key});
@@ -10,9 +10,9 @@ class LibraryHeroHeading extends StatelessWidget {
     return const Text(
       'Library',
       style: TextStyle(
-        fontSize: LibraryDesignTokens.libraryTitleSize,
+        fontSize: CommonDesignTokens.libraryTitleSize,
         fontWeight: FontWeight.w400,
-        color: LibraryDesignTokens.textPrimary,
+        color: CommonDesignTokens.textPrimary,
         height: 0.96,
         letterSpacing: -0.8,
       ),

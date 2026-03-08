@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../entities/book-entity.dart';
-import '../../shared/constants/library-design-tokens.dart';
+import '../../shared/constants/common-design-tokens.dart';
+import '../../shared/constants/shelf-design-tokens.dart';
 import '../../components/library/book-pop-in-wrapper.dart';
 import '../../components/library/library-book-tile.dart';
 import '../../components/library/library-empty-state.dart';
@@ -44,10 +45,10 @@ class ShelfPageLayout extends StatelessWidget {
   final String? lastImportedBookId;
 
   static const _palette = <Color>[
-    LibraryDesignTokens.coverBlue,
-    LibraryDesignTokens.coverNeon,
-    LibraryDesignTokens.coverBlack,
-    LibraryDesignTokens.coverGray,
+    CommonDesignTokens.coverBlue,
+    CommonDesignTokens.coverNeon,
+    CommonDesignTokens.coverBlack,
+    CommonDesignTokens.coverGray,
   ];
 
   @override
@@ -55,14 +56,11 @@ class ShelfPageLayout extends StatelessWidget {
     return Stack(
       children: <Widget>[
         Container(
-          color: LibraryDesignTokens.pageBackground,
+          color: CommonDesignTokens.pageBackground,
           child: SafeArea(
             bottom: false,
             child: SingleChildScrollView(
-              padding: const EdgeInsets.only(
-                top: 12,
-                bottom: 120,
-              ),
+              padding: const EdgeInsets.only(top: 12, bottom: 120),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
@@ -95,7 +93,10 @@ class ShelfPageLayout extends StatelessWidget {
                     if (nowReadingBook != null) ...[
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: _buildSectionHeader('Now Reading', showViewAll: true),
+                        child: _buildSectionHeader(
+                          'Now Reading',
+                          showViewAll: true,
+                        ),
                       ),
                       const SizedBox(height: 12),
                       Padding(
@@ -115,8 +116,9 @@ class ShelfPageLayout extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: hasReadingProgress
                           ? WordOfDayCard(
-                              onTap: () => Navigator.of(context)
-                                  .pushNamed(RouteNames.wordOfDay),
+                              onTap: () => Navigator.of(
+                                context,
+                              ).pushNamed(RouteNames.wordOfDay),
                             )
                           : _buildReadingPrompt(),
                     ),
@@ -124,7 +126,7 @@ class ShelfPageLayout extends StatelessWidget {
                       const SizedBox(height: 24),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: _buildSectionHeader('Your Books'),
+                        child: _buildSectionHeader('Recent Books'),
                       ),
                       const SizedBox(height: 12),
                       _buildHorizontalBookList(),
@@ -144,9 +146,9 @@ class ShelfPageLayout extends StatelessWidget {
               bottom: false,
               child: LinearProgressIndicator(
                 minHeight: 3,
-                backgroundColor: LibraryDesignTokens.pageBackground,
+                backgroundColor: CommonDesignTokens.pageBackground,
                 valueColor: const AlwaysStoppedAnimation<Color>(
-                  LibraryDesignTokens.textPrimary,
+                  CommonDesignTokens.textPrimary,
                 ),
               ),
             ),
@@ -156,21 +158,21 @@ class ShelfPageLayout extends StatelessWidget {
   }
 
   Widget _buildHorizontalBookList() {
-    final displayBooks = gridBooks.length > LibraryDesignTokens.homeGridMaxItems
-        ? gridBooks.sublist(0, LibraryDesignTokens.homeGridMaxItems)
+    final displayBooks = gridBooks.length > ShelfDesignTokens.homeGridMaxItems
+        ? gridBooks.sublist(0, ShelfDesignTokens.homeGridMaxItems)
         : gridBooks;
 
     return SizedBox(
-      height: LibraryDesignTokens.homeGridItemWidth /
-              LibraryDesignTokens.coverAspectRatio +
+      height:
+          ShelfDesignTokens.homeGridItemWidth /
+              CommonDesignTokens.coverAspectRatio +
           50,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         itemCount: displayBooks.length,
-        separatorBuilder: (_, _) => const SizedBox(
-          width: LibraryDesignTokens.homeGridItemSpacing,
-        ),
+        separatorBuilder: (_, _) =>
+            const SizedBox(width: ShelfDesignTokens.homeGridItemSpacing),
         itemBuilder: (context, index) {
           final book = displayBooks[index];
           final progress = progressMap[book.id] ?? 0;
@@ -186,13 +188,13 @@ class ShelfPageLayout extends StatelessWidget {
             child: GestureDetector(
               onTap: () => onBookTap(book),
               child: SizedBox(
-                width: LibraryDesignTokens.homeGridItemWidth,
+                width: ShelfDesignTokens.homeGridItemWidth,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     ClipRRect(
                       borderRadius: BorderRadius.circular(
-                        LibraryDesignTokens.homeGridCoverRadius,
+                        ShelfDesignTokens.homeGridCoverRadius,
                       ),
                       child: Stack(
                         children: <Widget>[
@@ -235,9 +237,9 @@ class ShelfPageLayout extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: LibraryDesignTokens.homeGridTitleSize,
+                        fontSize: ShelfDesignTokens.homeGridTitleSize,
                         fontWeight: FontWeight.w600,
-                        color: LibraryDesignTokens.textPrimary,
+                        color: CommonDesignTokens.textPrimary,
                       ),
                     ),
                     if (book.author.isNotEmpty && book.author != 'Unknown') ...[
@@ -247,8 +249,8 @@ class ShelfPageLayout extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontSize: LibraryDesignTokens.homeGridAuthorSize,
-                          color: LibraryDesignTokens.textSecondary,
+                          fontSize: ShelfDesignTokens.homeGridAuthorSize,
+                          color: CommonDesignTokens.textSecondary,
                         ),
                       ),
                     ],
@@ -269,9 +271,9 @@ class ShelfPageLayout extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: LibraryDesignTokens.statsCardBg,
+              color: ShelfDesignTokens.statsCardBg,
               borderRadius: BorderRadius.circular(
-                LibraryDesignTokens.statsCardRadius,
+                ShelfDesignTokens.statsCardRadius,
               ),
             ),
             child: Column(
@@ -281,7 +283,7 @@ class ShelfPageLayout extends StatelessWidget {
                   'DAILY GOAL',
                   style: TextStyle(
                     fontSize: 12,
-                    color: LibraryDesignTokens.statsLabelColor,
+                    color: ShelfDesignTokens.statsLabelColor,
                     fontWeight: FontWeight.w600,
                     letterSpacing: 0.3,
                   ),
@@ -291,7 +293,7 @@ class ShelfPageLayout extends StatelessWidget {
                   'Start reading to track your daily progress',
                   style: TextStyle(
                     fontSize: 13,
-                    color: LibraryDesignTokens.statsNumberColor.withValues(
+                    color: ShelfDesignTokens.statsNumberColor.withValues(
                       alpha: 0.6,
                     ),
                     height: 1.4,
@@ -306,9 +308,9 @@ class ShelfPageLayout extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: LibraryDesignTokens.statsBooksReadBg,
+              color: ShelfDesignTokens.statsBooksReadBg,
               borderRadius: BorderRadius.circular(
-                LibraryDesignTokens.statsCardRadius,
+                ShelfDesignTokens.statsCardRadius,
               ),
             ),
             child: Column(
@@ -318,7 +320,7 @@ class ShelfPageLayout extends StatelessWidget {
                   'BOOKS READ',
                   style: TextStyle(
                     fontSize: 12,
-                    color: LibraryDesignTokens.statsBooksReadText,
+                    color: ShelfDesignTokens.statsBooksReadText,
                     fontWeight: FontWeight.w600,
                     letterSpacing: 0.3,
                   ),
@@ -332,7 +334,7 @@ class ShelfPageLayout extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 32,
                           fontWeight: FontWeight.w700,
-                          color: LibraryDesignTokens.statsBooksReadText,
+                          color: ShelfDesignTokens.statsBooksReadText,
                           height: 1.1,
                         ),
                       ),
@@ -340,7 +342,7 @@ class ShelfPageLayout extends StatelessWidget {
                         text: '  this year',
                         style: TextStyle(
                           fontSize: 14,
-                          color: LibraryDesignTokens.statsBooksReadText,
+                          color: ShelfDesignTokens.statsBooksReadText,
                           fontWeight: FontWeight.w400,
                         ),
                       ),
@@ -359,9 +361,9 @@ class ShelfPageLayout extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: LibraryDesignTokens.wordOfDayCardBg,
+        color: ShelfDesignTokens.wordOfDayCardBg,
         borderRadius: BorderRadius.circular(
-          LibraryDesignTokens.wordOfDayCardRadius,
+          ShelfDesignTokens.wordOfDayCardRadius,
         ),
       ),
       child: Row(
@@ -370,14 +372,14 @@ class ShelfPageLayout extends StatelessWidget {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: LibraryDesignTokens.wordOfDayIconBg,
+              color: ShelfDesignTokens.wordOfDayIconBg,
               borderRadius: BorderRadius.circular(12),
             ),
             alignment: Alignment.center,
             child: const Icon(
               Icons.menu_book_rounded,
               size: 20,
-              color: LibraryDesignTokens.wordOfDayIconColor,
+              color: ShelfDesignTokens.wordOfDayIconColor,
             ),
           ),
           const SizedBox(width: 12),
@@ -387,7 +389,7 @@ class ShelfPageLayout extends StatelessWidget {
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w500,
-                color: LibraryDesignTokens.textSecondary,
+                color: CommonDesignTokens.textSecondary,
               ),
             ),
           ),
@@ -402,9 +404,9 @@ class ShelfPageLayout extends StatelessWidget {
         Text(
           title,
           style: const TextStyle(
-            fontSize: LibraryDesignTokens.sectionHeaderSize,
+            fontSize: ShelfDesignTokens.sectionHeaderSize,
             fontWeight: FontWeight.w600,
-            color: LibraryDesignTokens.sectionHeaderColor,
+            color: ShelfDesignTokens.sectionHeaderColor,
           ),
         ),
       ],

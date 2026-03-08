@@ -10,6 +10,7 @@ import '../../entities/book-entity.dart';
 import '../../shared/utils/cover-image-cache.dart';
 import '../../entities/reading-progress-entity.dart';
 import '../../services/library/book-profile-color-service.dart';
+import '../../shared/constants/common-design-tokens.dart';
 import '../../shared/constants/library-design-tokens.dart';
 import '../../shared/ui/loading-view.dart';
 
@@ -240,7 +241,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
             style: const TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.w600,
-              color: LibraryDesignTokens.textPrimary,
+              color: CommonDesignTokens.textPrimary,
             ),
           ),
           const SizedBox(height: 4),
@@ -272,7 +273,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
           Container(
             width: 1,
             height: 32,
-            color: LibraryDesignTokens.borderColor,
+            color: CommonDesignTokens.borderColor,
           ),
           _buildStatItem(
             label: 'Words',
@@ -281,7 +282,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
           Container(
             width: 1,
             height: 32,
-            color: LibraryDesignTokens.borderColor,
+            color: CommonDesignTokens.borderColor,
           ),
           _buildStatItem(
             label: 'Category',
@@ -309,7 +310,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
             body: Center(
               child: Text(
                 localizations.tr('bookNotFound'),
-                style: const TextStyle(color: LibraryDesignTokens.textPrimary),
+                style: const TextStyle(color: CommonDesignTokens.textPrimary),
               ),
             ),
           );
@@ -336,7 +337,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
             return AnnotatedRegion<SystemUiOverlayStyle>(
               value: _statusBarOverlayStyle(statusBarSourceColor),
               child: Scaffold(
-                backgroundColor: LibraryDesignTokens.pageBackground,
+                backgroundColor: CommonDesignTokens.pageBackground,
                 body: Stack(
                   children: <Widget>[
                     SingleChildScrollView(
@@ -364,7 +365,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                           icon: const Icon(
                                             Icons.arrow_back,
                                             color:
-                                                LibraryDesignTokens.textPrimary,
+                                                CommonDesignTokens.textPrimary,
                                           ),
                                         ),
                                         PopupMenuButton<_BookProfileMenuAction>(
@@ -394,7 +395,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                           icon: const Icon(
                                             Icons.more_vert,
                                             color:
-                                                LibraryDesignTokens.textPrimary,
+                                                CommonDesignTokens.textPrimary,
                                           ),
                                         ),
                                       ],
@@ -424,7 +425,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                             )
                                           : Container(
                                               color:
-                                                  LibraryDesignTokens.coverGray,
+                                                  CommonDesignTokens.coverGray,
                                               alignment: Alignment.center,
                                               child: const Text(
                                                 'COVER',
@@ -450,7 +451,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                       style: const TextStyle(
                                         fontSize: 22,
                                         fontWeight: FontWeight.w600,
-                                        color: LibraryDesignTokens.textPrimary,
+                                        color: CommonDesignTokens.textPrimary,
                                         height: 1.3,
                                       ),
                                     ),
@@ -475,7 +476,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                             ),
                           ),
                           Container(
-                            color: LibraryDesignTokens.pageBackground,
+                            color: CommonDesignTokens.pageBackground,
                             padding: const EdgeInsets.symmetric(horizontal: 20),
                             child: Column(
                               children: <Widget>[
@@ -492,7 +493,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                         _isDeleting ? null : _continueReading,
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor:
-                                          LibraryDesignTokens.textPrimary,
+                                          CommonDesignTokens.textPrimary,
                                       foregroundColor: Colors.white,
                                       elevation: 0,
                                       padding: const EdgeInsets.symmetric(

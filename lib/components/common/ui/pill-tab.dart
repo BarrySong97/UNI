@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../shared/constants/library-design-tokens.dart';
+import '../../../shared/constants/common-design-tokens.dart';
 
 class PillTab extends StatelessWidget {
   const PillTab({
@@ -19,17 +19,17 @@ class PillTab extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Container(
-        height: LibraryDesignTokens.tabHeight,
+        height: CommonDesignTokens.tabHeight,
         padding: const EdgeInsets.symmetric(
-          horizontal: LibraryDesignTokens.tabHorizontalPadding,
+          horizontal: CommonDesignTokens.tabHorizontalPadding,
         ),
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: isActive
-              ? LibraryDesignTokens.tabActiveBg
-              : LibraryDesignTokens.tabInactiveBg,
-          border: Border.all(color: LibraryDesignTokens.borderColor),
-          borderRadius: BorderRadius.circular(LibraryDesignTokens.tabBorderRadius),
+              ? CommonDesignTokens.tabActiveBg
+              : CommonDesignTokens.tabInactiveBg,
+          border: Border.all(color: CommonDesignTokens.borderColor),
+          borderRadius: BorderRadius.circular(CommonDesignTokens.tabBorderRadius),
         ),
         child: Text(
           label,
@@ -37,8 +37,8 @@ class PillTab extends StatelessWidget {
             fontWeight: FontWeight.w700,
             fontSize: 12,
             color: isActive
-                ? LibraryDesignTokens.tabActiveText
-                : LibraryDesignTokens.tabInactiveText,
+                ? CommonDesignTokens.tabActiveText
+                : CommonDesignTokens.tabInactiveText,
             letterSpacing: 0.4,
           ),
         ),

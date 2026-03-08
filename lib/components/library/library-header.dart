@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../shared/constants/library-design-tokens.dart';
+import '../../shared/constants/common-design-tokens.dart';
 
 class LibraryHeader extends StatelessWidget {
   const LibraryHeader({
@@ -27,9 +27,9 @@ class LibraryHeader extends StatelessWidget {
             const Text(
               'IMMERSED',
               style: TextStyle(
-                fontSize: LibraryDesignTokens.headerLabelSize,
+                fontSize: CommonDesignTokens.headerLabelSize,
                 fontWeight: FontWeight.w600,
-                color: LibraryDesignTokens.headerLabelColor,
+                color: CommonDesignTokens.headerLabelColor,
                 letterSpacing: 0.5,
               ),
             ),
@@ -37,9 +37,9 @@ class LibraryHeader extends StatelessWidget {
             Text(
               headerTitle,
               style: const TextStyle(
-                fontSize: LibraryDesignTokens.headerTitleSize,
+                fontSize: CommonDesignTokens.headerTitleSize,
                 fontWeight: FontWeight.w700,
-                color: LibraryDesignTokens.textPrimary,
+                color: CommonDesignTokens.textPrimary,
               ),
             ),
           ],
@@ -49,7 +49,7 @@ class LibraryHeader extends StatelessWidget {
           IconButton(
             icon: Icon(
               isImporting ? Icons.hourglass_top : Icons.add,
-              color: LibraryDesignTokens.textPrimary,
+              color: CommonDesignTokens.textPrimary,
               size: 22,
             ),
             onPressed: isImporting ? null : onImportTap,

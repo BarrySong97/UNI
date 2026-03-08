@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../entities/book-entity.dart';
-import '../../shared/constants/library-design-tokens.dart';
+import '../../shared/constants/common-design-tokens.dart';
+import '../../shared/constants/shelf-design-tokens.dart';
 import '../../shared/utils/cover-image-cache.dart';
 
 class NowReadingCard extends StatelessWidget {
@@ -21,8 +22,8 @@ class NowReadingCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: LibraryDesignTokens.nowReadingCardBg,
-        borderRadius: BorderRadius.circular(LibraryDesignTokens.nowReadingCardRadius),
+        color: ShelfDesignTokens.nowReadingCardBg,
+        borderRadius: BorderRadius.circular(ShelfDesignTokens.nowReadingCardRadius),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -39,11 +40,11 @@ class NowReadingCard extends StatelessWidget {
     final coverBytes = CoverImageCache.decode(book.coverUrl);
 
     return Container(
-      width: LibraryDesignTokens.nowReadingCoverWidth,
-      height: LibraryDesignTokens.nowReadingCoverHeight,
+      width: ShelfDesignTokens.nowReadingCoverWidth,
+      height: ShelfDesignTokens.nowReadingCoverHeight,
       decoration: BoxDecoration(
-        color: LibraryDesignTokens.nowReadingCoverPlaceholderBg,
-        borderRadius: BorderRadius.circular(LibraryDesignTokens.nowReadingCoverRadius),
+        color: ShelfDesignTokens.nowReadingCoverPlaceholderBg,
+        borderRadius: BorderRadius.circular(ShelfDesignTokens.nowReadingCoverRadius),
         boxShadow: const <BoxShadow>[
           BoxShadow(
             color: Color(0x20000000),
@@ -65,7 +66,7 @@ class NowReadingCard extends StatelessWidget {
 
   Widget _buildFallbackCover() {
     return Container(
-      color: LibraryDesignTokens.coverBlack,
+      color: CommonDesignTokens.coverBlack,
       alignment: Alignment.center,
       padding: const EdgeInsets.all(8),
       child: Column(
@@ -115,7 +116,7 @@ class NowReadingCard extends StatelessWidget {
           style: const TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w700,
-            color: LibraryDesignTokens.textPrimary,
+            color: CommonDesignTokens.textPrimary,
             height: 1.2,
           ),
         ),
@@ -127,7 +128,7 @@ class NowReadingCard extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               fontSize: 14,
-              color: LibraryDesignTokens.textSecondary,
+              color: CommonDesignTokens.textSecondary,
             ),
           ),
         ],
@@ -138,7 +139,7 @@ class NowReadingCard extends StatelessWidget {
               'Chapter',
               style: TextStyle(
                 fontSize: 13,
-                color: LibraryDesignTokens.textSecondary,
+                color: CommonDesignTokens.textSecondary,
               ),
             ),
             const Spacer(),
@@ -146,7 +147,7 @@ class NowReadingCard extends StatelessWidget {
               '$progressPercent%',
               style: TextStyle(
                 fontSize: 13,
-                color: LibraryDesignTokens.textSecondary,
+                color: CommonDesignTokens.textSecondary,
               ),
             ),
           ],
@@ -157,9 +158,9 @@ class NowReadingCard extends StatelessWidget {
           child: LinearProgressIndicator(
             value: progress,
             minHeight: 5,
-            backgroundColor: LibraryDesignTokens.nowReadingProgressBg,
+            backgroundColor: ShelfDesignTokens.nowReadingProgressBg,
             valueColor: const AlwaysStoppedAnimation<Color>(
-              LibraryDesignTokens.nowReadingProgressFill,
+              ShelfDesignTokens.nowReadingProgressFill,
             ),
           ),
         ),
@@ -171,8 +172,8 @@ class NowReadingCard extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               decoration: BoxDecoration(
-                color: LibraryDesignTokens.continueButtonBg,
-                borderRadius: BorderRadius.circular(LibraryDesignTokens.continueButtonRadius),
+                color: ShelfDesignTokens.continueButtonBg,
+                borderRadius: BorderRadius.circular(ShelfDesignTokens.continueButtonRadius),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -182,14 +183,14 @@ class NowReadingCard extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: LibraryDesignTokens.continueButtonText,
+                      color: ShelfDesignTokens.continueButtonText,
                     ),
                   ),
                   SizedBox(width: 4),
                   Icon(
                     Icons.arrow_forward,
                     size: 16,
-                    color: LibraryDesignTokens.continueButtonText,
+                    color: ShelfDesignTokens.continueButtonText,
                   ),
                 ],
               ),

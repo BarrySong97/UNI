@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../shared/constants/library-design-tokens.dart';
+import '../../shared/constants/common-design-tokens.dart';
+import '../../shared/constants/shelf-design-tokens.dart';
 
 class LibraryEmptyState extends StatelessWidget {
   const LibraryEmptyState({required this.onImportTap, super.key});
@@ -22,7 +23,7 @@ class LibraryEmptyState extends StatelessWidget {
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.w700,
-                color: LibraryDesignTokens.textPrimary,
+                color: CommonDesignTokens.textPrimary,
               ),
             ),
             const SizedBox(height: 10),
@@ -30,7 +31,7 @@ class LibraryEmptyState extends StatelessWidget {
               TextSpan(
                 style: const TextStyle(
                   fontSize: 15,
-                  color: LibraryDesignTokens.textSecondary,
+                  color: CommonDesignTokens.textSecondary,
                   height: 1.45,
                 ),
                 children: const <InlineSpan>[
@@ -39,7 +40,7 @@ class LibraryEmptyState extends StatelessWidget {
                     text: 'ePub',
                     style: TextStyle(
                       fontWeight: FontWeight.w700,
-                      color: LibraryDesignTokens.textPrimary,
+                      color: CommonDesignTokens.textPrimary,
                     ),
                   ),
                   TextSpan(text: ' to start\ntracking your reading journey.'),
@@ -58,7 +59,7 @@ class LibraryEmptyState extends StatelessWidget {
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                 ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: LibraryDesignTokens.continueButtonBg,
+                  backgroundColor: ShelfDesignTokens.continueButtonBg,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
@@ -75,7 +76,7 @@ class LibraryEmptyState extends StatelessWidget {
                 Icon(
                   Icons.search,
                   size: 16,
-                  color: LibraryDesignTokens.textSecondary.withValues(
+                  color: CommonDesignTokens.textSecondary.withValues(
                     alpha: 0.45,
                   ),
                 ),
@@ -84,7 +85,7 @@ class LibraryEmptyState extends StatelessWidget {
                   'Browse recommendations',
                   style: TextStyle(
                     fontSize: 14,
-                    color: LibraryDesignTokens.textSecondary.withValues(
+                    color: CommonDesignTokens.textSecondary.withValues(
                       alpha: 0.45,
                     ),
                   ),
@@ -111,14 +112,14 @@ class LibraryEmptyState extends StatelessWidget {
                 color: Colors.white,
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: LibraryDesignTokens.borderColor.withValues(alpha: 0.4),
+                  color: CommonDesignTokens.borderColor.withValues(alpha: 0.4),
                 ),
               ),
               alignment: Alignment.center,
               child: Icon(
                 Icons.menu_book_rounded,
                 size: 48,
-                color: LibraryDesignTokens.textSecondary.withValues(alpha: 0.35),
+                color: CommonDesignTokens.textSecondary.withValues(alpha: 0.35),
               ),
             ),
           ),
@@ -129,7 +130,7 @@ class LibraryEmptyState extends StatelessWidget {
               width: 32,
               height: 32,
               decoration: const BoxDecoration(
-                color: LibraryDesignTokens.continueButtonBg,
+                color: ShelfDesignTokens.continueButtonBg,
                 shape: BoxShape.circle,
               ),
               alignment: Alignment.center,

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../common/ui/top-icon-button.dart';
-import '../../shared/constants/library-design-tokens.dart';
+import '../../shared/constants/common-design-tokens.dart';
 
 class LibraryTopBar extends StatelessWidget {
   const LibraryTopBar({
@@ -20,7 +20,7 @@ class LibraryTopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: LibraryDesignTokens.topBarHeight,
+      height: CommonDesignTokens.topBarHeight,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: <Widget>[

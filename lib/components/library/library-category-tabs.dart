@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../common/ui/pill-tab.dart';
-import '../../shared/constants/library-design-tokens.dart';
+import '../../shared/constants/common-design-tokens.dart';
 
 class LibraryCategoryTabs extends StatelessWidget {
   const LibraryCategoryTabs({
@@ -18,7 +18,7 @@ class LibraryCategoryTabs extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: LibraryDesignTokens.tabHeight,
+      height: CommonDesignTokens.tabHeight,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemBuilder: (context, index) {
@@ -29,7 +29,7 @@ class LibraryCategoryTabs extends StatelessWidget {
             onTap: () => onChange(label),
           );
         },
-        separatorBuilder: (_, _) => const SizedBox(width: LibraryDesignTokens.tabGap),
+        separatorBuilder: (_, _) => const SizedBox(width: CommonDesignTokens.tabGap),
         itemCount: items.length,
       ),
     );

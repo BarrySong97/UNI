@@ -6,7 +6,7 @@ import '../../app/routes/route-names.dart';
 import '../../components/library/library-book-grid.dart';
 import '../../components/library/library-header.dart';
 import '../../services/library/book-profile-entry-service.dart';
-import '../../shared/constants/library-design-tokens.dart';
+import '../../shared/constants/common-design-tokens.dart';
 
 class LibraryPage extends StatefulWidget {
   const LibraryPage({super.key});
@@ -43,7 +43,7 @@ class _LibraryPageState extends State<LibraryPage> {
 
         if (state.isLoading) {
           return Container(
-            color: LibraryDesignTokens.pageBackground,
+            color: CommonDesignTokens.pageBackground,
             child: const Center(child: CircularProgressIndicator()),
           );
         }
@@ -51,7 +51,7 @@ class _LibraryPageState extends State<LibraryPage> {
         return Stack(
           children: <Widget>[
             Container(
-              color: LibraryDesignTokens.pageBackground,
+              color: CommonDesignTokens.pageBackground,
               child: SafeArea(
                 bottom: false,
                 child: SingleChildScrollView(
@@ -94,9 +94,9 @@ class _LibraryPageState extends State<LibraryPage> {
                   bottom: false,
                   child: LinearProgressIndicator(
                     minHeight: 3,
-                    backgroundColor: LibraryDesignTokens.pageBackground,
+                    backgroundColor: CommonDesignTokens.pageBackground,
                     valueColor: const AlwaysStoppedAnimation<Color>(
-                      LibraryDesignTokens.textPrimary,
+                      CommonDesignTokens.textPrimary,
                     ),
                   ),
                 ),

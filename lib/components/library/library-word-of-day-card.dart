@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../shared/constants/library-design-tokens.dart';
+import '../../shared/constants/common-design-tokens.dart';
+import '../../shared/constants/shelf-design-tokens.dart';
 
 class WordOfDayCard extends StatelessWidget {
   const WordOfDayCard({this.onTap, super.key});
@@ -14,8 +15,8 @@ class WordOfDayCard extends StatelessWidget {
       child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: LibraryDesignTokens.wordOfDayCardBg,
-        borderRadius: BorderRadius.circular(LibraryDesignTokens.wordOfDayCardRadius),
+        color: ShelfDesignTokens.wordOfDayCardBg,
+        borderRadius: BorderRadius.circular(ShelfDesignTokens.wordOfDayCardRadius),
       ),
       child: Row(
         children: <Widget>[
@@ -23,14 +24,14 @@ class WordOfDayCard extends StatelessWidget {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: LibraryDesignTokens.wordOfDayIconBg,
+              color: ShelfDesignTokens.wordOfDayIconBg,
               borderRadius: BorderRadius.circular(12),
             ),
             alignment: Alignment.center,
             child: const Icon(
               Icons.auto_awesome,
               size: 20,
-              color: LibraryDesignTokens.wordOfDayIconColor,
+              color: ShelfDesignTokens.wordOfDayIconColor,
             ),
           ),
           const SizedBox(width: 12),
@@ -43,7 +44,7 @@ class WordOfDayCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
-                    color: LibraryDesignTokens.textSecondary,
+                    color: CommonDesignTokens.textSecondary,
                     letterSpacing: 0.5,
                   ),
                 ),
@@ -54,7 +55,7 @@ class WordOfDayCard extends StatelessWidget {
                     fontSize: 16,
                     fontWeight: FontWeight.w500,
                     fontStyle: FontStyle.italic,
-                    color: LibraryDesignTokens.textPrimary,
+                    color: CommonDesignTokens.textPrimary,
                   ),
                 ),
               ],
@@ -63,7 +64,7 @@ class WordOfDayCard extends StatelessWidget {
           const Icon(
             Icons.chevron_right,
             size: 22,
-            color: LibraryDesignTokens.textSecondary,
+            color: CommonDesignTokens.textSecondary,
           ),
         ],
       ),

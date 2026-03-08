@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../entities/book-entity.dart';
-import '../../shared/constants/library-design-tokens.dart';
+import '../../shared/constants/common-design-tokens.dart';
+import '../../shared/constants/shelf-design-tokens.dart';
 import 'book-pop-in-wrapper.dart';
 import 'library-book-tile.dart';
 
@@ -26,10 +27,10 @@ class LibraryBookGrid extends StatelessWidget {
   final String? lastImportedBookId;
 
   static const _palette = <Color>[
-    LibraryDesignTokens.coverBlue,
-    LibraryDesignTokens.coverNeon,
-    LibraryDesignTokens.coverBlack,
-    LibraryDesignTokens.coverGray,
+    CommonDesignTokens.coverBlue,
+    CommonDesignTokens.coverNeon,
+    CommonDesignTokens.coverBlack,
+    CommonDesignTokens.coverGray,
   ];
 
   @override
@@ -58,7 +59,7 @@ class LibraryBookGrid extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
                 color: isActive
-                    ? LibraryDesignTokens.tabActiveBg
+                    ? CommonDesignTokens.tabActiveBg
                     : Colors.transparent,
                 borderRadius: BorderRadius.circular(20),
               ),
@@ -68,8 +69,8 @@ class LibraryBookGrid extends StatelessWidget {
                   fontSize: 14,
                   fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
                   color: isActive
-                      ? LibraryDesignTokens.tabActiveText
-                      : LibraryDesignTokens.textSecondary,
+                      ? CommonDesignTokens.tabActiveText
+                      : CommonDesignTokens.textSecondary,
                 ),
               ),
             ),
@@ -93,7 +94,7 @@ class LibraryBookGrid extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Expanded(child: _buildItem(left, i)),
-            const SizedBox(width: LibraryDesignTokens.gridSpacing),
+            const SizedBox(width: CommonDesignTokens.gridSpacing),
             Expanded(
               child: right != null
                   ? _buildItem(right, i + 1)
@@ -103,7 +104,7 @@ class LibraryBookGrid extends StatelessWidget {
         ),
       );
       if (i + 2 < books.length) {
-        rows.add(const SizedBox(height: LibraryDesignTokens.gridRowSpacing));
+        rows.add(const SizedBox(height: CommonDesignTokens.gridRowSpacing));
       }
     }
 
@@ -127,7 +128,7 @@ class LibraryBookGrid extends StatelessWidget {
           children: <Widget>[
             ClipRRect(
               borderRadius: BorderRadius.circular(
-                LibraryDesignTokens.homeGridCoverRadius,
+                ShelfDesignTokens.homeGridCoverRadius,
               ),
               child: Stack(
                 children: <Widget>[
@@ -172,7 +173,7 @@ class LibraryBookGrid extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: LibraryDesignTokens.textPrimary,
+                color: CommonDesignTokens.textPrimary,
               ),
             ),
             if (book.author.isNotEmpty && book.author != 'Unknown') ...[
@@ -183,7 +184,7 @@ class LibraryBookGrid extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   fontSize: 12,
-                  color: LibraryDesignTokens.textSecondary,
+                  color: CommonDesignTokens.textSecondary,
                 ),
               ),
             ],
