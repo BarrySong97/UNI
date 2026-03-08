@@ -61,14 +61,12 @@ class LibraryStore extends ChangeNotifier {
   }
 
   Future<_ProgressData> _loadProgressData(List<BookEntity> books) async {
+    final allProgress = await _progressRepository.getAllProgress();
     final percentMap = <String, double>{};
     final updatedMap = <String, DateTime>{};
-    for (final book in books) {
-      final progress = await _progressRepository.getProgress(book.id);
-      if (progress != null) {
-        percentMap[book.id] = progress.percent;
-        updatedMap[book.id] = progress.updatedAt;
-      }
+    for (final progress in allProgress) {
+      percentMap[progress.bookId] = progress.percent;
+      updatedMap[progress.bookId] = progress.updatedAt;
     }
     return _ProgressData(percentMap: percentMap, updatedMap: updatedMap);
   }

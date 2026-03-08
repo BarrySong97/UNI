@@ -49,14 +49,14 @@ class AppBootstrap {
     final readerPreferencesRepository = ReaderPreferencesRepositoryImpl(
       preferencesDao: readerPreferencesDao,
     );
-    final bookProfileEntryService = BookProfileEntryService(
-      progressRepository: progressRepository,
-    );
+    const bookProfileEntryService = BookProfileEntryService();
 
+    String docsPath = '';
     String booksDirectory = '';
     if (!kIsWeb) {
       final docsDir = await getApplicationDocumentsDirectory();
-      booksDirectory = p.join(docsDir.path, 'books');
+      docsPath = docsDir.path;
+      booksDirectory = p.join(docsPath, 'books');
     }
 
     final appLocale = AppLocaleController();
@@ -70,6 +70,7 @@ class AppBootstrap {
       readerPreferencesRepository: readerPreferencesRepository,
       bookProfileEntryService: bookProfileEntryService,
       appLocaleController: appLocale,
+      documentsDirectoryPath: docsPath,
     );
 
     providers.registerStores(

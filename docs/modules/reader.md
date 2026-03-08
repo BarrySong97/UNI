@@ -25,13 +25,14 @@
 
 ## 核心流程
 
-1. 根据 `bookId` 打开书籍，加载图书元数据、阅读进度（Locator JSON）、该书偏好设置。
-2. 通过 `flureadium.openPublication(epubFilePath)` 打开 EPUB 文件。
+1. 根据 `bookId` 打开书籍，**并行**加载图书元数据、阅读进度（Locator JSON）、该书偏好设置（`Future.wait`）。
+2. 通过 `PublicationCacheService.getOrOpen(epubFilePath)` 打开 EPUB 文件。若同一本书被再次打开，直接复用缓存的 Publication，跳过原生 EPUB 解析（节省 ~800ms）。
 3. 恢复保存的 Locator 位置（如有），通过 `flureadium.goToLocator(locator)` 跳转。
 4. 应用用户偏好设置到 Readium（`setEPUBPreferences`）。
 5. 监听 Readium 位置变化（`onTextLocatorChanged`），更新进度并定时持久化。
 6. 点击正文切换上下控制层显隐；顶部三点与底部五入口面板按既定交互显示。
 7. 亮度/字体设置立即作用于 Readium 并写入 `reader_preferences`；离页时 flush 进度。
+8. 离开 ReaderPage 时**不关闭 Publication**（保留缓存）。App 进入后台或终止时由 `ImmersedApp` 的生命周期监听器调用 `PublicationCacheService.evict()` 释放资源。
 
 ### Readium 渲染架构
 
@@ -69,6 +70,8 @@ EPUB → 拷贝到本地目录            原生 EPUB 解析与渲染           
 - `ReaderPreferencesEntity(bookId, fontSize, pagePaddingLevel, lineHeightLevel, letterSpacing, textColor, backgroundColor, brightness, fontFamily, firstLineIndent, pageTurnMode)`
 - `reader_preferences` 表（`book_id` 主键）
 - `reading_progress` 表（`book_id` 主键，存储 `locator_json`）
+- `PublicationCacheService` — 单例，缓存最近一次打开的 Publication（Dart 对象 + 原生状态）。仅在 app 进入后台或打开不同书时释放。
+- **原生 Manifest 磁盘缓存** — 首次打开 EPUB 后，原生层（ReadiumReader / FlureadiumPlugin）将 manifest JSON 写入 `{epubPath}.manifest.json`。后续打开同一 EPUB 时直接从缓存重建 Publication（跳过 OPF 解析，节省 ~600ms）。缓存对 Dart 层完全透明。
 
 ## 交互与异常
 

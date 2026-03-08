@@ -155,7 +155,8 @@ class _ShelfPageState extends State<ShelfPage> {
     _isNavigatingBook = true;
     try {
       final providers = AppProvidersScope.of(context);
-      final target = await providers.bookProfileEntryService.resolveEntry(bookId);
+      final progressMap = providers.libraryStore.state.progressMap;
+      final target = providers.bookProfileEntryService.resolveEntry(bookId, progressMap);
       if (!mounted) {
         return;
       }

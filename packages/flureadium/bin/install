@@ -1,0 +1,15 @@
+#!/bin/bash
+
+set -e
+
+PROJECT_ROOT=$(cd "$(dirname "$0")/.." && pwd)
+
+$PROJECT_ROOT/bin/forAll flutter pub get
+
+# this is not working as expected
+if [ "$(uname)" == "Darwin" ]; then
+  (cd $PROJECT_ROOT/flureadium/example/ios; pod update && pod install --repo-update)
+fi
+
+$PROJECT_ROOT/flureadium/bin/build_helper_scripts.sh
+$PROJECT_ROOT/bin/update_web_example

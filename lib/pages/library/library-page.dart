@@ -127,7 +127,8 @@ class _LibraryPageState extends State<LibraryPage> {
     _isNavigating = true;
     try {
       final providers = AppProvidersScope.of(context);
-      final target = await providers.bookProfileEntryService.resolveEntry(bookId);
+      final progressMap = providers.libraryStore.state.progressMap;
+      final target = providers.bookProfileEntryService.resolveEntry(bookId, progressMap);
       if (!mounted) return;
       switch (target) {
         case BookProfileEntryTarget.profile:

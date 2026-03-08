@@ -5,7 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flureadium/flureadium.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
+import '../../services/reader/publication-cache-service.dart';
 
 import '../../app/i18n/app-localizations.dart';
 import '../../app/providers/app-providers.dart';
@@ -31,8 +31,10 @@ class ReaderPage extends StatefulWidget {
 class _ReaderPageState extends State<ReaderPage> {
   final Flureadium _flureadium = Flureadium();
   final ReaderThemeService _readerThemeService = ReaderThemeService();
+  final PublicationCacheService _pubCache = PublicationCacheService();
 
   bool _isChromeVisible = false;
+  bool _initialized = false;
   Publication? _publication;
   Locator? _currentLocator;
 
@@ -43,38 +45,40 @@ class _ReaderPageState extends State<ReaderPage> {
   StreamSubscription<ReadiumReaderStatus>? _statusSub;
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final providers = AppProvidersScope.of(context);
-      _readerStore = providers.readerStore;
-      _highlightStore = providers.highlightStore;
-
-      await _readerStore!.openBook(widget.bookId);
-      unawaited(_highlightStore!.loadHighlights(widget.bookId));
-      if (!mounted) return;
-
-      final epubPath = _readerStore!.state.book?.epubFilePath;
-      debugPrint('DEBUG: epubPath = $epubPath');
-      if (epubPath == null) return;
-
-      final resolvedPath = await _resolveEpubPath(epubPath);
-      try {
-        final pub = await _flureadium.openPublication(resolvedPath);
-        if (!mounted) return;
-        setState(() => _publication = pub);
-      } catch (e) {
-        debugPrint('Failed to open publication: $e');
-      }
-    });
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_initialized) {
+      _initialized = true;
+      _initReader();
+    }
   }
 
-  Future<String> _resolveEpubPath(String storedPath) async {
-    if (p.isAbsolute(storedPath)) {
-      return storedPath;
+  Future<void> _initReader() async {
+    final providers = AppProvidersScope.of(context);
+    _readerStore = providers.readerStore;
+    _highlightStore = providers.highlightStore;
+
+    await _readerStore!.openBook(widget.bookId);
+    unawaited(_highlightStore!.loadHighlights(widget.bookId));
+    if (!mounted) return;
+
+    final epubPath = _readerStore!.state.book?.epubFilePath;
+    if (epubPath == null) return;
+
+    final resolvedPath = _resolveEpubPath(epubPath);
+    try {
+      final pub = await _pubCache.getOrOpen(resolvedPath);
+      if (!mounted) return;
+      setState(() => _publication = pub);
+    } catch (e) {
+      debugPrint('Failed to open publication: $e');
     }
-    final docsDir = await getApplicationDocumentsDirectory();
-    return p.join(docsDir.path, storedPath);
+  }
+
+  String _resolveEpubPath(String storedPath) {
+    if (p.isAbsolute(storedPath)) return storedPath;
+    final docsPath = AppProvidersScope.of(context).documentsDirectoryPath;
+    return p.join(docsPath, storedPath);
   }
 
   void _subscribeToChannels() {
@@ -176,7 +180,8 @@ class _ReaderPageState extends State<ReaderPage> {
   void dispose() {
     _locatorSub?.cancel();
     _statusSub?.cancel();
-    _flureadium.closePublication();
+    // Publication is NOT closed here — PublicationCacheService keeps it alive
+    // so reopening the same book skips the expensive native EPUB parsing.
     unawaited(_readerStore?.flushProgress(emitStateChanges: false));
     super.dispose();
   }

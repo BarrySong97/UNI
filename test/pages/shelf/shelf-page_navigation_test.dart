@@ -81,9 +81,7 @@ Future<AppProviders> _createProviders({required bool hasProgress}) async {
     progressRepository: progressRepository,
     highlightRepository: highlightRepository,
     readerPreferencesRepository: readerPreferencesRepository,
-    bookProfileEntryService: BookProfileEntryService(
-      progressRepository: progressRepository,
-    ),
+    bookProfileEntryService: const BookProfileEntryService(),
     appLocaleController: AppLocaleController(),
   );
   providers.registerStores(

@@ -107,9 +107,7 @@ Future<AppProviders> _createProviders({
     progressRepository: progressRepository,
     highlightRepository: highlightRepository,
     readerPreferencesRepository: readerPreferencesRepository,
-    bookProfileEntryService: BookProfileEntryService(
-      progressRepository: progressRepository,
-    ),
+    bookProfileEntryService: const BookProfileEntryService(),
     appLocaleController: AppLocaleController(),
   );
   providers.registerStores(

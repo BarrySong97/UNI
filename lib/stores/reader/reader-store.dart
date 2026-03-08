@@ -33,11 +33,13 @@ class ReaderStore extends ChangeNotifier {
     _state = _state.copyWith(isLoading: true);
     notifyListeners();
 
-    final book = await _bookRepository.getBookById(bookId);
-    final progress = await _progressRepository.getProgress(bookId);
+    final (book, progress, rawPrefs) = await (
+      _bookRepository.getBookById(bookId),
+      _progressRepository.getProgress(bookId),
+      _readerPreferencesRepository.getByBookId(bookId),
+    ).wait;
     final preferences =
-        await _readerPreferencesRepository.getByBookId(bookId) ??
-        ReaderPreferencesEntity.defaultsForBook(bookId);
+        rawPrefs ?? ReaderPreferencesEntity.defaultsForBook(bookId);
 
     if (book == null || book.epubFilePath == null) {
       _state = _state.copyWith(isLoading: false);

@@ -15,6 +15,12 @@ class ProgressRepositoryImpl implements ProgressRepository {
   }
 
   @override
+  Future<List<ReadingProgressEntity>> getAllProgress() async {
+    final dtos = await _progressDao.getAll();
+    return dtos.map((dto) => dto.toEntity()).toList(growable: false);
+  }
+
+  @override
   Future<void> saveProgress(ReadingProgressEntity progress) {
     return _progressDao.upsertProgress(ReadingProgressDto.fromEntity(progress));
   }

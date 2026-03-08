@@ -1,0 +1,452 @@
+# Publication
+
+The `Publication` class represents a Readium Web Publication Manifest (RWPM). It contains all metadata, content structure, and resources needed to render an ebook, audiobook, or comic.
+
+**Source:** [publication.dart](../../../flureadium_platform_interface/lib/src/shared/publication/publication.dart)
+
+## Overview
+
+```dart
+final pub = await flureadium.openPublication('book.epub');
+print(pub.metadata.title);        // "Book Title"
+print(pub.tableOfContents.length); // Number of chapters
+```
+
+## Structure
+
+```
+Publication
+├── context            # JSON-LD context URIs
+├── metadata           # Title, authors, language, etc.
+├── links              # Related resources (self, alternate)
+├── readingOrder       # Sequential content spine
+├── resources          # Images, stylesheets, fonts
+├── tableOfContents    # Navigation structure
+└── subCollections     # Page lists, landmarks, etc.
+```
+
+## Properties
+
+### context
+
+**Type:** `List<String>`
+
+JSON-LD context URIs for the manifest.
+
+### metadata
+
+**Type:** `Metadata`
+
+Publication metadata including title, authors, language, etc.
+
+```dart
+print(pub.metadata.title);           // "Pride and Prejudice"
+print(pub.metadata.authors);         // [Contributor(name: "Jane Austen")]
+print(pub.metadata.language);        // ["en"]
+print(pub.metadata.identifier);      // "urn:isbn:9780141439518"
+print(pub.metadata.publisher);       // "Penguin Classics"
+print(pub.metadata.publicationDate); // DateTime(1813, 1, 28)
+```
+
+### links
+
+**Type:** `List<Link>`
+
+Links to related resources (self, alternate, search, etc.).
+
+### readingOrder
+
+**Type:** `List<Link>`
+
+Ordered list of content documents forming the reading spine.
+
+```dart
+for (final link in pub.readingOrder) {
+  print('${link.href}: ${link.type}');
+  // "chapter1.xhtml: application/xhtml+xml"
+}
+```
+
+### resources
+
+**Type:** `List<Link>`
+
+Additional resources like images, stylesheets, and fonts.
+
+```dart
+final images = pub.resources.where(
+  (r) => r.type?.startsWith('image/') == true,
+);
+```
+
+### tableOfContents
+
+**Type:** `List<Link>`
+
+Navigation table of contents structure.
+
+```dart
+for (final link in pub.tableOfContents) {
+  print(link.title);  // "Chapter 1"
+
+  // Nested chapters
+  for (final child in link.children) {
+    print('  ${child.title}');  // "  Section 1.1"
+  }
+}
+```
+
+### toc
+
+**Type:** `List<Link>`
+
+Alias for `tableOfContents`.
+
+### subCollections
+
+**Type:** `Map<String, List<PublicationCollection>>`
+
+Named subcollections like page-list, landmarks, or guided navigation.
+
+```dart
+final pageList = pub.collectionLinks('page-list');
+for (final page in pageList) {
+  print('Page ${page.title}: ${page.href}');
+}
+```
+
+### identifier
+
+**Type:** `String`
+
+The publication identifier from metadata, or `'unidentified'`.
+
+```dart
+print(pub.identifier);  // "urn:isbn:9780141439518"
+```
+
+## Computed Properties
+
+### coverLink
+
+**Type:** `Link?`
+
+The cover image link, if available.
+
+```dart
+final cover = pub.coverLink;
+if (cover != null) {
+  print('Cover: ${cover.href}');
+}
+```
+
+### coverUri
+
+**Type:** `Uri?`
+
+The cover image URI, if available.
+
+```dart
+if (pub.coverUri != null) {
+  Image.network(pub.coverUri.toString());
+}
+```
+
+### conformsToReadiumAudiobook
+
+**Type:** `bool`
+
+Returns `true` if this publication conforms to the Readium audiobook profile.
+
+```dart
+if (pub.conformsToReadiumAudiobook) {
+  // Enable audiobook controls
+  await flureadium.audioEnable();
+}
+```
+
+### conformsToReadiumEbook
+
+**Type:** `bool`
+
+Returns `true` if this publication conforms to the Readium EPUB profile.
+
+```dart
+if (pub.conformsToReadiumEbook) {
+  // Enable visual reader
+}
+```
+
+### containsMediaOverlays
+
+**Type:** `bool`
+
+Returns `true` if this publication contains media overlays (synchronized narration).
+
+```dart
+if (pub.containsMediaOverlays) {
+  // Show "Read Along" option
+}
+```
+
+### pageList
+
+**Type:** `List<Link>`
+
+Convenience accessor for the page-list collection.
+
+```dart
+final pages = pub.pageList;
+print('Total pages: ${pages.length}');
+```
+
+## Methods
+
+### linkWithHref
+
+Finds the first link with the given HREF.
+
+```dart
+Link? linkWithHref(String href)
+```
+
+Searches through readingOrder, resources, and links (including alternates and children).
+
+```dart
+final link = pub.linkWithHref('chapter1.xhtml');
+if (link != null) {
+  print('Found: ${link.title}');
+}
+```
+
+### linkWithRel
+
+Finds the first link with the given relation.
+
+```dart
+Link? linkWithRel(String rel)
+```
+
+```dart
+final tocLink = pub.linkWithRel('toc');
+final coverLink = pub.linkWithRel('cover');
+```
+
+### linksWithRel
+
+Finds all links having the given relation.
+
+```dart
+List<Link> linksWithRel(String rel)
+```
+
+```dart
+final coverLinks = pub.linksWithRel('cover');
+```
+
+### collectionLinks
+
+Returns links from the first subcollection with the given role.
+
+```dart
+List<Link> collectionLinks(String role)
+```
+
+```dart
+final pageList = pub.collectionLinks('page-list');
+final landmarks = pub.collectionLinks('landmarks');
+```
+
+### locatorFromLink
+
+Converts a link to a locator for navigation.
+
+```dart
+Locator? locatorFromLink(Link link, {MediaType? typeOverride})
+```
+
+**Parameters:**
+- `link` - The link to convert
+- `typeOverride` - Optional media type override
+
+**Returns:** A [Locator](locator.md) for navigation, or `null` if type cannot be determined
+
+```dart
+// Navigate to TOC entry
+final tocLink = pub.tableOfContents.first;
+final locator = pub.locatorFromLink(tocLink);
+if (locator != null) {
+  await flureadium.goToLocator(locator);
+}
+```
+
+### copyWith
+
+Creates a copy with the given fields replaced.
+
+```dart
+Publication copyWith({
+  List<String>? context,
+  Metadata? metadata,
+  List<Link>? links,
+  List<Link>? readingOrder,
+  List<Link>? resources,
+  List<Link>? tableOfContents,
+  Map<String, List<PublicationCollection>>? subCollections,
+})
+```
+
+### toJson
+
+Serializes to RWPM JSON representation.
+
+```dart
+Map<String, dynamic> toJson()
+```
+
+### fromJson
+
+Parses from RWPM JSON representation.
+
+```dart
+static Publication? fromJson(
+  Map<String, dynamic>? json, {
+  bool packaged = false,
+})
+```
+
+## Link Class
+
+A `Link` represents a reference to content or resources.
+
+### Properties
+
+```dart
+Link(
+  href: 'chapter1.xhtml',           // Resource path (required)
+  type: 'application/xhtml+xml',    // Media type
+  title: 'Chapter 1',               // Display title
+  rel: ['contents'],                // Relations
+  properties: Properties(...),       // Additional properties
+  duration: Duration(minutes: 5),   // For audio resources
+  bitrate: 128000,                  // For audio resources
+  children: [...],                  // Nested links
+  alternates: [...],                // Alternate representations
+)
+```
+
+### Useful Properties
+
+```dart
+// Get href without fragment
+final hrefPart = link.hrefPart;  // "chapter1.xhtml" (no #anchor)
+
+// Check relations
+if (link.rels.contains('cover')) {
+  // This is a cover image
+}
+
+// Convert to locator
+final locator = link.toLocator();
+```
+
+## Metadata Class
+
+Publication metadata.
+
+### Properties
+
+```dart
+Metadata(
+  title: 'Book Title',
+  subtitle: 'A Novel',
+  identifier: 'urn:isbn:1234567890',
+  authors: [Contributor(name: 'Author Name')],
+  translators: [...],
+  editors: [...],
+  artists: [...],
+  illustrators: [...],
+  narrators: [...],
+  contributors: [...],
+  publishers: [...],
+  language: ['en'],
+  publicationDate: DateTime(2024, 1, 1),
+  modified: DateTime.now(),
+  description: 'Book description...',
+  rights: 'Copyright 2024',
+  subjects: ['Fiction', 'Romance'],
+  conformsTo: ['https://readium.org/webpub-manifest/profiles/epub'],
+)
+```
+
+## Example Usage
+
+### Display Book Information
+
+```dart
+Widget buildBookInfo(Publication pub) {
+  return Column(
+    children: [
+      if (pub.coverUri != null)
+        Image.network(pub.coverUri.toString()),
+      Text(pub.metadata.title ?? 'Unknown'),
+      Text(pub.metadata.authors.map((a) => a.name).join(', ')),
+      if (pub.metadata.description != null)
+        Text(pub.metadata.description!),
+    ],
+  );
+}
+```
+
+### Build Table of Contents
+
+```dart
+Widget buildToc(Publication pub) {
+  return ListView.builder(
+    itemCount: pub.tableOfContents.length,
+    itemBuilder: (_, index) {
+      final link = pub.tableOfContents[index];
+      return _buildTocItem(link, pub, 0);
+    },
+  );
+}
+
+Widget _buildTocItem(Link link, Publication pub, int depth) {
+  return Column(
+    children: [
+      ListTile(
+        contentPadding: EdgeInsets.only(left: 16.0 * depth),
+        title: Text(link.title ?? 'Untitled'),
+        onTap: () async {
+          final locator = pub.locatorFromLink(link);
+          if (locator != null) {
+            await flureadium.goToLocator(locator);
+          }
+        },
+      ),
+      ...link.children.map((c) => _buildTocItem(c, pub, depth + 1)),
+    ],
+  );
+}
+```
+
+### Check Publication Type
+
+```dart
+void setupReader(Publication pub) {
+  if (pub.conformsToReadiumAudiobook) {
+    // Pure audiobook - show audio player
+    flureadium.audioEnable();
+  } else if (pub.containsMediaOverlays) {
+    // EPUB with synchronized audio - show read-along option
+  } else if (pub.conformsToReadiumEbook) {
+    // Standard EPUB - show visual reader
+  }
+}
+```
+
+## See Also
+
+- [Locator](locator.md) - Position tracking
+- [Flureadium Class](flureadium-class.md) - Main API
+- [ReaderWidget](reader-widget.md) - Display widget

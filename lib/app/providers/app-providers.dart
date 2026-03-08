@@ -20,6 +20,7 @@ class AppProviders {
     required this.readerPreferencesRepository,
     required this.bookProfileEntryService,
     required this.appLocaleController,
+    this.documentsDirectoryPath = '',
   });
 
   final BookRepository bookRepository;
@@ -29,6 +30,7 @@ class AppProviders {
   final ReaderPreferencesRepository readerPreferencesRepository;
   final BookProfileEntryService bookProfileEntryService;
   final AppLocaleController appLocaleController;
+  final String documentsDirectoryPath;
 
   late final LibraryStore libraryStore;
   late final ReaderStore readerStore;

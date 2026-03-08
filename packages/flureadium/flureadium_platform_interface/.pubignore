@@ -1,0 +1,11 @@
+# Development and CI files
+.github/
+.vscode/
+.dart_tool/
+
+# Build artifacts
+build/
+
+# Project files
+project/
+CONTRIBUTING.md

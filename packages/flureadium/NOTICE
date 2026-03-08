@@ -1,0 +1,35 @@
+Flureadium
+Copyright 2025-2026 mulev
+
+This project is a fork of Notalib/flutter_readium (https://github.com/Notalib/flutter_readium),
+licensed under the GNU Lesser General Public License v3 (LGPL-3.0).
+
+This project incorporates code from the following third-party projects:
+
+---
+
+Iridium (Mantano)
+Copyright (c) 2021, Mantano
+License: BSD 3-Clause
+See: flureadium_platform_interface/LICENSE.Iridium
+
+---
+
+Readium Kotlin Toolkit
+Copyright (c) 2017-2025 Readium Foundation
+License: BSD 3-Clause
+https://github.com/readium/kotlin-toolkit
+
+---
+
+Readium Swift Toolkit
+Copyright (c) 2017-2025 Readium Foundation
+License: BSD 3-Clause
+https://github.com/readium/swift-toolkit
+
+---
+
+Readium TypeScript Toolkit
+Copyright (c) Readium Foundation
+License: BSD 3-Clause
+https://github.com/readium/ts-toolkit

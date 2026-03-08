@@ -42,16 +42,14 @@ class _BookDetailPageState extends State<BookDetailPage> {
 
   Future<_BookProfileData?> _loadData() async {
     final providers = AppProvidersScope.of(context);
-    final book = await providers.bookRepository.getBookById(widget.bookId);
+    final (book, progress, chapters) = await (
+      providers.bookRepository.getBookById(widget.bookId),
+      providers.progressRepository.getProgress(widget.bookId),
+      providers.chapterRepository.getChapters(widget.bookId),
+    ).wait;
     if (book == null) {
       return null;
     }
-    final progress = await providers.progressRepository.getProgress(
-      widget.bookId,
-    );
-    final chapters = await providers.chapterRepository.getChapters(
-      widget.bookId,
-    );
     final totalWordCount = chapters.fold<int>(
       0,
       (sum, ch) => sum + ch.wordCount,

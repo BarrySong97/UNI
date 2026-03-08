@@ -147,6 +147,9 @@ CREATE TABLE ${HighlightsTable.tableName} (
   Future<ReadingProgressDto?> getProgress(String bookId) =>
       _backend.getProgress(bookId);
 
+  Future<List<ReadingProgressDto>> getAllProgress() =>
+      _backend.getAllProgress();
+
   Future<void> upsertProgress(ReadingProgressDto progress) =>
       _backend.upsertProgress(progress);
 
@@ -197,6 +200,7 @@ abstract class _DatabaseBackend {
   Future<ChapterDto?> getChapter(String chapterId);
   Future<List<ChapterDto>> listChaptersByBook(String bookId);
   Future<ReadingProgressDto?> getProgress(String bookId);
+  Future<List<ReadingProgressDto>> getAllProgress();
   Future<void> upsertProgress(ReadingProgressDto progress);
   Future<List<HighlightDto>> listHighlights(String bookId);
   Future<void> upsertHighlight(HighlightDto highlight);
@@ -256,6 +260,10 @@ class _InMemoryBackend implements _DatabaseBackend {
   @override
   Future<ReadingProgressDto?> getProgress(String bookId) async =>
       _progress[bookId];
+
+  @override
+  Future<List<ReadingProgressDto>> getAllProgress() async =>
+      _progress.values.toList(growable: false);
 
   @override
   Future<void> upsertProgress(ReadingProgressDto progress) async {
@@ -417,6 +425,12 @@ class _SqfliteBackend implements _DatabaseBackend {
       return null;
     }
     return _progressFromRow(rows.first);
+  }
+
+  @override
+  Future<List<ReadingProgressDto>> getAllProgress() async {
+    final rows = await _database.query(ReadingProgressTable.tableName);
+    return rows.map(_progressFromRow).toList(growable: false);
   }
 
   @override

@@ -1,0 +1,469 @@
+# ReaderWidget
+
+The `ReadiumReaderWidget` displays publication content and handles user interactions. It wraps native Readium navigator views for each platform.
+
+**Source:** [reader_widget.dart](../../lib/reader_widget.dart)
+
+## Overview
+
+```dart
+ReadiumReaderWidget(
+  publication: publication,
+  initialLocator: savedPosition,
+  onLocatorChanged: (locator) => saveProgress(locator),
+)
+```
+
+## Constructor
+
+```dart
+const ReadiumReaderWidget({
+  required Publication publication,
+  Widget loadingWidget = const Center(child: CircularProgressIndicator()),
+  Locator? initialLocator,
+  VoidCallback? onTap,
+  VoidCallback? onGoLeft,
+  VoidCallback? onGoRight,
+  VoidCallback? onSwipe,
+  Function(String)? onExternalLinkActivated,
+  void Function(Locator)? onLocatorChanged,
+  VoidCallback? onReady,
+  Key? key,
+})
+```
+
+## Parameters
+
+### publication
+
+**Type:** `Publication` (required)
+
+The publication to display. Obtain from `flureadium.openPublication()`.
+
+```dart
+final pub = await flureadium.openPublication('book.epub');
+ReadiumReaderWidget(publication: pub, ...)
+```
+
+### loadingWidget
+
+**Type:** `Widget`
+**Default:** `Center(child: CircularProgressIndicator())`
+
+Widget shown while the native reader is loading.
+
+```dart
+ReadiumReaderWidget(
+  publication: pub,
+  loadingWidget: const Center(
+    child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        CircularProgressIndicator(),
+        SizedBox(height: 16),
+        Text('Loading book...'),
+      ],
+    ),
+  ),
+)
+```
+
+### initialLocator
+
+**Type:** `Locator?`
+
+Starting position in the publication. If null, starts from the beginning.
+
+```dart
+// Restore saved position
+final savedJson = prefs.getString('lastPosition');
+final savedLocator = savedJson != null
+    ? Locator.fromJsonString(savedJson)
+    : null;
+
+ReadiumReaderWidget(
+  publication: pub,
+  initialLocator: savedLocator,
+)
+```
+
+### onTap
+
+**Type:** `VoidCallback?`
+
+Called when the user taps on the reader content.
+
+```dart
+ReadiumReaderWidget(
+  publication: pub,
+  onTap: () {
+    setState(() => _showControls = !_showControls);
+  },
+)
+```
+
+### onGoLeft
+
+**Type:** `VoidCallback?`
+
+Called when the reader navigates left (previous page).
+
+```dart
+ReadiumReaderWidget(
+  publication: pub,
+  onGoLeft: () {
+    print('Went to previous page');
+  },
+)
+```
+
+### onGoRight
+
+**Type:** `VoidCallback?`
+
+Called when the reader navigates right (next page).
+
+```dart
+ReadiumReaderWidget(
+  publication: pub,
+  onGoRight: () {
+    print('Went to next page');
+  },
+)
+```
+
+### onSwipe
+
+**Type:** `VoidCallback?`
+
+Called on swipe gestures.
+
+### onExternalLinkActivated
+
+**Type:** `Function(String)?`
+
+Called when the user taps an external link (URLs outside the publication).
+
+```dart
+ReadiumReaderWidget(
+  publication: pub,
+  onExternalLinkActivated: (url) async {
+    // Open in browser
+    if (await canLaunchUrl(Uri.parse(url))) {
+      await launchUrl(Uri.parse(url));
+    }
+  },
+)
+```
+
+### onLocatorChanged
+
+**Type:** `void Function(Locator)?`
+
+Called when the reading position changes. Use for saving progress.
+
+```dart
+ReadiumReaderWidget(
+  publication: pub,
+  onLocatorChanged: (locator) {
+    final progress = locator.locations?.totalProgression ?? 0;
+    print('Progress: ${(progress * 100).toStringAsFixed(1)}%');
+
+    // Save to storage
+    prefs.setString('lastPosition', locator.json);
+  },
+)
+```
+
+### onReady
+
+**Type:** `VoidCallback?`
+
+Called once when the native platform view has been created and all EventChannel handlers are registered. This is the correct place to subscribe to `Flureadium.onReaderStatusChanged`, `Flureadium.onTextLocatorChanged`, and `Flureadium.onErrorEvent`.
+
+On iOS these channels are registered lazily inside `ReadiumReaderView.init()`, which runs just before `onReady` fires. Subscribing before `onReady` causes `MissingPluginException`, which permanently closes the stream's internal `StreamController` and silently drops all subsequent events. On Android and web the channels are always ready, but using `onReady` for consistency is recommended.
+
+```dart
+class _ReaderPageState extends State<ReaderPage> {
+  final _flureadium = Flureadium();
+  StreamSubscription<Locator>? _locatorSub;
+
+  void _subscribeToChannels() {
+    _locatorSub?.cancel();
+    _locatorSub = _flureadium.onTextLocatorChanged.listen(
+      (l) => setState(() => _locator = l),
+    );
+  }
+
+  @override
+  void dispose() {
+    _locatorSub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ReadiumReaderWidget(
+      publication: _publication!,
+      onReady: _subscribeToChannels,
+    );
+  }
+}
+```
+
+## Interface Methods
+
+The widget implements `ReadiumReaderWidgetInterface`, providing these methods:
+
+### go
+
+Navigate to a specific locator.
+
+```dart
+Future<void> go(
+  Locator locator, {
+  required bool isAudioBookWithText,
+  bool animated = false,
+})
+```
+
+### goLeft
+
+Navigate to the previous page.
+
+```dart
+Future<void> goLeft({bool animated = true})
+```
+
+### goRight
+
+Navigate to the next page.
+
+```dart
+Future<void> goRight({bool animated = true})
+```
+
+### skipToNext
+
+Skip to the next chapter.
+
+```dart
+Future<void> skipToNext({bool animated = true})
+```
+
+### skipToPrevious
+
+Skip to the previous chapter.
+
+```dart
+Future<void> skipToPrevious({bool animated = true})
+```
+
+### getCurrentLocator
+
+Get the current reading position.
+
+```dart
+Future<Locator?> getCurrentLocator()
+```
+
+### getLocatorFragments
+
+Get additional locator fragments for a position.
+
+```dart
+Future<Locator?> getLocatorFragments(Locator locator)
+```
+
+### setEPUBPreferences
+
+Apply EPUB visual preferences.
+
+```dart
+Future<void> setEPUBPreferences(EPUBPreferences preferences)
+```
+
+### setPDFPreferences
+
+Apply PDF visual preferences.
+
+```dart
+Future<void> setPDFPreferences(PDFPreferences preferences)
+```
+
+### applyDecorations
+
+Apply decorations to the content.
+
+```dart
+Future<void> applyDecorations(String id, List<ReaderDecoration> decorations)
+```
+
+## Platform Implementation
+
+The widget uses platform-specific views:
+
+### Android
+
+Uses `PlatformViewLink` with `AndroidViewSurface` for high-performance native view embedding.
+
+### iOS
+
+Uses `UiKitView` for iOS native view integration.
+
+### macOS
+
+Uses Swift native view (similar to iOS).
+
+### Web
+
+Uses `ReadiumWebView` with JavaScript interop.
+
+## Lifecycle Management
+
+The widget automatically manages:
+
+### Wakelock
+
+Keeps the screen on while reading. Uses `WakelockManagerMixin`.
+
+### Orientation
+
+Handles device orientation changes. Uses `OrientationHandlerMixin`.
+
+### Reader Registration
+
+Manages widget registration with the platform. Uses `ReaderLifecycleMixin`.
+
+## Complete Example
+
+```dart
+class ReaderScreen extends StatefulWidget {
+  final String publicationPath;
+
+  const ReaderScreen({required this.publicationPath, super.key});
+
+  @override
+  State<ReaderScreen> createState() => _ReaderScreenState();
+}
+
+class _ReaderScreenState extends State<ReaderScreen> {
+  final _flureadium = Flureadium();
+  Publication? _publication;
+  Locator? _initialLocator;
+  bool _showControls = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPublication();
+  }
+
+  Future<void> _loadPublication() async {
+    // Load saved position
+    final prefs = await SharedPreferences.getInstance();
+    final savedJson = prefs.getString('position_${widget.publicationPath}');
+    if (savedJson != null) {
+      _initialLocator = Locator.fromJsonString(savedJson);
+    }
+
+    // Open publication
+    final pub = await _flureadium.openPublication(widget.publicationPath);
+    setState(() => _publication = pub);
+  }
+
+  @override
+  void dispose() {
+    _flureadium.closePublication();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_publication == null) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    return Scaffold(
+      body: Stack(
+        children: [
+          // Reader
+          ReadiumReaderWidget(
+            publication: _publication!,
+            initialLocator: _initialLocator,
+            loadingWidget: const Center(
+              child: CircularProgressIndicator(),
+            ),
+            onTap: () {
+              setState(() => _showControls = !_showControls);
+            },
+            onExternalLinkActivated: (url) {
+              launchUrl(Uri.parse(url));
+            },
+            onLocatorChanged: (locator) async {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setString(
+                'position_${widget.publicationPath}',
+                locator.json,
+              );
+            },
+          ),
+
+          // Overlay controls
+          if (_showControls)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: AppBar(
+                title: Text(_publication!.metadata.title ?? 'Reader'),
+                backgroundColor: Colors.black54,
+              ),
+            ),
+
+          if (_showControls)
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                color: Colors.black54,
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.skip_previous, color: Colors.white),
+                      onPressed: () => _flureadium.skipToPrevious(),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.chevron_left, color: Colors.white),
+                      onPressed: () => _flureadium.goLeft(),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.chevron_right, color: Colors.white),
+                      onPressed: () => _flureadium.goRight(),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.skip_next, color: Colors.white),
+                      onPressed: () => _flureadium.skipToNext(),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+```
+
+## See Also
+
+- [Flureadium Class](flureadium-class.md) - Main API
+- [Publication](publication.md) - Publication model
+- [Locator](locator.md) - Position tracking
+- [Preferences](preferences.md) - Visual customization

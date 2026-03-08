@@ -1,0 +1,55 @@
+name: flureadium
+description: "Flutter plugin for reading EPUB ebooks, audiobooks, and comics using the Readium toolkits. Supports EPUB 2/3, PDF, TTS, audiobook playback, highlights, and reading preferences."
+version: 0.7.1
+homepage: https://github.com/mulev/flureadium
+repository: https://github.com/mulev/flureadium
+issue_tracker: https://github.com/mulev/flureadium/issues
+topics:
+  - epub
+  - ebook
+  - readium
+  - reader
+  - pdf
+
+environment:
+  sdk: ">=3.8.0 <4.0.0"
+  flutter: '>=3.3.0'
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: dev.mulev.flureadium
+        pluginClass: FlureadiumPlugin
+      ios:
+        pluginClass: FlureadiumPlugin
+      macos:
+        pluginClass: FlureadiumPlugin
+      web:
+        pluginClass: FlureadiumWebPlugin
+        fileName: src/flureadium_web.dart
+  assets:
+    - assets/helpers/
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_web_plugins:
+    sdk: flutter
+  flureadium_platform_interface:
+    path: ../flureadium_platform_interface
+  rxdart: ^0.28.0
+  wakelock_plus: ^1.2.8
+  web: ^1.1.1
+  collection: ^1.19.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  plugin_platform_interface: ^2.0.2
+  mocktail: ^1.0.0
+  fake_async: ^1.3.0
+
+executables:
+  copy_js_file: copy_js_file
