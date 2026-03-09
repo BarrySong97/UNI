@@ -28,7 +28,6 @@ class _BookDetailPageState extends State<BookDetailPage> {
   Future<_BookProfileData?>? _dataFuture;
   Future<LinearGradient>? _topGradientFuture;
   String? _topGradientKey;
-  bool _isNavigating = false;
   bool _isDeleting = false;
   bool _isBackfillingProfileColor = false;
 
@@ -62,19 +61,10 @@ class _BookDetailPageState extends State<BookDetailPage> {
   }
 
   Future<void> _continueReading() async {
-    if (_isNavigating || !mounted) {
-      return;
-    }
-    _isNavigating = true;
-    try {
-      await Navigator.of(
-        context,
-      ).pushNamed(RouteNames.reader, arguments: widget.bookId);
-    } finally {
-      _isNavigating = false;
-    }
+    await AppProvidersScope.of(
+      context,
+    ).readerEntryService.openBook(context, widget.bookId);
   }
-
 
   void _ensureTopGradientFuture({
     required String gradientKey,
@@ -273,19 +263,13 @@ class _BookDetailPageState extends State<BookDetailPage> {
             height: 32,
             color: CommonDesignTokens.borderColor,
           ),
-          _buildStatItem(
-            label: 'Words',
-            value: _formatWordCount(wordCount),
-          ),
+          _buildStatItem(label: 'Words', value: _formatWordCount(wordCount)),
           Container(
             width: 1,
             height: 32,
             color: CommonDesignTokens.borderColor,
           ),
-          _buildStatItem(
-            label: 'Category',
-            value: category,
-          ),
+          _buildStatItem(label: 'Category', value: category),
         ],
       ),
     );
@@ -408,8 +392,9 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                         borderRadius: BorderRadius.circular(8),
                                         boxShadow: <BoxShadow>[
                                           BoxShadow(
-                                            color:
-                                                Colors.black.withValues(alpha: 0.2),
+                                            color: Colors.black.withValues(
+                                              alpha: 0.2,
+                                            ),
                                             blurRadius: 12,
                                             offset: const Offset(0, 4),
                                           ),
@@ -487,8 +472,9 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                 SizedBox(
                                   width: double.infinity,
                                   child: ElevatedButton(
-                                    onPressed:
-                                        _isDeleting ? null : _continueReading,
+                                    onPressed: _isDeleting
+                                        ? null
+                                        : _continueReading,
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor:
                                           CommonDesignTokens.textPrimary,

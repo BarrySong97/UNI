@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
@@ -8,6 +7,7 @@ import '../../entities/reading-progress-entity.dart';
 import '../../repositories/book/book-repository.dart';
 import '../../repositories/progress/progress-repository.dart';
 import '../../repositories/reader-preferences/reader-preferences-repository.dart';
+import '../../services/reader/reader-performance-tracker.dart';
 import '../../shared/constants/reader-constants.dart';
 import 'reader-state.dart';
 
@@ -30,20 +30,28 @@ class ReaderStore extends ChangeNotifier {
   ReaderState get state => _state;
 
   Future<void> openBook(String bookId) async {
+    final watch = ReaderPerf.start('store.open_book', bookId: bookId);
     _state = _state.copyWith(isLoading: true);
     notifyListeners();
 
+    final queryWatch = ReaderPerf.start(
+      'store.open_book.query',
+      bookId: bookId,
+    );
     final (book, progress, rawPrefs) = await (
       _bookRepository.getBookById(bookId),
       _progressRepository.getProgress(bookId),
       _readerPreferencesRepository.getByBookId(bookId),
     ).wait;
+    ReaderPerf.end('store.open_book.query', queryWatch, bookId: bookId);
     final preferences =
         rawPrefs ?? ReaderPreferencesEntity.defaultsForBook(bookId);
 
     if (book == null || book.epubFilePath == null) {
       _state = _state.copyWith(isLoading: false);
       notifyListeners();
+      ReaderPerf.mark('store.open_book.missing_book', bookId: bookId);
+      ReaderPerf.end('store.open_book', watch, bookId: bookId);
       return;
     }
 
@@ -56,6 +64,7 @@ class ReaderStore extends ChangeNotifier {
       isReaderReady: false,
     );
     notifyListeners();
+    ReaderPerf.end('store.open_book', watch, bookId: bookId);
   }
 
   void onReaderReady() {
@@ -70,14 +79,6 @@ class ReaderStore extends ChangeNotifier {
     );
     notifyListeners();
     _scheduleProgressSave();
-  }
-
-  Future<void> loadPreferences(String bookId) async {
-    final preferences =
-        await _readerPreferencesRepository.getByBookId(bookId) ??
-        ReaderPreferencesEntity.defaultsForBook(bookId);
-    _state = _state.copyWith(preferences: preferences);
-    notifyListeners();
   }
 
   Future<void> updatePreferences(
@@ -96,16 +97,6 @@ class ReaderStore extends ChangeNotifier {
 
   String? get savedLocatorJson => _state.locatorJson;
 
-  Map<String, dynamic>? get savedLocatorMap {
-    final json = _state.locatorJson;
-    if (json == null || json.isEmpty) return null;
-    try {
-      return jsonDecode(json) as Map<String, dynamic>;
-    } catch (_) {
-      return null;
-    }
-  }
-
   void _scheduleProgressSave() {
     _saveTimer?.cancel();
     _saveTimer = Timer(
@@ -116,16 +107,11 @@ class ReaderStore extends ChangeNotifier {
     );
   }
 
-  Future<void> saveProgress({bool emitStateChanges = true}) async {
+  Future<void> saveProgress() async {
     final book = _state.book;
     final locatorJson = _state.locatorJson;
     if (book == null || locatorJson == null || locatorJson.isEmpty) {
       return;
-    }
-
-    if (emitStateChanges) {
-      _state = _state.copyWith(isSaving: true);
-      notifyListeners();
     }
 
     final progress = ReadingProgressEntity(
@@ -135,16 +121,11 @@ class ReaderStore extends ChangeNotifier {
       updatedAt: DateTime.now(),
     );
     await _progressRepository.saveProgress(progress);
-
-    if (emitStateChanges) {
-      _state = _state.copyWith(isSaving: false);
-      notifyListeners();
-    }
   }
 
-  Future<void> flushProgress({bool emitStateChanges = true}) async {
+  Future<void> flushProgress() async {
     _saveTimer?.cancel();
-    await saveProgress(emitStateChanges: emitStateChanges);
+    await saveProgress();
   }
 
   @override

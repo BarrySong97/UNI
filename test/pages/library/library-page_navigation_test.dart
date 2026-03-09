@@ -6,7 +6,7 @@ import 'package:uni/app/providers/app-providers.dart';
 import 'package:uni/app/routes/route-names.dart';
 import 'package:uni/entities/book-entity.dart';
 import 'package:uni/entities/reading-progress-entity.dart';
-import 'package:uni/pages/shelf/shelf-page.dart';
+import 'package:uni/pages/library/library-page.dart';
 import 'package:uni/repositories/book/book-repository-impl.dart';
 import 'package:uni/repositories/chapter/chapter-repository-impl.dart';
 import 'package:uni/repositories/highlight/highlight-repository-impl.dart';
@@ -40,9 +40,6 @@ class _FakeReaderOverlayController extends ReaderOverlayController {
 
   final bool canOpenInstantly;
   int showCallCount = 0;
-
-  @override
-  Future<void> preloadForBook(String bookId, String resolvedEpubPath) async {}
 
   @override
   bool canShowInstantly(String bookId) => canOpenInstantly;
@@ -149,47 +146,31 @@ Widget _buildApp({
         }
         return null;
       },
-      home: const Scaffold(body: ShelfPage()),
+      home: const Scaffold(body: LibraryPage()),
     ),
   );
 }
 
 void main() {
-  testWidgets('first open routes to reader via Now Reading Continue', (
-    tester,
-  ) async {
-    final providers = await _createProviders(hasProgress: false);
-    final observer = _RecordingNavigatorObserver();
+  testWidgets(
+    'book with progress falls back to reader route when not preloaded',
+    (tester) async {
+      final providers = await _createProviders(hasProgress: true);
+      final observer = _RecordingNavigatorObserver();
 
-    await tester.pumpWidget(
-      _buildApp(providers: providers, observer: observer),
-    );
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        _buildApp(providers: providers, observer: observer),
+      );
+      await tester.pumpAndSettle();
 
-    // Book without progress appears as Now Reading — tap Continue button
-    await tester.tap(find.text('Continue'));
-    await tester.pumpAndSettle();
+      final bookTitleFinder = find.text('Architecture of Happiness').last;
+      await tester.ensureVisible(bookTitleFinder);
+      await tester.tap(bookTitleFinder);
+      await tester.pumpAndSettle();
 
-    expect(observer.pushedRouteNames, contains(RouteNames.reader));
-  });
-
-  testWidgets('book with progress routes to reader via Continue button', (
-    tester,
-  ) async {
-    final providers = await _createProviders(hasProgress: true);
-    final observer = _RecordingNavigatorObserver();
-
-    await tester.pumpWidget(
-      _buildApp(providers: providers, observer: observer),
-    );
-    await tester.pumpAndSettle();
-
-    // Book with progress appears in NowReadingCard — tap Continue button
-    await tester.tap(find.text('Continue'));
-    await tester.pumpAndSettle();
-
-    expect(observer.pushedRouteNames, contains(RouteNames.reader));
-  });
+      expect(observer.pushedRouteNames, contains(RouteNames.reader));
+    },
+  );
 
   testWidgets('book with progress shows overlay when preloaded matches', (
     tester,
@@ -208,7 +189,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Continue'));
+    final bookTitleFinder = find.text('Architecture of Happiness').last;
+    await tester.ensureVisible(bookTitleFinder);
+    await tester.tap(bookTitleFinder);
     await tester.pumpAndSettle();
 
     expect(overlayController.showCallCount, 1);

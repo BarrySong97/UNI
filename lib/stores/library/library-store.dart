@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 
@@ -9,6 +11,7 @@ import '../../repositories/book/book-repository.dart';
 import '../../repositories/progress/progress-repository.dart';
 import '../../services/library/book-profile-color-service.dart';
 import '../../services/parser/book-import-service.dart';
+import '../../services/reader/publication-cache-service.dart';
 import 'library-state.dart';
 
 class LibraryStore extends ChangeNotifier {
@@ -85,6 +88,19 @@ class LibraryStore extends ChangeNotifier {
       final bookId = 'book_${now.microsecondsSinceEpoch}';
 
       final epubFilePath = await _copyEpubToLocal(filePath, bookId);
+      await compute(_extractEpubInIsolate, _ExtractArgs(
+        epubPath: p.join(_booksDirectory, '$bookId.epub'),
+        extractDir: p.join(_booksDirectory, bookId),
+      ));
+
+      // Pre-cache: trigger native openPublication to generate manifest cache.
+      // This way the first user-visible open uses DirectoryContainer + cached manifest.
+      final resolvedPath = _resolveEpubPath(epubFilePath);
+      try {
+        await PublicationCacheService().getOrOpen(resolvedPath);
+      } catch (_) {
+        // Non-fatal: first open will do the full parse instead.
+      }
 
       final coverBytes = _decodeCoverDataUrl(imported.coverUrl);
       final profileBgColor = await _bookProfileColorService
@@ -182,6 +198,17 @@ class LibraryStore extends ChangeNotifier {
         if (await file.exists()) {
           await file.delete();
         }
+        // Clean up extracted directory and manifest cache.
+        final extractedDir = Directory(
+          resolvedPath.replaceAll(RegExp(r'\.epub$'), ''),
+        );
+        if (await extractedDir.exists()) {
+          await extractedDir.delete(recursive: true);
+        }
+        final cacheFile = File('$resolvedPath.manifest.json');
+        if (await cacheFile.exists()) {
+          await cacheFile.delete();
+        }
       }
 
       final books = await _bookRepository.getShelfBooks();
@@ -252,4 +279,31 @@ class _ProgressData {
 
   final Map<String, double> percentMap;
   final Map<String, DateTime> updatedMap;
+}
+
+class _ExtractArgs {
+  const _ExtractArgs({required this.epubPath, required this.extractDir});
+  final String epubPath;
+  final String extractDir;
+}
+
+/// Runs in a background isolate so EPUB extraction doesn't block the UI.
+void _extractEpubInIsolate(_ExtractArgs args) {
+  final dir = Directory(args.extractDir);
+  if (dir.existsSync()) return;
+
+  try {
+    final bytes = File(args.epubPath).readAsBytesSync();
+    final archive = ZipDecoder().decodeBytes(bytes);
+    dir.createSync(recursive: true);
+    for (final entry in archive) {
+      if (entry.isFile) {
+        final outFile = File('${args.extractDir}/${entry.name}');
+        outFile.createSync(recursive: true);
+        outFile.writeAsBytesSync(entry.content as List<int>);
+      }
+    }
+  } catch (_) {
+    // Non-fatal: native layer falls back to ZIP access.
+  }
 }

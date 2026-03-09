@@ -1,6 +1,7 @@
 import Flutter
 import Combine
 import UIKit
+import WebKit
 import MediaPlayer
 import ReadiumNavigator
 import ReadiumShared
@@ -9,14 +10,27 @@ private let TAG = "ReadiumReaderPlugin"
 
 internal var currentPublicationUrlStr: String?
 internal var currentPublication: Publication?
+internal var publicationBySession: [String: Publication] = [:]
+internal var publicationUrlBySession: [String: String] = [:]
 internal var currentReaderView: ReadiumReaderView?
+internal var readerViewBySession: [String: ReadiumReaderView] = [:]
 internal var currentPdfReaderView: PdfReaderView?
 
-func getCurrentPublication() -> Publication? {
+func getCurrentPublication(sessionId: String? = nil) -> Publication? {
+  if let sessionId {
+    return publicationBySession[sessionId]
+  }
   return currentPublication
 }
 
-func setCurrentReadiumReaderView(_ readerView: ReadiumReaderView?) {
+func setCurrentReadiumReaderView(_ readerView: ReadiumReaderView?, sessionId: String?) {
+  if let sessionId {
+    if let readerView {
+      readerViewBySession[sessionId] = readerView
+    } else {
+      readerViewBySession.removeValue(forKey: sessionId)
+    }
+  }
   currentReaderView = readerView
 }
 
@@ -58,10 +72,50 @@ public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLog
     registrar.register(factory, withId: readiumReaderViewType)
 
     self.registrar = registrar
+
+    // Pre-warm WKWebView process pool so the first real WKWebView creation is faster.
+    Self.prewarmWebView()
+  }
+
+  private func logPerf(_ stage: String, elapsedMs: Int? = nil, extras: [String: Any?] = [:]) {
+    var parts: [String] = ["[PERF][Reader][iOS]", stage]
+    if let elapsedMs {
+      parts.append("elapsed=\(elapsedMs)ms")
+    }
+    for (key, value) in extras {
+      guard let value else { continue }
+      parts.append("\(key)=\(value)")
+    }
+    print(parts.joined(separator: " "))
+  }
+
+  private static var _warmupView: WKWebView?
+
+  private static func prewarmWebView() {
+    let warmup = WKWebView(frame: .zero)
+    warmup.loadHTMLString("<html></html>", baseURL: nil)
+    _warmupView = warmup
+    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+      _warmupView = nil
+    }
   }
 
   public func log(_ warning: Warning) {
     print(TAG, "Error in Readium: \(warning)")
+  }
+
+  private func resolvePublicationFromSession(_ sessionId: String?) -> Publication? {
+    guard let sessionId else {
+      return currentPublication
+    }
+    return publicationBySession[sessionId]
+  }
+
+  private func resolveReaderViewFromSession(_ sessionId: String?) -> ReadiumReaderView? {
+    guard let sessionId else {
+      return currentReaderView
+    }
+    return readerViewBySession[sessionId]
   }
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
@@ -84,43 +138,29 @@ public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLog
     case "closePublication":
       self.closePublication()
       result(nil)
+    case "closePublicationForSession":
+      guard let args = call.arguments as? [String: Any],
+            let sessionId = args["sessionId"] as? String else {
+        result(nil)
+        return
+      }
+      self.closePublication(sessionId: sessionId)
+      result(nil)
     case "openPublication":
       let args = call.arguments as! [Any?]
       let pubUrlStr = args[0] as! String
-
-      Task.detached(priority: .high) {
-        // Fast path: try cached manifest to skip expensive OPF parsing.
-        if let cachedPub = await self.openPublicationFromCache(urlStr: pubUrlStr) {
-          currentPublication?.close()
-          currentPublication = cachedPub
-          currentPublicationUrlStr = pubUrlStr
-          let jsonManifest = cachedPub.jsonManifest
-          await MainActor.run { result(jsonManifest) }
-          return
-        }
-
-        // Normal path: full parse.
-        do {
-          if (currentPublication != nil) {
-            self.closePublication()
-          }
-          let pub: Publication = try await self.loadPublication(fromUrlStr: pubUrlStr).get()
-          currentPublication = pub
-          currentPublicationUrlStr = pubUrlStr
-
-          // Cache manifest for next time.
-          self.cacheManifest(urlStr: pubUrlStr, publication: pub)
-
-          let jsonManifest = pub.jsonManifest
-          await MainActor.run {
-            result(jsonManifest)
-          }
-        } catch let err as ReadiumError {
-          await MainActor.run {
-            result(err.toFlutterError())
-          }
-        }
+      self.openPublication(pubUrlStr: pubUrlStr, sessionId: nil, result: result)
+    case "openPublicationWithSession":
+      guard let args = call.arguments as? [String: Any],
+            let pubUrlStr = args["pubUrl"] as? String,
+            let sessionId = args["sessionId"] as? String else {
+        result(FlutterError.init(
+          code: "InvalidArgument",
+          message: "Invalid arguments for openPublicationWithSession",
+          details: nil))
+        return
       }
+      self.openPublication(pubUrlStr: pubUrlStr, sessionId: sessionId, result: result)
     case "loadPublication":
       let args = call.arguments as! [Any?]
       let pubUrlStr = args[0] as! String
@@ -154,7 +194,7 @@ public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLog
           message: "Failed to get link content",
           details: nil))
       }
-      Task.detached(priority: .background) {
+      Task.detached(priority: .high) {
         let resource = publication.get(link)
         do {
           if (asString) {
@@ -342,6 +382,30 @@ public class FlureadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLog
         // ReaderView goTo
         else if (currentReaderView != nil) {
           await currentReaderView?.goToLocator(locator: locator, animated: false)
+          navigated = true
+        }
+        await MainActor.run { [navigated] in
+          result(navigated)
+        }
+      }
+    case "goToLocatorWithSession":
+      Task.detached(priority: .high) {
+        guard let args = call.arguments as? [Any?],
+              let locatorJson = args.first as? Dictionary<String, Any>,
+              let sessionId = args.count > 1 ? args[1] as? String : nil,
+              let locator = try? Locator(json: locatorJson, warnings: self)
+        else {
+          await MainActor.run {
+            result(FlutterError.init(
+              code: "InvalidArgument",
+              message: "Failed to parse locator/sessionId",
+              details: nil))
+          }
+          return
+        }
+        var navigated = false
+        if let readerView = self.resolveReaderViewFromSession(sessionId) {
+          await readerView.goToLocator(locator: locator, animated: false)
           navigated = true
         }
         await MainActor.run { [navigated] in
@@ -561,7 +625,8 @@ extension FlureadiumPlugin {
   }
 
   /// Tries to open a publication using a cached manifest JSON file,
-  /// bypassing the expensive OPF parsing step (~600ms saved).
+  /// bypassing the expensive OPF parsing step.
+  /// Prefers a pre-extracted directory (fastest) over opening the ZIP.
   private func openPublicationFromCache(urlStr: String) async -> Publication? {
     let filePath = Self.resolveLocalFilePath(urlStr)
     guard let filePath = filePath else { return nil }
@@ -576,10 +641,33 @@ extension FlureadiumPlugin {
       return nil
     }
 
-    // Open ZIP for container access (fast, no OPF parsing).
+    // Fast path: use pre-extracted directory.
+    let extractedDir = filePath.replacingOccurrences(of: ".epub", with: "")
+    var isDir: ObjCBool = false
+    if FileManager.default.fileExists(atPath: extractedDir, isDirectory: &isDir),
+       isDir.boolValue {
+      let dirURL = URL(fileURLWithPath: extractedDir)
+      if let fileURL = dirURL.anyURL.absoluteURL?.fileURL,
+         let container = try? await DirectoryContainer(directory: fileURL) {
+        print("[PERF] Using DirectoryContainer: \(extractedDir)")
+        return Publication(manifest: manifest, container: container)
+      } else {
+        print("[PERF] DirectoryContainer failed for: \(extractedDir)")
+      }
+    } else {
+      print("[PERF] Extracted directory not found: \(extractedDir)")
+    }
+
+    // Fallback: open ZIP with known format.
     let fileURL = URL(fileURLWithPath: filePath)
-    guard let absUrl = fileURL.anyURL.absoluteURL,
-          let asset = try? await sharedReadium.assetRetriever!.retrieve(url: absUrl).get(),
+    guard let absUrl = fileURL.anyURL.absoluteURL else { return nil }
+
+    let epubFormat = Format(
+      specifications: .zip, .epub,
+      mediaType: .epub,
+      fileExtension: .epub
+    )
+    guard let asset = try? await sharedReadium.assetRetriever!.retrieve(url: absUrl, format: epubFormat).get(),
           case let .container(containerAsset) = asset else {
       return nil
     }
@@ -609,14 +697,112 @@ extension FlureadiumPlugin {
     return path
   }
 
-  private func closePublication() {
+  private func openPublication(
+    pubUrlStr: String,
+    sessionId: String?,
+    result: @escaping FlutterResult
+  ) {
+    Task.detached(priority: .high) {
+      await MainActor.run {
+        self.logPerf(
+          "native.open_publication.start",
+          extras: ["path": pubUrlStr, "sessionId": sessionId ?? "legacy"]
+        )
+      }
+      let startTime = CFAbsoluteTimeGetCurrent()
+
+      if let cachedPub = await self.openPublicationFromCache(urlStr: pubUrlStr) {
+        let elapsed = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
+        await MainActor.run {
+          self.logPerf(
+            "native.open_publication.cache_hit",
+            elapsedMs: Int(elapsed),
+            extras: ["path": pubUrlStr, "sessionId": sessionId ?? "legacy"]
+          )
+        }
+        if let sessionId {
+          publicationBySession[sessionId]?.close()
+          publicationBySession[sessionId] = cachedPub
+          publicationUrlBySession[sessionId] = pubUrlStr
+        } else {
+          currentPublication?.close()
+          currentPublication = cachedPub
+          currentPublicationUrlStr = pubUrlStr
+        }
+        await MainActor.run { result(cachedPub.jsonManifest) }
+        return
+      }
+
+      let cacheMissTime = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
+      await MainActor.run {
+        self.logPerf(
+          "native.open_publication.cache_miss",
+          elapsedMs: Int(cacheMissTime),
+          extras: ["path": pubUrlStr, "sessionId": sessionId ?? "legacy"]
+        )
+      }
+
+      do {
+        let pub: Publication = try await self.loadPublication(fromUrlStr: pubUrlStr).get()
+        let parseElapsed = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
+        await MainActor.run {
+          self.logPerf(
+            "native.open_publication.full_parse",
+            elapsedMs: Int(parseElapsed),
+            extras: ["path": pubUrlStr, "sessionId": sessionId ?? "legacy"]
+          )
+        }
+
+        if let sessionId {
+          publicationBySession[sessionId]?.close()
+          publicationBySession[sessionId] = pub
+          publicationUrlBySession[sessionId] = pubUrlStr
+        } else {
+          currentPublication = pub
+          currentPublicationUrlStr = pubUrlStr
+        }
+        self.cacheManifest(urlStr: pubUrlStr, publication: pub)
+        await MainActor.run {
+          result(pub.jsonManifest)
+        }
+      } catch let err as ReadiumError {
+        await MainActor.run {
+          self.logPerf(
+            "native.open_publication.error",
+            extras: ["path": pubUrlStr, "error": err.localizedDescription]
+          )
+        }
+        await MainActor.run {
+          result(err.toFlutterError())
+        }
+      }
+    }
+  }
+
+  private func closePublication(sessionId: String? = nil) {
     // Clean-up any resources associated with the publication.
     Task { @MainActor in
       self.timebasedNavigator?.dispose()
       self.timebasedNavigator = nil
-      currentPublication?.close()
-      currentPublication = nil
-      currentPublicationUrlStr = nil
+      if let sessionId {
+        publicationBySession[sessionId]?.close()
+        publicationBySession.removeValue(forKey: sessionId)
+        publicationUrlBySession.removeValue(forKey: sessionId)
+        readerViewBySession.removeValue(forKey: sessionId)
+        if currentReaderView?.sessionId == sessionId {
+          currentReaderView = nil
+        }
+      } else {
+        currentPublication?.close()
+        currentPublication = nil
+        currentPublicationUrlStr = nil
+        for (_, publication) in publicationBySession {
+          publication.close()
+        }
+        publicationBySession.removeAll()
+        publicationUrlBySession.removeAll()
+        readerViewBySession.removeAll()
+      }
     }
   }
 

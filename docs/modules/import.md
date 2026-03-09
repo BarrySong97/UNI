@@ -25,7 +25,8 @@
    - 提取封面图片转为 data URL
 4. 生成 `ImportedBookDraft`（包含元数据和 `coverUrl`）。
 5. `LibraryStore` 将 EPUB 文件拷贝到 `booksDirectory`。
-6. 基于封面提取 `profileBgColor`（用于书架渐变背景）。
+6. 解压 EPUB 到 `books/{bookId}/` 目录，供原生层 `DirectoryContainer` 使用（加速后续打开）。
+7. 基于封面提取 `profileBgColor`（用于书架渐变背景）。
 7. 写入 `BookRepository`，存储 `epubFilePath` 字段。
 8. 刷新书架并提示导入结果。
 

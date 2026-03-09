@@ -65,13 +65,17 @@ EPUB → 拷贝到本地目录            原生 EPUB 解析与渲染           
 - `ReaderState.locatorJson` — 当前 Readium Locator JSON
 - `ReaderState.bookPercent` — 阅读进度百分比
 - `ReaderState.preferences` — 阅读偏好
-- `ReaderState.isLoading / isReaderReady / isSaving`
+- `ReaderState.isLoading / isReaderReady`
 - `ReadingProgressEntity(bookId, locatorJson, percent, updatedAt)`
 - `ReaderPreferencesEntity(bookId, fontSize, pagePaddingLevel, lineHeightLevel, letterSpacing, textColor, backgroundColor, brightness, fontFamily, firstLineIndent, pageTurnMode)`
 - `reader_preferences` 表（`book_id` 主键）
 - `reading_progress` 表（`book_id` 主键，存储 `locator_json`）
-- `PublicationCacheService` — 单例，缓存最近一次打开的 Publication（Dart 对象 + 原生状态）。仅在 app 进入后台或打开不同书时释放。
-- **原生 Manifest 磁盘缓存** — 首次打开 EPUB 后，原生层（ReadiumReader / FlureadiumPlugin）将 manifest JSON 写入 `{epubPath}.manifest.json`。后续打开同一 EPUB 时直接从缓存重建 Publication（跳过 OPF 解析，节省 ~600ms）。缓存对 Dart 层完全透明。
+- `PublicationCacheService` — 多 session Publication 缓存（iOS first）。按 `sessionId(bookId)` 维护最多 3 本热书可复用 Publication，并支持按 session 回收。
+- `ReaderSessionPoolService` — 热书会话池（`maxSize=3`），维护 `openCount`、`lastOpenedAt`、`lastUsedAt`，淘汰策略为 `LFU + LRU`，并带 `TTL=15min` 自动回收。
+- **原生 Manifest 磁盘缓存** — 首次打开 EPUB 后，原生层（ReadiumReader / FlureadiumPlugin）将 manifest JSON 写入 `{epubPath}.manifest.json`。后续打开同一 EPUB 时直接从缓存重建 Publication（跳过 OPF 解析）。缓存对 Dart 层完全透明。
+- **EPUB 预解压** — 导入时将 EPUB ZIP 解压到 `books/{bookId}/` 目录。原生层优先用 `DirectoryContainer` 从解压目录读取资源（~5ms），跳过 ZIP 操作（~130ms）。解压目录不存在时 fallback 到 ZIP 路径。删除书籍时同步清理解压目录和 manifest 缓存。
+- **Reader 预加载（Overlay 方案）** — 入口统一 overlay-first + route fallback。当前为多槽热池（最多 3 本）+ 单可见 overlay：命中热池时优先 overlay，未命中回退 `RouteNames.reader`。不做“点击后等待预加载完成”的阻塞。
+- **WKWebView Pre-warm** — iOS 插件注册时预创建一个空 WKWebView，提前启动 WebContent 进程。后续所有 WKWebView 创建都会更快。
 
 ## 交互与异常
 
@@ -81,6 +85,40 @@ EPUB → 拷贝到本地目录            原生 EPUB 解析与渲染           
 - 亮度通过阅读层遮罩实现，不调用系统亮度 API。
 - 图书不存在或 EPUB 文件缺失时显示错误态。
 - 偏好或进度保存失败时不阻断阅读流程。
+
+## 性能埋点与排查
+
+- 统一使用 `[PERF][Reader]` 前缀日志（`ReaderPerf`）记录关键阶段耗时。
+- 关键埋点阶段：
+  - `entry.open` / `entry.overlay_hit` / `entry.route_fallback` / `entry.route_push`
+  - `pool.hit` / `pool.miss` / `pool.evict` / `pool.gc.run` / `session.open_count_increment`
+  - `overlay.preload` / `overlay.show` / `overlay.reader_widget_ready`
+  - `overlay.preload.publication_ready` / `overlay.content_ready`
+  - `publication.get_or_open` / `publication.cache_hit` / `publication.open_native`
+  - `store.open_book` / `store.open_book.query`
+  - `page.init_reader` / `page.init_reader.get_publication` / `page.reader_widget_ready`
+  - `page.first_frame_after_publication`
+  - `page.spinner.show` / `page.spinner.stage_change` / `page.spinner.hide` / `page.spinner.total_visible` / `page.first_paint_after_spinner_hide`
+  - `channel.first_status_event` / `channel.first_locator_event` / `channel.restore`（恢复 locator 跳转）
+  - `entry.route_fallback_to_page_init`（路由回退后到页面真正初始化的延迟）
+  - iOS 原生链路（`[PERF][Reader][iOS]`）：
+    - `native.open_publication.*`（cache hit/miss/full parse）
+    - `native.reader_view.init.start/navigator_created/init.done`
+    - `native.reader_view.first_location_changed/status_ready_sent`
+    - `native.reader_view.navigator_created_to_first_location`
+      （EPUBNavigator 创建后到首个可见位置信号）
+    - `native.reader_view.go_to_locator.start/await_go_end/go_to_locator_to_location_changed`
+      （`goToLocator` 调用链路耗时）
+    - `native.reader_view.setup_user_scripts.summary_first_location/summary_deinit`
+      （字段：`totalSetupCalls` / `uniqueControllers` / `scriptsInjectedTotal`）
+- 排查顺序（先看哪段最慢）：
+  1. 入口是否命中 `entry.overlay_hit`；若否，先看为何预加载没命中。
+  2. 若命中 overlay 但慢：看 `overlay.preload` 与 `overlay.reader_widget_ready`。
+  3. 若走路由慢：看 `page.init_reader` 中 `store.open_book.query`、`publication.open_native`、`channel.restore` 三段。
+  4. 若 `publication.cache_hit` 频率低：检查是否频繁切换书导致缓存抖动（当前是单 Publication 缓存）。
+  5. 若 `setupUserScripts` 异常频繁：优先观察 `summary_*` 聚合字段，并结合 iOS 预加载窗口（当前 `preloadPrevious=0`、`preloadNext=2`）评估 WKWebView controller 创建压力。
+  6. 若首屏仍慢：对比 `navigator_created_to_first_location` 与 `go_to_locator_to_location_changed`，判断瓶颈在初始渲染还是定位跳转链路。
+  7. iOS Web 层细分：查看 `native.reader_view.web_perf_markers`（`domContentLoadedMs` / `firstPaintMs`），判断慢点在 DOM 构建还是首帧绘制。
 
 ## 验收标准
 

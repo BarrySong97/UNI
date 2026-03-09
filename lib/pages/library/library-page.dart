@@ -77,7 +77,8 @@ class _LibraryPageState extends State<LibraryPage> {
                         onBookTap: (book) => _openBook(book.id),
                         categories: state.categories,
                         activeCategory: state.activeCategory,
-                        onCategoryTap: (category) => store.setCategory(category),
+                        onCategoryTap: (category) =>
+                            store.setCategory(category),
                         lastImportedBookId: lastImportedBookId,
                       ),
                     ],
@@ -112,7 +113,15 @@ class _LibraryPageState extends State<LibraryPage> {
 
     final picked = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: const <String>['epub', 'txt', 'pdf', 'mobi', 'azw', 'azw3', 'fb2'],
+      allowedExtensions: const <String>[
+        'epub',
+        'txt',
+        'pdf',
+        'mobi',
+        'azw',
+        'azw3',
+        'fb2',
+      ],
       allowMultiple: false,
     );
     if (!mounted || picked == null || picked.files.single.path == null) {
@@ -128,14 +137,19 @@ class _LibraryPageState extends State<LibraryPage> {
     try {
       final providers = AppProvidersScope.of(context);
       final progressMap = providers.libraryStore.state.progressMap;
-      final target = providers.bookProfileEntryService.resolveEntry(bookId, progressMap);
+      final target = providers.bookProfileEntryService.resolveEntry(
+        bookId,
+        progressMap,
+      );
       if (!mounted) return;
       switch (target) {
         case BookProfileEntryTarget.profile:
-          await Navigator.of(context).pushNamed(RouteNames.bookDetail, arguments: bookId);
+          await Navigator.of(
+            context,
+          ).pushNamed(RouteNames.bookDetail, arguments: bookId);
           break;
         case BookProfileEntryTarget.reader:
-          await Navigator.of(context).pushNamed(RouteNames.reader, arguments: bookId);
+          await providers.readerEntryService.openBook(context, bookId);
           break;
       }
     } finally {

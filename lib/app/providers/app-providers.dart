@@ -6,6 +6,8 @@ import '../../repositories/highlight/highlight-repository.dart';
 import '../../repositories/progress/progress-repository.dart';
 import '../../repositories/reader-preferences/reader-preferences-repository.dart';
 import '../../services/library/book-profile-entry-service.dart';
+import '../../services/reader/reader-entry-service.dart';
+import '../../services/reader/reader-overlay-controller.dart';
 import '../../stores/highlight/highlight-store.dart';
 import '../../stores/library/library-store.dart';
 import '../../stores/reader/reader-store.dart';
@@ -21,7 +23,11 @@ class AppProviders {
     required this.bookProfileEntryService,
     required this.appLocaleController,
     this.documentsDirectoryPath = '',
-  });
+    ReaderOverlayController? readerOverlayController,
+    ReaderEntryService? readerEntryService,
+  }) : readerOverlayController =
+           readerOverlayController ?? ReaderOverlayController(),
+       readerEntryService = readerEntryService ?? ReaderEntryService();
 
   final BookRepository bookRepository;
   final ChapterRepository chapterRepository;
@@ -31,6 +37,8 @@ class AppProviders {
   final BookProfileEntryService bookProfileEntryService;
   final AppLocaleController appLocaleController;
   final String documentsDirectoryPath;
+  final ReaderOverlayController readerOverlayController;
+  final ReaderEntryService readerEntryService;
 
   late final LibraryStore libraryStore;
   late final ReaderStore readerStore;

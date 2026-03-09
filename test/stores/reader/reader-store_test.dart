@@ -113,7 +113,7 @@ void main() {
     expect(saved?.percent, 0.7);
   });
 
-  test('flushProgress can save silently without emitting listeners', () async {
+  test('flushProgress saves progress without extra state notifications', () async {
     final deps = await _createDeps();
     final store = await _seedBook(deps: deps, bookId: 'book-5');
 
@@ -126,7 +126,7 @@ void main() {
     store.updateLocator('{"href":"/chapter4.xhtml"}', percent: 0.8);
     notifyCount = 0;
 
-    await store.flushProgress(emitStateChanges: false);
+    await store.flushProgress();
 
     final saved = await deps.progressRepository.getProgress('book-5');
     expect(saved?.locatorJson, '{"href":"/chapter4.xhtml"}');
@@ -160,16 +160,14 @@ void main() {
     expect(store.savedLocatorJson, '{"href":"/chapter5.xhtml"}');
   });
 
-  test('savedLocatorMap parses locator JSON correctly', () async {
+  test('savedLocatorJson returns updated locator after updateLocator', () async {
     final deps = await _createDeps();
     final store = await _seedBook(deps: deps, bookId: 'book-8');
 
     await store.openBook('book-8');
     store.updateLocator('{"href":"/chapter6.xhtml","type":"text/html"}');
 
-    final map = store.savedLocatorMap;
-    expect(map?['href'], '/chapter6.xhtml');
-    expect(map?['type'], 'text/html');
+    expect(store.savedLocatorJson, '{"href":"/chapter6.xhtml","type":"text/html"}');
   });
 
   test('onReaderReady sets isReaderReady to true', () async {

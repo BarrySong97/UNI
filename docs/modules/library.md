@@ -15,6 +15,7 @@ Both pages share the same data source (`LibraryStore`) and reusable components (
 - "Now Reading" card (based on most recent reading progress; falls back to first book when no progress exists)
 - Book grid with cover tiles, title, author, and progress percentage badge
 - Book tap routing to Book Profile or reader based on progress
+- Unified reader entry policy: overlay-first (from 3-book hot pool) with route fallback
 - Import flow entry (Header "+" button on Shelf and Library)
 - Import feedback: new book pops in (scale + fade), existing grid items slide to new positions (AnimatedPositioned)
 - Empty state handling (no books: "Add Your First Book" button)
@@ -54,10 +55,12 @@ lib/stores/library/       — LibraryStore + LibraryState
    - All: all books
    - Reading: progress > 0 and < 1.0
    - Finished: progress >= 1.0
-5. User taps "Continue" on Now Reading card → opens reader directly.
+5. User taps any reader entry (Now Reading Continue / Library grid with progress / Book Detail Continue) → uses unified reader entry:
+   - If target book is in reader hot pool (up to 3 books): show overlay-first path.
+   - Otherwise: fallback to `/reader` route.
 6. User taps a book in the grid → `BookProfileEntryService` determines entry:
    - No progress: Book Profile (`/book-detail`)
-   - Has progress: reader directly
+   - Has progress: unified reader entry (overlay-first + route fallback)
 
 ## Page Layout
 
@@ -110,7 +113,7 @@ Header + "Add Your First Book" button (on Shelf).
 - Now Reading shows most recently read book; first book when no progress.
 - Grid tiles show cover, title, author, and progress badge.
 - Empty state shows "Add Your First Book" button.
-- "Continue" button opens reader directly.
+- "Continue" and all progress-based reader entries follow unified overlay-first + route-fallback behavior.
 - Imported EPUB shows real cover; other formats show placeholder.
 - App restart on iOS doesn't break book file access (relative paths).
 - Book deletion cascades to associated data.

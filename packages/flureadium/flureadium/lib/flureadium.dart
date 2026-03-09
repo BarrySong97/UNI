@@ -103,8 +103,11 @@ class Flureadium {
   /// final pub = await flureadium.openPublication('file:///path/to/book.epub');
   /// print('Opened: ${pub.metadata.title}');
   /// ```
-  Future<Publication> openPublication(String pubUrl) {
-    return _platform.openPublication(pubUrl).onError((err, _) {
+  Future<Publication> openPublication(String pubUrl, {String? sessionId}) {
+    return _platform.openPublication(pubUrl, sessionId: sessionId).onError((
+      err,
+      _,
+    ) {
       throw ReadiumException.fromError(err);
     });
   }
@@ -112,8 +115,8 @@ class Flureadium {
   /// Closes the currently open publication.
   ///
   /// Should be called when done reading to release resources.
-  Future<void> closePublication() {
-    return _platform.closePublication();
+  Future<void> closePublication({String? sessionId}) {
+    return _platform.closePublication(sessionId: sessionId);
   }
 
   /// Stream of reader status changes.
@@ -121,6 +124,9 @@ class Flureadium {
   /// Emits [ReadiumReaderStatus] whenever the reader state changes.
   Stream<ReadiumReaderStatus> get onReaderStatusChanged =>
       _platform.onReaderStatusChanged;
+
+  Stream<ReaderStatusEvent> get onReaderStatusEvents =>
+      _platform.onReaderStatusEvents;
 
   /// Stream of text locator changes during reading.
   ///
@@ -134,6 +140,10 @@ class Flureadium {
   /// ```
   Stream<Locator> get onTextLocatorChanged {
     return _platform.onTextLocatorChanged;
+  }
+
+  Stream<ReaderLocatorEvent> get onTextLocatorEvents {
+    return _platform.onTextLocatorEvents;
   }
 
   /// Stream of timebased player state changes.
@@ -262,7 +272,8 @@ class Flureadium {
   /// Navigates to a specific locator position.
   ///
   /// Returns true if navigation succeeded.
-  Future<bool> goToLocator(Locator locator) => _platform.goToLocator(locator);
+  Future<bool> goToLocator(Locator locator, {String? sessionId}) =>
+      _platform.goToLocator(locator, sessionId: sessionId);
 
   /// Enables audiobook playback mode.
   ///

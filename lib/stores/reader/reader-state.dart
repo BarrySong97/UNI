@@ -8,7 +8,6 @@ class ReaderState {
     this.bookPercent = 0,
     this.preferences,
     this.isLoading = false,
-    this.isSaving = false,
     this.isReaderReady = false,
   });
 
@@ -17,7 +16,6 @@ class ReaderState {
   final double bookPercent;
   final ReaderPreferencesEntity? preferences;
   final bool isLoading;
-  final bool isSaving;
   final bool isReaderReady;
 
   ReaderState copyWith({
@@ -26,7 +24,6 @@ class ReaderState {
     double? bookPercent,
     ReaderPreferencesEntity? preferences,
     bool? isLoading,
-    bool? isSaving,
     bool? isReaderReady,
   }) {
     return ReaderState(
@@ -35,7 +32,6 @@ class ReaderState {
       bookPercent: bookPercent ?? this.bookPercent,
       preferences: preferences ?? this.preferences,
       isLoading: isLoading ?? this.isLoading,
-      isSaving: isSaving ?? this.isSaving,
       isReaderReady: isReaderReady ?? this.isReaderReady,
     );
   }

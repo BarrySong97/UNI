@@ -4,6 +4,7 @@ import 'package:flureadium/flureadium.dart';
 class ReadiumReaderWidget extends StatelessWidget {
   const ReadiumReaderWidget({
     required this.publication,
+    this.sessionId,
     this.loadingWidget = const Center(child: CircularProgressIndicator()),
     this.initialLocator,
     this.onTap,
@@ -17,6 +18,7 @@ class ReadiumReaderWidget extends StatelessWidget {
   });
 
   final Publication publication;
+  final String? sessionId;
   final Widget loadingWidget;
   final Locator? initialLocator;
   final VoidCallback? onTap;

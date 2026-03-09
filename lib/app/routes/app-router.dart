@@ -15,24 +15,44 @@ class AppRouter {
   static Route<dynamic>? onGenerateRoute(RouteSettings settings) {
     switch (settings.name) {
       case RouteNames.mainTabs:
-        return MaterialPageRoute<void>(builder: (_) => const MainTabShellPage());
+        return MaterialPageRoute<void>(
+          builder: (_) => const MainTabShellPage(),
+        );
       case RouteNames.shelf:
         return MaterialPageRoute<void>(builder: (_) => const ShelfPage());
       case RouteNames.library:
-        return MaterialPageRoute<void>(builder: (_) => const MainTabShellPage(initialIndex: 1));
+        return MaterialPageRoute<void>(
+          builder: (_) => const MainTabShellPage(initialIndex: 1),
+        );
       case RouteNames.discover:
-        return MaterialPageRoute<void>(builder: (_) => const MainTabShellPage(initialIndex: 2));
+        return MaterialPageRoute<void>(
+          builder: (_) => const MainTabShellPage(initialIndex: 2),
+        );
       case RouteNames.bookDetail:
         final bookId = settings.arguments as String?;
-        return MaterialPageRoute<void>(builder: (_) => BookDetailPage(bookId: bookId ?? ''));
+        return MaterialPageRoute<void>(
+          builder: (_) => BookDetailPage(bookId: bookId ?? ''),
+        );
       case RouteNames.reader:
         final bookId = settings.arguments as String?;
         if (!RouteGuards.canOpenReader(bookId)) {
-          return MaterialPageRoute<void>(builder: (_) => const MainTabShellPage());
+          return MaterialPageRoute<void>(
+            builder: (_) => const MainTabShellPage(),
+          );
         }
-        return MaterialPageRoute<void>(builder: (_) => ReaderPage(bookId: bookId!));
+        return PageRouteBuilder<void>(
+          settings: settings,
+          pageBuilder: (_, __, ___) => ReaderPage(bookId: bookId!),
+          transitionDuration: const Duration(milliseconds: 120),
+          reverseTransitionDuration: const Duration(milliseconds: 120),
+          transitionsBuilder: (_, animation, __, child) {
+            return FadeTransition(opacity: animation, child: child);
+          },
+        );
       case RouteNames.readerSettings:
-        return MaterialPageRoute<void>(builder: (_) => const ReaderSettingsPage());
+        return MaterialPageRoute<void>(
+          builder: (_) => const ReaderSettingsPage(),
+        );
       case RouteNames.statistics:
         return MaterialPageRoute<void>(builder: (_) => const StatisticsPage());
       case RouteNames.wordOfDay:
@@ -40,9 +60,7 @@ class AppRouter {
       case RouteNames.highlights:
         final args = settings.arguments as Map<String, String>?;
         return MaterialPageRoute<void>(
-          builder: (_) => HighlightListPage(
-            bookId: args?['bookId'] ?? '',
-          ),
+          builder: (_) => HighlightListPage(bookId: args?['bookId'] ?? ''),
         );
       default:
         return null;

@@ -6,6 +6,7 @@ import 'src/index.dart';
 class ReadiumReaderWidget extends StatefulWidget {
   const ReadiumReaderWidget({
     required this.publication,
+    this.sessionId,
     this.loadingWidget = const Center(child: CircularProgressIndicator()),
     this.initialLocator,
     this.onTap,
@@ -17,6 +18,7 @@ class ReadiumReaderWidget extends StatefulWidget {
   });
 
   final Publication publication;
+  final String? sessionId;
   final Widget loadingWidget;
   final Locator? initialLocator;
   final VoidCallback? onTap;

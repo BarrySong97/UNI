@@ -16,8 +16,11 @@ class ReadiumReaderViewFactory: NSObject, @preconcurrency FlutterPlatformViewFac
         viewIdentifier viewId: Int64,
         arguments args: Any?
     ) -> FlutterPlatformView {
+        let creationParams = args as? [String: Any]
+        let sessionId = creationParams?["sessionId"] as? String
+
         // Check if current publication is PDF
-        if let publication = getCurrentPublication(),
+        if let publication = getCurrentPublication(sessionId: sessionId),
            publication.conforms(to: .pdf) {
             return PdfReaderView(
                 frame: frame,

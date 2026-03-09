@@ -22,6 +22,7 @@ import 'package:uni/services/db/daos/reader-preferences-dao.dart';
 import 'package:uni/services/library/book-profile-color-service.dart';
 import 'package:uni/services/library/book-profile-entry-service.dart';
 import 'package:uni/services/parser/book-import-service.dart';
+import 'package:uni/services/reader/reader-overlay-controller.dart';
 import 'package:uni/stores/highlight/highlight-store.dart';
 import 'package:uni/stores/library/library-store.dart';
 import 'package:uni/stores/reader/reader-store.dart';
@@ -43,10 +44,26 @@ class _RecordingNavigatorObserver extends NavigatorObserver {
   }
 }
 
+class _FakeReaderOverlayController extends ReaderOverlayController {
+  _FakeReaderOverlayController({required this.canOpenInstantly});
+
+  final bool canOpenInstantly;
+  int showCallCount = 0;
+
+  @override
+  bool canShowInstantly(String bookId) => canOpenInstantly;
+
+  @override
+  void show([String? bookId]) {
+    showCallCount += 1;
+  }
+}
+
 Future<AppProviders> _createProviders({
   bool secondBookHasProgress = false,
   String? mainBookProfileBgColor,
   String mainBookAuthor = 'Alain de Botton',
+  ReaderOverlayController? readerOverlayController,
 }) async {
   final database = AppDatabase();
   final booksDao = BooksDao(database: database);
@@ -109,6 +126,7 @@ Future<AppProviders> _createProviders({
     readerPreferencesRepository: readerPreferencesRepository,
     bookProfileEntryService: const BookProfileEntryService(),
     appLocaleController: AppLocaleController(),
+    readerOverlayController: readerOverlayController,
   );
   providers.registerStores(
     libraryStore: LibraryStore(
@@ -128,7 +146,9 @@ Future<AppProviders> _createProviders({
 }
 
 void main() {
-  testWidgets('BookDetailPage renders book profile with title and stats', (tester) async {
+  testWidgets('BookDetailPage renders book profile with title and stats', (
+    tester,
+  ) async {
     final providers = await _createProviders(
       mainBookProfileBgColor: '#FFCC3344',
     );
@@ -200,7 +220,9 @@ void main() {
     expect(find.text('Unknown'), findsNothing);
   });
 
-  testWidgets('Continue navigates to reader route', (tester) async {
+  testWidgets('Continue falls back to reader route when overlay is not ready', (
+    tester,
+  ) async {
     final providers = await _createProviders();
     final observer = _RecordingNavigatorObserver();
 
@@ -224,6 +246,40 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(observer.pushedRouteNames, contains(RouteNames.reader));
+  });
+
+  testWidgets('Continue shows overlay instantly when preloaded matches', (
+    tester,
+  ) async {
+    final overlayController = _FakeReaderOverlayController(
+      canOpenInstantly: true,
+    );
+    final providers = await _createProviders(
+      readerOverlayController: overlayController,
+    );
+    final observer = _RecordingNavigatorObserver();
+
+    await tester.pumpWidget(
+      AppProvidersScope(
+        providers: providers,
+        child: MaterialApp(
+          supportedLocales: AppLocaleController.supportedLocales,
+          localizationsDelegates: AppLocalizations.delegates,
+          navigatorObservers: <NavigatorObserver>[observer],
+          routes: <String, WidgetBuilder>{
+            RouteNames.reader: (_) => const Scaffold(body: Text('reader')),
+          },
+          home: const BookDetailPage(bookId: 'book-1'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('CONTINUE'));
+    await tester.pumpAndSettle();
+
+    expect(overlayController.showCallCount, 1);
+    expect(observer.pushedRouteNames, isNot(contains(RouteNames.reader)));
   });
 
   testWidgets('settings menu can delete book and navigate to main tabs', (
@@ -265,7 +321,7 @@ void main() {
     await tester.tap(find.text('Delete book'));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(TextButton, 'Delete'));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 500));
 
     expect(observer.pushedRouteNames, contains(RouteNames.mainTabs));
     expect(await providers.bookRepository.getBookById('book-1'), isNull);

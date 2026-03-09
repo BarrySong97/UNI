@@ -84,7 +84,10 @@ class FlureadiumWebPlugin extends FlureadiumPlatform {
   }
 
   @override
-  Future<Publication> openPublication(String pubUrl) async {
+  Future<Publication> openPublication(
+    String pubUrl, {
+    String? sessionId,
+  }) async {
     // NOTE: For web, loadPublication and openPublication does the same thing,
     //
     // If calling the openPublication method outside of ReadiumWebView it will throw an error right away if there is no div with the id 'container'
@@ -97,7 +100,7 @@ class FlureadiumWebPlugin extends FlureadiumPlatform {
   }
 
   @override
-  Future<void> closePublication() async {
+  Future<void> closePublication({String? sessionId}) async {
     JsPublicationChannel().closePublication();
     return;
   }
@@ -187,7 +190,7 @@ class FlureadiumWebPlugin extends FlureadiumPlatform {
       throw UnimplementedError('previous is not implemented on web platform');
 
   @override
-  Future<bool> goToLocator(final Locator locator) async {
+  Future<bool> goToLocator(final Locator locator, {String? sessionId}) async {
     try {
       await JsPublicationChannel.goToLocation(locator.hrefPath);
       return true;

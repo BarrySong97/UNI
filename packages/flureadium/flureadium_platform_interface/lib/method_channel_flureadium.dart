@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:meta/meta.dart';
@@ -41,21 +42,48 @@ class MethodChannelFlureadium extends FlureadiumPlatform {
   Stream<ReadiumTimebasedState>? _onTimebasedPlayerStateChanged;
 
   Stream<ReadiumReaderStatus>? _onReaderStatusChanged;
+  Stream<ReaderStatusEvent>? _onReaderStatusEvents;
+  Stream<ReaderLocatorEvent>? _onTextLocatorEvents;
 
   Stream<ReadiumError>? _onErrorEvent;
 
   /// Fires whenever the Reader's current Locator changes.
   @override
   Stream<Locator> get onTextLocatorChanged {
-    _onTextLocatorChanged ??= textLocatorChannel.receiveBroadcastStream().map((
+    _onTextLocatorChanged ??= onTextLocatorEvents.map((event) => event.locator);
+    return _onTextLocatorChanged!;
+  }
+
+  @override
+  Stream<ReaderLocatorEvent> get onTextLocatorEvents {
+    _onTextLocatorEvents ??= textLocatorChannel.receiveBroadcastStream().map((
       dynamic event,
     ) {
-      final newLocator = Locator.fromJson(
-        json.decode(event) as Map<String, dynamic>,
-      );
-      return newLocator!;
+      if (event is String) {
+        final locator = Locator.fromJson(
+          json.decode(event) as Map<String, dynamic>,
+        );
+        return ReaderLocatorEvent(locator: locator!);
+      }
+      if (event is Map) {
+        final map = event.cast<dynamic, dynamic>();
+        final sessionId = map['sessionId'] as String?;
+        final rawLocator = map['locator'];
+        Locator? locator;
+        if (rawLocator is String) {
+          locator = Locator.fromJson(
+            json.decode(rawLocator) as Map<String, dynamic>,
+          );
+        } else if (rawLocator is Map) {
+          locator = Locator.fromJson(rawLocator.cast<String, dynamic>());
+        }
+        if (locator != null) {
+          return ReaderLocatorEvent(locator: locator, sessionId: sessionId);
+        }
+      }
+      throw StateError('Unsupported text locator event: $event');
     });
-    return _onTextLocatorChanged!;
+    return _onTextLocatorEvents!;
   }
 
   /// Fires whenever the TimebasedNavigator changes state
@@ -74,15 +102,35 @@ class MethodChannelFlureadium extends FlureadiumPlatform {
 
   @override
   Stream<ReadiumReaderStatus> get onReaderStatusChanged {
-    _onReaderStatusChanged ??= readerStatusChannel.receiveBroadcastStream().map(
-      (dynamic event) {
-        final newStatus = ReadiumReaderStatus.values.firstWhere(
-          (e) => e.name == event as String,
-        );
-        return newStatus;
-      },
+    _onReaderStatusChanged ??= onReaderStatusEvents.map(
+      (event) => event.status,
     );
     return _onReaderStatusChanged!;
+  }
+
+  @override
+  Stream<ReaderStatusEvent> get onReaderStatusEvents {
+    _onReaderStatusEvents ??= readerStatusChannel.receiveBroadcastStream().map((
+      dynamic event,
+    ) {
+      if (event is String) {
+        final status = ReadiumReaderStatus.values.firstWhere(
+          (e) => e.name == event,
+        );
+        return ReaderStatusEvent(status: status);
+      }
+      if (event is Map) {
+        final map = event.cast<dynamic, dynamic>();
+        final statusName = map['status'] as String;
+        final status = ReadiumReaderStatus.values.firstWhere(
+          (e) => e.name == statusName,
+        );
+        final sessionId = map['sessionId'] as String?;
+        return ReaderStatusEvent(status: status, sessionId: sessionId);
+      }
+      throw StateError('Unsupported reader status event: $event');
+    });
+    return _onReaderStatusEvents!;
   }
 
   @override
@@ -117,18 +165,44 @@ class MethodChannelFlureadium extends FlureadiumPlatform {
   }
 
   @override
-  Future<Publication> openPublication(String pubUrl) async {
-    final publicationString = await methodChannel
+  Future<Publication> openPublication(
+    String pubUrl, {
+    String? sessionId,
+  }) async {
+    Future<String> openLegacy() => methodChannel
         .invokeMethod<String>('openPublication', [pubUrl])
         .then<String>((dynamic result) => result);
+
+    Future<String> openForSession() => methodChannel
+        .invokeMethod<String>('openPublicationWithSession', <String, dynamic>{
+          'pubUrl': pubUrl,
+          'sessionId': sessionId,
+        })
+        .then<String>((dynamic result) => result);
+
+    final publicationString = (sessionId == null || !Platform.isIOS)
+        ? await openLegacy()
+        : await openForSession().catchError((_) => openLegacy());
     return Publication.fromJson(
       json.decode(publicationString) as Map<String, dynamic>,
     )!;
   }
 
   @override
-  Future<void> closePublication() async =>
+  Future<void> closePublication({String? sessionId}) async {
+    if (sessionId == null || !Platform.isIOS) {
       await methodChannel.invokeMethod<void>('closePublication');
+      return;
+    }
+    try {
+      await methodChannel.invokeMethod<void>(
+        'closePublicationForSession',
+        <String, dynamic>{'sessionId': sessionId},
+      );
+    } on Object {
+      await methodChannel.invokeMethod<void>('closePublication');
+    }
+  }
 
   @override
   Future<void> goLeft() async => await currentReaderWidget?.goLeft();
@@ -144,11 +218,26 @@ class MethodChannelFlureadium extends FlureadiumPlatform {
       await currentReaderWidget?.skipToPrevious();
 
   @override
-  Future<bool> goToLocator(Locator locator) async =>
-      await methodChannel.invokeMethod<bool>('goToLocator', [
-        locator.toJson(),
-      ]) ??
-      false;
+  Future<bool> goToLocator(Locator locator, {String? sessionId}) async {
+    if (sessionId == null || !Platform.isIOS) {
+      return await methodChannel.invokeMethod<bool>('goToLocator', [
+            locator.toJson(),
+          ]) ??
+          false;
+    }
+    try {
+      return await methodChannel.invokeMethod<bool>('goToLocatorWithSession', [
+            locator.toJson(),
+            sessionId,
+          ]) ??
+          false;
+    } on Object {
+      return await methodChannel.invokeMethod<bool>('goToLocator', [
+            locator.toJson(),
+          ]) ??
+          false;
+    }
+  }
 
   @override
   Future<void> setEPUBPreferences(EPUBPreferences preferences) async {

@@ -4,6 +4,7 @@ import ReadiumShared
 import Flutter
 import UIKit
 import WebKit
+import Foundation
 
 private let TAG = "ReadiumReaderView"
 private let ReadiumReaderStatusReady = "ready"
@@ -12,6 +13,22 @@ private let ReadiumReaderStatusClosed = "closed"
 private let ReadiumReaderStatusError = "error"
 
 let readiumReaderViewType = "dev.mulev.flureadium/ReadiumReaderWidget"
+
+private func readiumPerfLog(
+  _ stage: String,
+  elapsedMs: Int? = nil,
+  extras: [String: Any?] = [:]
+) {
+  var parts: [String] = ["[PERF][Reader][iOS]", stage]
+  if let elapsedMs {
+    parts.append("elapsed=\(elapsedMs)ms")
+  }
+  for (key, value) in extras {
+    guard let value else { continue }
+    parts.append("\(key)=\(value)")
+  }
+  print(parts.joined(separator: " "))
+}
 
 class ReadiumBugLogger: ReadiumShared.WarningLogger {
   func log(_ warning: Warning) {
@@ -46,6 +63,16 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
   private var currentSpineItemHref: String?
 
   var publicationIdentifier: String?
+  let sessionId: String?
+  private var initStartTimeMs: Double = 0
+  private var subscribeStartTimeMs: Double = 0
+  private var navigatorCreatedTimeMs: Double = 0
+  private var totalSetupUserScriptsCalls = 0
+  private var totalScriptsInjected = 0
+  private var uniqueContentControllerIds = Set<ObjectIdentifier>()
+  private var pendingGoToLocatorStartedMs: Double?
+  private var pendingGoToLocatorHref: String?
+  private var didLogWebPerfMarkers = false
 
   func view() -> UIView {
     print(TAG, "::getView")
@@ -53,6 +80,14 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
   }
 
   deinit {
+    readiumPerfLog(
+      "native.reader_view.setup_user_scripts.summary_deinit",
+      extras: [
+        "totalSetupCalls": totalSetupUserScriptsCalls,
+        "uniqueControllers": uniqueContentControllerIds.count,
+        "scriptsInjectedTotal": totalScriptsInjected
+      ]
+    )
     print(TAG, "::deinit")
     readiumViewController.view.removeFromSuperview()
     readiumViewController.delegate = nil
@@ -60,7 +95,7 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
     readerStatusStreamHandler = nil
     errorStreamHandler = nil
     channel.setMethodCallHandler(nil)
-    setCurrentReadiumReaderView(nil)
+    setCurrentReadiumReaderView(nil, sessionId: sessionId)
   }
 
   init(
@@ -69,10 +104,12 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
     arguments args: Any?,
     registrar: FlutterPluginRegistrar
   ) {
-    print(TAG, "::init")
+    initStartTimeMs = CFAbsoluteTimeGetCurrent() * 1000
+    readiumPerfLog("native.reader_view.init.start")
     let creationParams = args as! Dictionary<String, Any?>
 
-    let publication = getCurrentPublication()!
+    sessionId = creationParams["sessionId"] as? String
+    let publication = getCurrentPublication(sessionId: sessionId)!
 
     let preferencesMap = creationParams["preferences"] as? [String: String]
     let defaultPreferences = preferencesMap.map { EPUBPreferences.init(fromMap: $0) }
@@ -92,7 +129,10 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
     readerStatusStreamHandler = EventStreamHandler(withName: "reader-status", messenger: registrar.messenger())
     errorStreamHandler = EventStreamHandler(withName: "error", messenger: registrar.messenger())
 
-    readerStatusStreamHandler?.sendEvent(ReadiumReaderStatusLoading)
+    readerStatusStreamHandler?.sendEvent([
+      "status": ReadiumReaderStatusLoading,
+      "sessionId": sessionId as Any
+    ])
 
     print(TAG, "Publication: (identifier=\(String(describing: publication.metadata.identifier)),title=\(String(describing: publication.metadata.title)))")
     print(TAG, "Added publication at \(String(describing: publication.baseURL))")
@@ -106,9 +146,9 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
     ]
     // TODO: Make this config configurable from Flutter
     // Might want it to be higher for a local publication than remote.
-    config.preloadPreviousPositionCount = 2
-    config.preloadNextPositionCount = 4
-    config.debugState = true
+    config.preloadPreviousPositionCount = 0
+    config.preloadNextPositionCount = 2
+    config.debugState = false
     config.decorationTemplates = HTMLDecorationTemplate.defaultTemplates(alpha: 1.0, experimentalPositioning: true)
     config.editingActions = [.lookup, .translate, EditingAction(title: "Custom Action", action: #selector(onCustomEditingAction))]
 
@@ -122,6 +162,9 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
       config: config,
       httpServer: sharedReadium.httpServer!
     )
+    let navigatorCreatedMs = Int((CFAbsoluteTimeGetCurrent() * 1000) - initStartTimeMs)
+    navigatorCreatedTimeMs = CFAbsoluteTimeGetCurrent() * 1000
+    readiumPerfLog("native.reader_view.navigator_created", elapsedMs: navigatorCreatedMs)
 
     if userScripts.isEmpty {
       initUserScripts(registrar: registrar)
@@ -152,8 +195,9 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
       ]
     )
 
-    setCurrentReadiumReaderView(self)
+    setCurrentReadiumReaderView(self, sessionId: sessionId)
     publicationIdentifier = publication.metadata.identifier
+    subscribeStartTimeMs = CFAbsoluteTimeGetCurrent() * 1000
 
     /// This adapter will automatically turn pages when the user taps the
     /// screen edges or press arrow keys.
@@ -166,7 +210,8 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
     )
     directionalNavigationAdapter?.bind(to: readiumViewController)
 
-    print(TAG, "::init success")
+    let initDoneMs = Int((CFAbsoluteTimeGetCurrent() * 1000) - initStartTimeMs)
+    readiumPerfLog("native.reader_view.init.done", elapsedMs: initDoneMs)
   }
 
   @objc public func onCustomEditingAction() {
@@ -185,7 +230,13 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
 
   // override EPUBNavigatorDelegate::navigator:setupUserScripts
   func navigator(_ navigator: EPUBNavigatorViewController, setupUserScripts userContentController: WKUserContentController) {
-    print(TAG, "setupUserScripts: adding \(userScripts.count) scripts")
+    totalSetupUserScriptsCalls += 1
+    let controllerId = ObjectIdentifier(userContentController)
+    if uniqueContentControllerIds.contains(controllerId) {
+      return
+    }
+    uniqueContentControllerIds.insert(controllerId)
+    totalScriptsInjected += userScripts.count
     for script in userScripts {
       userContentController.addUserScript(script)
     }
@@ -210,7 +261,10 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
     print(TAG, "didFailToLoadResourceAt: \(href). err: \(error)")
 
     // TODO: Should we send resource-load error like this?
-    self.readerStatusStreamHandler?.sendEvent(ReadiumReaderStatusError)
+    self.readerStatusStreamHandler?.sendEvent([
+      "status": ReadiumReaderStatusError,
+      "sessionId": sessionId as Any
+    ])
 
     let error = FlureadiumError(message: error.localizedDescription, code: "DidFailToLoadResource", data: href.string)
     self.errorStreamHandler?.sendEvent(error)
@@ -244,8 +298,38 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
     lastSpineItemLocator = locator
 
     if !hasSentReady {
-      self.readerStatusStreamHandler?.sendEvent(ReadiumReaderStatusReady)
+      let sinceSubscribe = Int((CFAbsoluteTimeGetCurrent() * 1000) - subscribeStartTimeMs)
+      readiumPerfLog(
+        "native.reader_view.setup_user_scripts.summary_first_location",
+        extras: [
+          "totalSetupCalls": totalSetupUserScriptsCalls,
+          "uniqueControllers": uniqueContentControllerIds.count,
+          "scriptsInjectedTotal": totalScriptsInjected
+        ]
+      )
+      let sinceNavigatorCreated = Int((CFAbsoluteTimeGetCurrent() * 1000) - navigatorCreatedTimeMs)
+      readiumPerfLog(
+        "native.reader_view.navigator_created_to_first_location",
+        elapsedMs: sinceNavigatorCreated
+      )
+      readiumPerfLog("native.reader_view.first_location_changed", elapsedMs: sinceSubscribe)
+      logWebPerfMarkersIfNeeded()
+      self.readerStatusStreamHandler?.sendEvent([
+        "status": ReadiumReaderStatusReady,
+        "sessionId": sessionId as Any
+      ])
+      readiumPerfLog("native.reader_view.status_ready_sent", elapsedMs: sinceSubscribe)
       hasSentReady = true
+    }
+    if let pendingMs = pendingGoToLocatorStartedMs {
+      let goToLocationElapsed = Int((CFAbsoluteTimeGetCurrent() * 1000) - pendingMs)
+      readiumPerfLog(
+        "native.reader_view.go_to_locator_to_location_changed",
+        elapsedMs: goToLocationElapsed,
+        extras: ["href": pendingGoToLocatorHref]
+      )
+      pendingGoToLocatorStartedMs = nil
+      pendingGoToLocatorHref = nil
     }
     emitOnPageChanged(locator: locator)
   }
@@ -292,6 +376,51 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
         await MainActor.run() {
           return result(nil)
         }
+      }
+    }
+  }
+
+  private func logWebPerfMarkersIfNeeded() {
+    if didLogWebPerfMarkers {
+      return
+    }
+    didLogWebPerfMarkers = true
+    Task.detached(priority: .background) {
+      let script = """
+      (function() {
+        var p = window.__readerPerf || {};
+        return JSON.stringify({
+          navStartMs: p.navStartMs ?? null,
+          domContentLoadedMs: p.domContentLoadedMs ?? null,
+          firstPaintMs: p.firstPaintMs ?? null
+        });
+      })();
+      """
+      let result = await self.evaluateJavascript(script)
+      switch result {
+      case .success(let data):
+        guard let jsonString = data as? String,
+              let jsonData = jsonString.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
+          readiumPerfLog("native.reader_view.web_perf_markers.unavailable")
+          return
+        }
+        let domReady = object["domContentLoadedMs"] as? NSNumber
+        let firstPaint = object["firstPaintMs"] as? NSNumber
+        let navStart = object["navStartMs"] as? NSNumber
+        readiumPerfLog(
+          "native.reader_view.web_perf_markers",
+          extras: [
+            "navStartMs": navStart,
+            "domContentLoadedMs": domReady,
+            "firstPaintMs": firstPaint
+          ]
+        )
+      case .failure(let err):
+        readiumPerfLog(
+          "native.reader_view.web_perf_markers.error",
+          extras: ["error": err.localizedDescription]
+        )
       }
     }
   }
@@ -379,7 +508,10 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
           return
         }
 
-        textLocatorStreamHandler.sendEvent(locatorWithFragments.jsonString)
+        textLocatorStreamHandler.sendEvent([
+          "locator": locatorWithFragments.jsonString as Any,
+          "sessionId": self.sessionId as Any
+        ])
       }
     }
   }
@@ -412,6 +544,14 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
   }
 
   func goToLocator(locator: Locator, animated: Bool) async -> Void {
+    let goToStartedMs = CFAbsoluteTimeGetCurrent() * 1000
+    pendingGoToLocatorStartedMs = goToStartedMs
+    pendingGoToLocatorHref = locator.href.string
+    readiumPerfLog(
+      "native.reader_view.go_to_locator.start",
+      extras: ["href": locator.href.string, "animated": animated]
+    )
+
     // Explicit navigation (TOC, skipToPrevious, etc.) must not trigger restoration.
     // Clearing history for this target prevents a subsequent swipe-back from
     // landing at a stale stored position rather than the TOC-specified location.
@@ -425,12 +565,24 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
     if shouldGo {
       print(TAG, "goToLocator: Go to \(locator.href)")
       let goToSuccees = await readiumViewController.go(to: locator, options: NavigatorGoOptions(animated: animated))
+      let goAwaitElapsed = Int((CFAbsoluteTimeGetCurrent() * 1000) - goToStartedMs)
+      readiumPerfLog(
+        "native.reader_view.go_to_locator.await_go_end",
+        elapsedMs: goAwaitElapsed,
+        extras: ["href": locator.href.string, "success": goToSuccees]
+      )
       if (goToSuccees && shouldScroll) {
         await self.scrollTo(locations: locations, toStart: false)
         self.emitOnPageChanged()
       }
     } else {
       print(TAG, "goToLocator: Already there, Scroll to \(locator.href)")
+      let goAwaitElapsed = Int((CFAbsoluteTimeGetCurrent() * 1000) - goToStartedMs)
+      readiumPerfLog(
+        "native.reader_view.go_to_locator.await_go_end",
+        elapsedMs: goAwaitElapsed,
+        extras: ["href": locator.href.string, "success": true, "skippedGo": true]
+      )
       if (shouldScroll) {
         await self.scrollTo(locations: locations, toStart: false)
         self.emitOnPageChanged()
@@ -590,7 +742,10 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
       print(TAG, "Disposing readiumViewController")
       readiumViewController.view.removeFromSuperview()
       readiumViewController.delegate = nil
-      self.readerStatusStreamHandler?.sendEvent(ReadiumReaderStatusClosed)
+      self.readerStatusStreamHandler?.sendEvent([
+        "status": ReadiumReaderStatusClosed,
+        "sessionId": sessionId as Any
+      ])
       textLocatorStreamHandler?.dispose()
       textLocatorStreamHandler = nil
       readerStatusStreamHandler?.dispose()
@@ -640,6 +795,36 @@ func initUserScripts(registrar: FlutterPluginRegistrar) {
   }
   /// Add simple script used by our JS to detect OS
   userScripts.append(WKUserScript(source: "const isAndroid=false,isIos=true;", injectionTime: .atDocumentStart, forMainFrameOnly: false))
+  /// Add web timing markers to split DOM ready vs first paint for performance diagnosis.
+  userScripts.append(
+    WKUserScript(
+      source: """
+      (function() {
+        if (window.__readerPerf != null) return;
+        var now = function() {
+          return (window.performance && typeof performance.now === 'function') ? performance.now() : Date.now();
+        };
+        window.__readerPerf = {
+          navStartMs: now(),
+          domContentLoadedMs: null,
+          firstPaintMs: null
+        };
+        document.addEventListener('DOMContentLoaded', function() {
+          if (window.__readerPerf.domContentLoadedMs == null) {
+            window.__readerPerf.domContentLoadedMs = now();
+          }
+        }, { once: true });
+        requestAnimationFrame(function() {
+          if (window.__readerPerf.firstPaintMs == null) {
+            window.__readerPerf.firstPaintMs = now();
+          }
+        });
+      })();
+      """,
+      injectionTime: .atDocumentStart,
+      forMainFrameOnly: false
+    )
+  )
 
   /// Click synthesis: Flutter's synthetic touch delivery prevents WKWebView from
   /// dispatching native click events after goLeft/goRight (when WKContentView is oversized).

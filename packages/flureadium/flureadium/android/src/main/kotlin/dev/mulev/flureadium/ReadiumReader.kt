@@ -56,6 +56,12 @@ import org.readium.r2.shared.util.Url
 import org.readium.r2.shared.util.asset.Asset
 import org.readium.r2.shared.util.asset.AssetRetriever
 import org.readium.r2.shared.util.asset.ContainerAsset
+import org.readium.r2.shared.util.file.DirectoryContainer
+import org.readium.r2.shared.util.format.Format
+import org.readium.r2.shared.util.format.FormatSpecification
+import org.readium.r2.shared.util.format.Specification
+import org.readium.r2.shared.util.format.FileExtension
+import org.readium.r2.shared.util.mediatype.MediaType
 import org.readium.r2.shared.util.getOrElse
 import org.readium.r2.shared.util.http.DefaultHttpClient
 import org.readium.r2.shared.util.http.HttpRequest
@@ -580,7 +586,7 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
     /**
      * Tries to open a publication using a cached manifest JSON file,
      * bypassing the expensive OPF parsing step.
-     * Returns null if no cache exists or cache is invalid.
+     * Prefers a pre-extracted directory (fastest) over opening the ZIP.
      */
     private suspend fun openPublicationFromCache(
         pubUrl: AbsoluteUrl
@@ -595,22 +601,41 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
                 val jsonStr = cacheFile.readText(Charsets.UTF_8)
                 val manifest = Manifest.fromJSON(JSONObject(jsonStr)) ?: return@withContext null
 
-                // 2. Open ZIP for container access (fast, no OPF parsing).
-                val asset: Asset = assetRetriever.retrieve(pubUrl)
+                // 2. Fast path: use pre-extracted directory.
+                val extractedDir = File(filePath.removeSuffix(".epub"))
+                if (extractedDir.isDirectory) {
+                    val dirContainer = DirectoryContainer(extractedDir)
+                        .getOrElse {
+                            Log.w(TAG, "[DIR] DirectoryContainer failed for: ${extractedDir.path}")
+                            return@withContext null
+                        }
+                    Log.d(TAG, "[DIR] Using DirectoryContainer: ${extractedDir.path}")
+                    val transformedContainer = TransformingContainer(dirContainer) { _: Url, resource: Resource ->
+                        resource.injectScriptsAndStyles()
+                    }
+                    return@withContext Publication(manifest, transformedContainer)
+                } else {
+                    Log.d(TAG, "[DIR] Extracted directory not found: ${extractedDir.path}")
+                }
+
+                // 3. Fallback: open ZIP with known format.
+                val epubFormat = Format(
+                    specification = FormatSpecification(Specification.Zip, Specification.Epub),
+                    mediaType = MediaType("application/epub+zip")!!,
+                    fileExtension = FileExtension("epub")
+                )
+                val asset: Asset = assetRetriever.retrieve(pubUrl, epubFormat)
                     .getOrElse { return@withContext null }
 
-                // 3. Get container from asset.
                 val container = when (asset) {
                     is ContainerAsset -> asset.container
                     else -> { asset.close(); return@withContext null }
                 }
 
-                // 4. Wrap with script/style injection (same as normal path).
                 val transformedContainer = TransformingContainer(container) { _: Url, resource: Resource ->
                     resource.injectScriptsAndStyles()
                 }
 
-                // 5. Build Publication directly (skip parser).
                 Publication(manifest, transformedContainer)
             }
         } catch (e: Exception) {

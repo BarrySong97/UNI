@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../pages/reader/reader-overlay-layer.dart';
 import '../pages/shell/main-tab-shell-page.dart';
 import '../services/reader/publication-cache-service.dart';
 import 'i18n/app-locale.dart';
@@ -22,11 +25,13 @@ class _ImmersedAppState extends State<ImmersedApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    widget.providers.readerOverlayController.startGc();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    widget.providers.readerOverlayController.stopGc();
     super.dispose();
   }
 
@@ -34,7 +39,10 @@ class _ImmersedAppState extends State<ImmersedApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
-      PublicationCacheService().evict();
+      unawaited(
+        widget.providers.readerOverlayController.markLifecycleEvictAll(),
+      );
+      unawaited(PublicationCacheService().evict());
     }
   }
 
@@ -53,6 +61,14 @@ class _ImmersedAppState extends State<ImmersedApp> with WidgetsBindingObserver {
             onGenerateRoute: AppRouter.onGenerateRoute,
             theme: AppTheme.light,
             home: const MainTabShellPage(),
+            builder: (context, child) {
+              return Stack(
+                children: <Widget>[
+                  if (child != null) child,
+                  const ReaderOverlayLayer(),
+                ],
+              );
+            },
           );
         },
       ),

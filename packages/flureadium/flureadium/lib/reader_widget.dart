@@ -22,6 +22,7 @@ const _viewType = 'dev.mulev.flureadium/ReadiumReaderWidget';
 class ReadiumReaderWidget extends StatefulWidget {
   const ReadiumReaderWidget({
     required this.publication,
+    this.sessionId,
     this.loadingWidget = const Center(child: CircularProgressIndicator()),
     this.initialLocator,
     this.onTap,
@@ -35,6 +36,7 @@ class ReadiumReaderWidget extends StatefulWidget {
   });
 
   final Publication publication;
+  final String? sessionId;
   final Widget loadingWidget;
   final Locator? initialLocator;
   final VoidCallback? onTap;
@@ -77,6 +79,8 @@ class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
   void initState() {
     super.initState();
     R2Log.d('ReadiumReaderWidget initiated');
+    _nativeViewStopwatch.start();
+    debugPrint('[PERF] ReadiumReaderWidget initState');
 
     _readerWidget = _buildNativeReader();
     enableWakelock();
@@ -349,6 +353,7 @@ class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
 
     final creationParams = <String, dynamic>{
       'pubIdentifier': publication.identifier,
+      'sessionId': widget.sessionId,
       'preferences': defaultPreferences,
       'initialLocator': widget.initialLocator == null
           ? null
@@ -403,7 +408,13 @@ class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
   /// since the JS-reported toc= heading may differ from the navigation target.
   int? _lastNavigatedTocIndex;
 
+  final Stopwatch _nativeViewStopwatch = Stopwatch();
+
   void _onPlatformViewCreated(final int id) {
+    _nativeViewStopwatch.stop();
+    debugPrint(
+      '[PERF] PlatformView created: ${_nativeViewStopwatch.elapsedMilliseconds}ms since widget init',
+    );
     _channel = ReadiumReaderChannel(
       '$_viewType:$id',
       onPageChanged: (final locator) {
@@ -412,6 +423,9 @@ class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
         widget.onLocatorChanged?.call(locator);
 
         if (isReady == false) {
+          debugPrint(
+            '[PERF] First onPageChanged (content rendered): ${_nativeViewStopwatch.elapsedMilliseconds}ms since widget init',
+          );
           setState(() {
             isReady = true;
           });

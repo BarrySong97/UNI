@@ -63,13 +63,13 @@ abstract class FlureadiumPlatform extends PlatformInterface {
 
   /// Opens a publication from a URL and prepares it for reading or playback.
   /// If the URL has not already been loaded, it will implicitly do this.
-  Future<Publication> openPublication(String pubUrl) =>
+  Future<Publication> openPublication(String pubUrl, {String? sessionId}) =>
       throw UnimplementedError(
         'openPublication(pubUrl) has not been implemented.',
       );
 
   /// Close the currently open publication and its related reader or playback ressources.
-  Future<void> closePublication() =>
+  Future<void> closePublication({String? sessionId}) =>
       throw UnimplementedError('closePublication() has not been implemented.');
 
   /// Retrieves the content of a given link in the current Publication as a string.
@@ -110,8 +110,14 @@ abstract class FlureadiumPlatform extends PlatformInterface {
   ) => throw UnimplementedError('applyDecorations() has not been implemented');
 
   /// Go directly to the given [Locator] in the publication, whether visual or audio.
-  Future<bool> goToLocator(Locator locator) =>
+  Future<bool> goToLocator(Locator locator, {String? sessionId}) =>
       throw UnimplementedError('goToLocator() has not been implemented.');
+
+  Stream<ReaderStatusEvent> get onReaderStatusEvents =>
+      onReaderStatusChanged.map((status) => ReaderStatusEvent(status: status));
+
+  Stream<ReaderLocatorEvent> get onTextLocatorEvents => onTextLocatorChanged
+      .map((locator) => ReaderLocatorEvent(locator: locator));
 
   // COMMON PLAYBACK API - BEGIN
   /// Play the publication from the given locator, or resume if null.
@@ -216,4 +222,18 @@ abstract class FlureadiumPlatform extends PlatformInterface {
   Stream<ReadiumError> get onErrorEvent {
     throw UnimplementedError('onErrorEvent stream has not been implemented.');
   }
+}
+
+class ReaderStatusEvent {
+  const ReaderStatusEvent({required this.status, this.sessionId});
+
+  final ReadiumReaderStatus status;
+  final String? sessionId;
+}
+
+class ReaderLocatorEvent {
+  const ReaderLocatorEvent({required this.locator, this.sessionId});
+
+  final Locator locator;
+  final String? sessionId;
 }
