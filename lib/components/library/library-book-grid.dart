@@ -113,7 +113,6 @@ class LibraryBookGrid extends StatelessWidget {
 
   Widget _buildItem(BookEntity book, int index) {
     final progress = progressMap[book.id] ?? 0;
-    final percent = (progress * 100).round();
     final isNewBook = book.id == lastImportedBookId;
     final shouldSlide = !isNewBook && lastImportedBookId != null;
 
@@ -139,28 +138,7 @@ class LibraryBookGrid extends StatelessWidget {
                         ? 'B'
                         : book.title.substring(0, 1).toUpperCase(),
                     onTap: () => onBookTap(book),
-                  ),
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xAA000000),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        '$percent%',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
+                    progress: progress,
                   ),
                 ],
               ),

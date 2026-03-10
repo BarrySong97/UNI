@@ -117,7 +117,7 @@ abstract class FlureadiumPlatform extends PlatformInterface {
       onReaderStatusChanged.map((status) => ReaderStatusEvent(status: status));
 
   Stream<ReaderLocatorEvent> get onTextLocatorEvents => onTextLocatorChanged
-      .map((locator) => ReaderLocatorEvent(locator: locator));
+      .map((locator) => ReaderLocatorEvent.fromLocator(locator));
 
   // COMMON PLAYBACK API - BEGIN
   /// Play the publication from the given locator, or resume if null.
@@ -232,8 +232,34 @@ class ReaderStatusEvent {
 }
 
 class ReaderLocatorEvent {
-  const ReaderLocatorEvent({required this.locator, this.sessionId});
+  const ReaderLocatorEvent({
+    required this.locator,
+    this.sessionId,
+    this.pageIndex,
+    this.totalPages,
+  });
+
+  factory ReaderLocatorEvent.fromLocator(Locator locator, {String? sessionId}) {
+    final fragments = locator.locations?.fragments ?? const <String>[];
+    int? pageIndex;
+    int? totalPages;
+    for (final fragment in fragments) {
+      if (fragment.startsWith('page=')) {
+        pageIndex = int.tryParse(fragment.substring('page='.length));
+      } else if (fragment.startsWith('totalPages=')) {
+        totalPages = int.tryParse(fragment.substring('totalPages='.length));
+      }
+    }
+    return ReaderLocatorEvent(
+      locator: locator,
+      sessionId: sessionId,
+      pageIndex: pageIndex,
+      totalPages: totalPages,
+    );
+  }
 
   final Locator locator;
   final String? sessionId;
+  final int? pageIndex;
+  final int? totalPages;
 }

@@ -15,6 +15,7 @@ class ReaderOverlaySlot {
     required this.sessionId,
     required this.resolvedEpubPath,
     required this.publication,
+    required this.initialLocatorJson,
     required this.phase,
     this.isContentReady = false,
   });
@@ -23,11 +24,13 @@ class ReaderOverlaySlot {
   final String sessionId;
   final String resolvedEpubPath;
   final Publication publication;
+  final String? initialLocatorJson;
   final ReaderOverlayPhase phase;
   final bool isContentReady;
 
   ReaderOverlaySlot copyWith({
     Publication? publication,
+    String? initialLocatorJson,
     ReaderOverlayPhase? phase,
     bool? isContentReady,
   }) {
@@ -36,6 +39,7 @@ class ReaderOverlaySlot {
       sessionId: sessionId,
       resolvedEpubPath: resolvedEpubPath,
       publication: publication ?? this.publication,
+      initialLocatorJson: initialLocatorJson ?? this.initialLocatorJson,
       phase: phase ?? this.phase,
       isContentReady: isContentReady ?? this.isContentReady,
     );
@@ -95,7 +99,11 @@ class ReaderOverlayController extends ChangeNotifier {
     return null;
   }
 
-  Future<void> preloadForBook(String bookId, String resolvedEpubPath) async {
+  Future<void> preloadForBook(
+    String bookId,
+    String resolvedEpubPath, {
+    String? initialLocatorJson,
+  }) async {
     final existing = _slots[bookId];
     if (existing != null && existing.phase != ReaderOverlayPhase.idle) {
       ReaderPerf.mark(
@@ -125,11 +133,13 @@ class ReaderOverlayController extends ChangeNotifier {
         resolvedEpubPath,
         sessionId: acquire.session.sessionId,
       );
+      // 预加载阶段只保证 publication 就绪；是否可秒开要等 overlay widget 自身 ready 信号。
       _slots[bookId] = ReaderOverlaySlot(
         bookId: bookId,
         sessionId: acquire.session.sessionId,
         resolvedEpubPath: resolvedEpubPath,
         publication: pub,
+        initialLocatorJson: initialLocatorJson,
         phase: ReaderOverlayPhase.preloading,
         isContentReady: false,
       );
@@ -154,6 +164,7 @@ class ReaderOverlayController extends ChangeNotifier {
       return;
     }
     final slot = _slots[targetBookId];
+    // 只有 content_ready 的槽位才允许展示，避免“看起来打开了但正文还没稳定”。
     if (slot == null || !slot.isContentReady) {
       return;
     }
@@ -222,6 +233,7 @@ class ReaderOverlayController extends ChangeNotifier {
       _sessionPool.removeBook(bookId, reason: reason);
       return;
     }
+    // 回收顺序：先关 native publication，再删会话元数据，避免悬挂引用。
     await _publicationCache.evictBySession(slot.sessionId);
     _sessionPool.removeBook(bookId, reason: reason);
     if (_visibleBookId == bookId) {
@@ -242,6 +254,7 @@ class ReaderOverlayController extends ChangeNotifier {
     if (slot.isContentReady) {
       return;
     }
+    // 由 overlay 层在收到首个有效 reader 信号后调用，标记该书进入秒开可用态。
     _slots[bookId] = slot.copyWith(
       phase: ReaderOverlayPhase.ready,
       isContentReady: true,

@@ -426,8 +426,8 @@ object ReadiumReader : TimebasedNavigator.TimebasedListener, EpubNavigator.Visua
         )
     }
 
-    fun sendTextLocatorEvent(locator: Locator) {
-        textLocatorEventChannel?.sendEvent(locator)
+    fun sendTextLocatorEvent(payload: Map<String, Any?>) {
+        textLocatorEventChannel?.sendEvent(payload)
     }
 
     // Safe getter — returns applicationContext or throws if not available.

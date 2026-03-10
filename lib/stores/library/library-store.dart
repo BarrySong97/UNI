@@ -12,6 +12,7 @@ import '../../repositories/progress/progress-repository.dart';
 import '../../services/library/book-profile-color-service.dart';
 import '../../services/parser/book-import-service.dart';
 import '../../services/reader/publication-cache-service.dart';
+import '../../services/reader/reader-performance-tracker.dart';
 import 'library-state.dart';
 
 class LibraryStore extends ChangeNotifier {
@@ -49,6 +50,7 @@ class LibraryStore extends ChangeNotifier {
         books: books,
         filteredBooks: _filterByCategory(books, _state.activeCategory),
         progressMap: progressData.percentMap,
+        progressLocatorMap: progressData.locatorMap,
         progressUpdatedMap: progressData.updatedMap,
         isLoading: false,
         errorMessage: null,
@@ -63,15 +65,46 @@ class LibraryStore extends ChangeNotifier {
     }
   }
 
+  Future<void> refreshProgress() async {
+    try {
+      final progressData = await _loadProgressData(_state.books);
+      ReaderPerf.mark(
+        'library.refresh_progress',
+        extras: <String, Object?>{
+          'book_count': _state.books.length,
+          'progress_count': progressData.percentMap.length,
+          'book_ids': progressData.percentMap.keys.join(','),
+        },
+      );
+      _state = _state.copyWith(
+        progressMap: progressData.percentMap,
+        progressLocatorMap: progressData.locatorMap,
+        progressUpdatedMap: progressData.updatedMap,
+        filteredBooks: _filterByCategory(_state.books, _state.activeCategory),
+      );
+      notifyListeners();
+    } catch (_) {
+      // Keep current UI state on background refresh failures.
+    }
+  }
+
   Future<_ProgressData> _loadProgressData(List<BookEntity> books) async {
     final allProgress = await _progressRepository.getAllProgress();
     final percentMap = <String, double>{};
+    final locatorMap = <String, String>{};
     final updatedMap = <String, DateTime>{};
     for (final progress in allProgress) {
       percentMap[progress.bookId] = progress.percent;
+      if (progress.locatorJson.isNotEmpty) {
+        locatorMap[progress.bookId] = progress.locatorJson;
+      }
       updatedMap[progress.bookId] = progress.updatedAt;
     }
-    return _ProgressData(percentMap: percentMap, updatedMap: updatedMap);
+    return _ProgressData(
+      percentMap: percentMap,
+      locatorMap: locatorMap,
+      updatedMap: updatedMap,
+    );
   }
 
   Future<void> importBookFromPath(String filePath) async {
@@ -88,10 +121,13 @@ class LibraryStore extends ChangeNotifier {
       final bookId = 'book_${now.microsecondsSinceEpoch}';
 
       final epubFilePath = await _copyEpubToLocal(filePath, bookId);
-      await compute(_extractEpubInIsolate, _ExtractArgs(
-        epubPath: p.join(_booksDirectory, '$bookId.epub'),
-        extractDir: p.join(_booksDirectory, bookId),
-      ));
+      await compute(
+        _extractEpubInIsolate,
+        _ExtractArgs(
+          epubPath: p.join(_booksDirectory, '$bookId.epub'),
+          extractDir: p.join(_booksDirectory, bookId),
+        ),
+      );
 
       // Pre-cache: trigger native openPublication to generate manifest cache.
       // This way the first user-visible open uses DirectoryContainer + cached manifest.
@@ -246,14 +282,16 @@ class LibraryStore extends ChangeNotifier {
       return books;
     }
     final progressMap = _state.progressMap;
-    return books.where((book) {
-      final progress = progressMap[book.id] ?? 0;
-      if (category == 'Finished') {
-        return progress >= 1.0;
-      }
-      // "Reading" — has some progress but not finished
-      return progress > 0 && progress < 1.0;
-    }).toList(growable: false);
+    return books
+        .where((book) {
+          final progress = progressMap[book.id] ?? 0;
+          if (category == 'Finished') {
+            return progress >= 1.0;
+          }
+          // "Reading" — has some progress but not finished
+          return progress > 0 && progress < 1.0;
+        })
+        .toList(growable: false);
   }
 
   Uint8List? _decodeCoverDataUrl(String? dataUrl) {
@@ -275,9 +313,14 @@ class LibraryStore extends ChangeNotifier {
 }
 
 class _ProgressData {
-  const _ProgressData({required this.percentMap, required this.updatedMap});
+  const _ProgressData({
+    required this.percentMap,
+    required this.locatorMap,
+    required this.updatedMap,
+  });
 
   final Map<String, double> percentMap;
+  final Map<String, String> locatorMap;
   final Map<String, DateTime> updatedMap;
 }
 

@@ -14,6 +14,14 @@ class ReaderEntryService {
 
   Future<void> openBook(BuildContext context, String bookId) async {
     if (_isNavigating || !context.mounted) {
+      ReaderPerf.mark(
+        'entry.open.skip_busy_or_unmounted',
+        bookId: bookId,
+        extras: <String, Object?>{
+          'is_navigating': _isNavigating,
+          'mounted': context.mounted,
+        },
+      );
       return;
     }
     _isNavigating = true;
@@ -23,7 +31,21 @@ class ReaderEntryService {
     try {
       final providers = AppProvidersScope.of(context);
       final overlayController = providers.readerOverlayController;
-      if (overlayController.canShowInstantly(bookId)) {
+      final slot = overlayController.slotForBook(bookId);
+      final canShow = overlayController.canShowInstantly(bookId);
+      ReaderPerf.mark(
+        'entry.overlay_check',
+        bookId: bookId,
+        extras: <String, Object?>{
+          'can_show': canShow,
+          'has_slot': slot != null,
+          'slot_phase': slot?.phase.name,
+          'slot_content_ready': slot?.isContentReady,
+          'visible_book': overlayController.visibleBookId,
+          'preloaded_book': overlayController.preloadedBookId,
+        },
+      );
+      if (canShow) {
         ReaderPerf.mark('entry.overlay_hit', bookId: bookId);
         overlayController.show(bookId);
         ReaderPerf.end('entry.open', totalWatch, bookId: bookId);

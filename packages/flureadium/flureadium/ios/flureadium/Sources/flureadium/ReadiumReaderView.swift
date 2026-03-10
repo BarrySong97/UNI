@@ -125,9 +125,18 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
 
     channel = ReadiumReaderChannel(
       name: "\(readiumReaderViewType):\(viewId)", binaryMessenger: registrar.messenger())
-    textLocatorStreamHandler = EventStreamHandler(withName: "text-locator", messenger: registrar.messenger())
-    readerStatusStreamHandler = EventStreamHandler(withName: "reader-status", messenger: registrar.messenger())
-    errorStreamHandler = EventStreamHandler(withName: "error", messenger: registrar.messenger())
+    textLocatorStreamHandler = EventStreamHandler.shared(
+      withName: "text-locator",
+      messenger: registrar.messenger()
+    )
+    readerStatusStreamHandler = EventStreamHandler.shared(
+      withName: "reader-status",
+      messenger: registrar.messenger()
+    )
+    errorStreamHandler = EventStreamHandler.shared(
+      withName: "error",
+      messenger: registrar.messenger()
+    )
 
     readerStatusStreamHandler?.sendEvent([
       "status": ReadiumReaderStatusLoading,
@@ -147,7 +156,7 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
     // TODO: Make this config configurable from Flutter
     // Might want it to be higher for a local publication than remote.
     config.preloadPreviousPositionCount = 0
-    config.preloadNextPositionCount = 2
+    config.preloadNextPositionCount = 5
     config.debugState = false
     config.decorationTemplates = HTMLDecorationTemplate.defaultTemplates(alpha: 1.0, experimentalPositioning: true)
     config.editingActions = [.lookup, .translate, EditingAction(title: "Custom Action", action: #selector(onCustomEditingAction))]
@@ -501,19 +510,46 @@ class ReadiumReaderView: NSObject, FlutterPlatformView, EPUBNavigatorDelegate, V
         print(TAG, "emitOnPageChanged failed!")
         return
       }
+      let normalizedLocator = locatorWithFragments
       await MainActor.run() {
-        self.channel.onPageChanged(locator: locatorWithFragments)
+        self.channel.onPageChanged(locator: normalizedLocator)
         guard let textLocatorStreamHandler = self.textLocatorStreamHandler else {
           print(TAG, "emitOnPageChanged: textLocatorStreamHandler is nil!")
           return
         }
-
-        textLocatorStreamHandler.sendEvent([
-          "locator": locatorWithFragments.jsonString as Any,
+        let pageInfo = self.pageInfoFromFragments(normalizedLocator.locations.fragments)
+        var payload: [String: Any] = [
+          "locator": normalizedLocator.jsonString as Any,
           "sessionId": self.sessionId as Any
-        ])
+        ]
+        if let pageIndex = pageInfo?.pageIndex {
+          payload["pageIndex"] = pageIndex
+        }
+        if let totalPages = pageInfo?.totalPages {
+          payload["totalPages"] = totalPages
+        }
+
+        textLocatorStreamHandler.sendEvent(payload)
       }
     }
+  }
+
+  private func fragmentInt(_ fragments: [String], key: String) -> Int? {
+    let prefix = "\(key)="
+    guard let raw = fragments.first(where: { $0.hasPrefix(prefix) })?
+      .replacingOccurrences(of: prefix, with: "") else {
+      return nil
+    }
+    return Int(raw)
+  }
+
+  private func pageInfoFromFragments(_ fragments: [String]) -> (pageIndex: Int?, totalPages: Int?)? {
+    let pageIndex = fragmentInt(fragments, key: "page")
+    let totalPages = fragmentInt(fragments, key: "totalPages")
+    if pageIndex == nil && totalPages == nil {
+      return nil
+    }
+    return (pageIndex, totalPages)
   }
 
   private func emitOnExternalLinkActivated(url: URL) {

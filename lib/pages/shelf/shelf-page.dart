@@ -7,7 +7,7 @@ import '../../app/i18n/app-localizations.dart';
 import '../../app/providers/app-providers.dart';
 import '../../app/routes/route-names.dart';
 import '../../entities/book-entity.dart';
-import '../../services/library/book-profile-entry-service.dart';
+import '../../services/reader/reader-performance-tracker.dart';
 import '../../stores/library/library-state.dart';
 import 'shelf-page-layout.dart';
 
@@ -62,7 +62,11 @@ class _ShelfPageState extends State<ShelfPage> {
               final path = book.epubFilePath;
               if (path == null) continue;
               final resolved = _resolveEpubPath(path);
-              ctrl.preloadForBook(book.id, resolved);
+              ctrl.preloadForBook(
+                book.id,
+                resolved,
+                initialLocatorJson: state.progressLocatorMap[book.id],
+              );
             }
           });
         }
@@ -71,6 +75,7 @@ class _ShelfPageState extends State<ShelfPage> {
           books: state.books,
           isImporting: state.isImporting,
           progressMap: state.progressMap,
+          progressBookIds: state.progressUpdatedMap.keys.toSet(),
           hasReadingProgress: state.progressUpdatedMap.isNotEmpty,
           emptyMessage: localizations.tr('emptyLibrary'),
           importingMessage: localizations.tr('importingBook'),
@@ -79,7 +84,8 @@ class _ShelfPageState extends State<ShelfPage> {
               ? (state.progressMap[nowReading.id] ?? 0)
               : 0,
           gridBooks: gridBooks,
-          onBookTap: (book) => _openBookFromLibrary(book.id),
+          onBookTap: (book, hasProgress) =>
+              _openBookFromLibrary(book.id, hasProgress),
           onImportTap: () => _pickAndImportBook(context),
           onContinueReadingTap: nowReading != null
               ? () => _navigateToReader(nowReading.id)
@@ -208,35 +214,50 @@ class _ShelfPageState extends State<ShelfPage> {
   }
 
   Future<void> _navigateToReader(String bookId) async {
+    ReaderPerf.mark(
+      'entry.tap',
+      bookId: bookId,
+      extras: const <String, Object?>{'source': 'shelf_now_reading'},
+    );
     await AppProvidersScope.of(
       context,
     ).readerEntryService.openBook(context, bookId);
   }
 
-  Future<void> _openBookFromLibrary(String bookId) async {
+  Future<void> _openBookFromLibrary(String bookId, bool hasProgress) async {
     if (_isNavigatingBook || !mounted) {
       return;
     }
     _isNavigatingBook = true;
     try {
       final providers = AppProvidersScope.of(context);
-      final progressMap = providers.libraryStore.state.progressMap;
-      final target = providers.bookProfileEntryService.resolveEntry(
-        bookId,
-        progressMap,
-      );
       if (!mounted) {
         return;
       }
-      switch (target) {
-        case BookProfileEntryTarget.profile:
-          await Navigator.of(
-            context,
-          ).pushNamed(RouteNames.bookDetail, arguments: bookId);
-          break;
-        case BookProfileEntryTarget.reader:
-          await providers.readerEntryService.openBook(context, bookId);
-          break;
+      ReaderPerf.mark(
+        'entry.tap',
+        bookId: bookId,
+        extras: <String, Object?>{
+          'source': 'shelf_recent',
+          'has_progress': hasProgress,
+        },
+      );
+      if (hasProgress) {
+        ReaderPerf.mark(
+          'entry.tap.route_decision',
+          bookId: bookId,
+          extras: const <String, Object?>{'target': 'reader'},
+        );
+        await providers.readerEntryService.openBook(context, bookId);
+      } else {
+        ReaderPerf.mark(
+          'entry.tap.route_decision',
+          bookId: bookId,
+          extras: const <String, Object?>{'target': 'book_detail'},
+        );
+        await Navigator.of(
+          context,
+        ).pushNamed(RouteNames.bookDetail, arguments: bookId);
       }
     } finally {
       _isNavigatingBook = false;

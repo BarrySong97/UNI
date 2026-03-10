@@ -334,7 +334,7 @@ class ReadiumReaderWidget(
         try {
             if (isPdf) {
                 channel.onPageChanged(locator)
-                ReadiumReader.sendTextLocatorEvent(locator)
+                ReadiumReader.sendTextLocatorEvent(buildTextLocatorPayload(locator))
             } else {
                 val locatorWithFragments = ReadiumReader.getEpubLocatorFragments(locator)
                 val finalLocator = if (locatorWithFragments != null) {
@@ -344,11 +344,40 @@ class ReadiumReaderWidget(
                     normalizeEpubLocator(locator)
                 }
                 channel.onPageChanged(finalLocator)
-                ReadiumReader.sendTextLocatorEvent(finalLocator)
+                ReadiumReader.sendTextLocatorEvent(buildTextLocatorPayload(finalLocator))
             }
         } catch (e: Exception) {
             Log.e(TAG, "emitOnPageChanged: ${if (isPdf) "PDF" else "EPUB"} failed! $e")
         }
+    }
+
+    private fun buildTextLocatorPayload(locator: Locator): Map<String, Any?> {
+        val payload = mutableMapOf<String, Any?>(
+            "locator" to locator.toJSON().toString()
+        )
+        val pageInfo = pageInfoFromFragments(locator.locations.fragments)
+        pageInfo?.first?.let { payload["pageIndex"] = it }
+        pageInfo?.second?.let { payload["totalPages"] = it }
+        return payload
+    }
+
+    private fun pageInfoFromFragments(fragments: List<String>): Pair<Int, Int>? {
+        var pageIndex: Int? = null
+        var totalPages: Int? = null
+        fragments.forEach { fragment ->
+            when {
+                fragment.startsWith("page=") -> {
+                    pageIndex = fragment.substringAfter("page=").toIntOrNull()
+                }
+                fragment.startsWith("totalPages=") -> {
+                    totalPages = fragment.substringAfter("totalPages=").toIntOrNull()
+                }
+            }
+        }
+        if (pageIndex == null || totalPages == null) {
+            return null
+        }
+        return Pair(pageIndex!!, totalPages!!)
     }
 
     private fun emitOnExternalLinkActivated(url: AbsoluteUrl) {

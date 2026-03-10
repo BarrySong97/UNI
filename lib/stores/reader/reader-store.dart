@@ -73,9 +73,21 @@ class ReaderStore extends ChangeNotifier {
   }
 
   void updateLocator(String locatorJson, {double? percent}) {
+    final prevPercent = _state.bookPercent;
+    final nextPercent = percent ?? prevPercent;
     _state = _state.copyWith(
       locatorJson: locatorJson,
-      bookPercent: percent ?? _state.bookPercent,
+      bookPercent: nextPercent,
+    );
+    ReaderPerf.mark(
+      'store.update_locator',
+      bookId: _state.book?.id,
+      extras: <String, Object?>{
+        'prev_percent': prevPercent,
+        'next_percent': nextPercent,
+        'incoming_percent': percent,
+        'locator_len': locatorJson.length,
+      },
     );
     notifyListeners();
     _scheduleProgressSave();
@@ -111,6 +123,14 @@ class ReaderStore extends ChangeNotifier {
     final book = _state.book;
     final locatorJson = _state.locatorJson;
     if (book == null || locatorJson == null || locatorJson.isEmpty) {
+      ReaderPerf.mark(
+        'store.save_progress.skip',
+        bookId: book?.id,
+        extras: <String, Object?>{
+          'has_book': book != null,
+          'has_locator': locatorJson != null && locatorJson.isNotEmpty,
+        },
+      );
       return;
     }
 
@@ -119,6 +139,14 @@ class ReaderStore extends ChangeNotifier {
       locatorJson: locatorJson,
       percent: _state.bookPercent,
       updatedAt: DateTime.now(),
+    );
+    ReaderPerf.mark(
+      'store.save_progress',
+      bookId: book.id,
+      extras: <String, Object?>{
+        'percent': progress.percent,
+        'locator_len': locatorJson.length,
+      },
     );
     await _progressRepository.saveProgress(progress);
   }

@@ -27,12 +27,90 @@
 
 1. 根据 `bookId` 打开书籍，**并行**加载图书元数据、阅读进度（Locator JSON）、该书偏好设置（`Future.wait`）。
 2. 通过 `PublicationCacheService.getOrOpen(epubFilePath)` 打开 EPUB 文件。若同一本书被再次打开，直接复用缓存的 Publication，跳过原生 EPUB 解析（节省 ~800ms）。
-3. 恢复保存的 Locator 位置（如有），通过 `flureadium.goToLocator(locator)` 跳转。
-4. 应用用户偏好设置到 Readium（`setEPUBPreferences`）。
-5. 监听 Readium 位置变化（`onTextLocatorChanged`），更新进度并定时持久化。
-6. 点击正文切换上下控制层显隐；顶部三点与底部五入口面板按既定交互显示。
-7. 亮度/字体设置立即作用于 Readium 并写入 `reader_preferences`；离页时 flush 进度。
-8. 离开 ReaderPage 时**不关闭 Publication**（保留缓存）。App 进入后台或终止时由 `ImmersedApp` 的生命周期监听器调用 `PublicationCacheService.evict()` 释放资源。
+3. Overlay 预热链路会优先把 `initialLocator` 传给 `ReadiumReaderWidget`，让原生 reader 首次渲染尽量直接落在历史位置，减少“先打开再跳转”卡顿。
+4. 进入阅读后仍会执行保存位置恢复（`flureadium.goToLocator(locator)`）作为兜底，兼容历史数据或初始定位失败场景。
+5. 应用用户偏好设置到 Readium（`setEPUBPreferences`）。
+6. 监听 Readium 位置变化（`onTextLocatorChanged`），更新进度并定时持久化。
+7. 点击正文切换上下控制层显隐；顶部三点与底部五入口面板按既定交互显示。
+8. 亮度/字体设置立即作用于 Readium 并写入 `reader_preferences`；离页时 flush 进度。
+9. 离开 ReaderPage 时**不关闭 Publication**（保留缓存）。App 进入后台或终止时由 `ImmersedApp` 的生命周期监听器调用 `PublicationCacheService.evict()` 释放资源。
+
+### 恢复时序（防竞态）
+
+- `ReaderChannelMixin` 订阅顺序固定为：先订阅 `status` → 执行 `restoreSavedPosition()` → 再订阅 `locator`。
+- 目的：避免首个 locator 事件先写回 store，覆盖旧进度后再恢复，导致“看起来没有跳回上次位置”。
+- 多次快速订阅时使用订阅代次（epoch）保护；旧订阅在恢复完成后不会继续挂载 locator 监听。
+- Overlay 可见切换时，必须先完成 `ReaderStore.openBook(bookId)`，再允许执行通道订阅和恢复。
+
+## 近期变更纪要（2026-03）
+
+本轮性能治理核心结论：慢点不在 Flutter spinner（几十毫秒），而在 Readium iOS 首次可见信号之前的 WebView/渲染链路。
+
+关键演进如下：
+
+1. **入口统一为 overlay-first**
+   - `Book Detail` / `Shelf` / `Library` 的 reader 入口统一为：
+   - 命中预热实例 -> `overlay.show`
+   - 未命中 -> route fallback（`RouteNames.reader`）
+2. **从单实例缓存升级到多实例热池（iOS First）**
+   - 由“单 publication + 单 overlay slot”升级为“最多 3 本热书池”。
+   - 每本热书绑定一个 `sessionId`（当前使用 `bookId`），支持并存。
+3. **修复“看似预热但仍不秒开”的根因**
+   - 根因：曾出现“隐藏预热 widget”和“显示时 widget”是两棵实例，点击时仍重建 platform view。
+   - 修复：改为**每本书单一常驻 reader widget**，显示/隐藏仅切换位置与交互态，不重建。
+4. **会话事件隔离**
+   - iOS status/locator 事件携带 `sessionId`，Dart 侧按 active session 过滤，避免多实例串流。
+   - iOS 多实例 reader 共享同一组 EventChannel handler（`text-locator` / `reader-status` / `error`），避免多个 platform view 互相覆盖 stream handler 导致回调丢失。
+5. **回收策略落地**
+   - 池容量 `maxSize=3`
+   - 淘汰策略 `LFU + LRU`
+   - `TTL=15min` 自动回收
+   - 触发：容量溢出、周期 GC、App lifecycle（paused/detached）
+6. **iOS 渲染侧收敛**
+   - 预加载窗口收敛为 `preloadPrevious=0`、`preloadNext=2`
+   - `setupUserScripts` 改为聚合统计，降低日志噪音，便于定位关键链路。
+
+## 当前架构（Overlay 热池 + 会话化 Readium）
+
+```mermaid
+flowchart TD
+    A["Shelf / Library / Book Detail"] --> B["ReaderEntryService.openBook(bookId)"]
+    B --> C{"ReaderOverlayController.canShowInstantly(bookId)?"}
+    C -- "Yes" --> D["Overlay show (no platform-view rebuild)"]
+    C -- "No" --> E["Navigator.pushNamed(/reader) fallback"]
+
+    subgraph Dart["Dart Reader Runtime"]
+      F["ReaderSessionPoolService\n(max=3, LFU+LRU, TTL=15m)"]
+      G["ReaderOverlayController\nmulti-slot"]
+      H["PublicationCacheService\nsession-keyed"]
+      I["ReaderOverlayLayer\nresident widgets per hot book"]
+    end
+
+    B --> F
+    F --> G
+    G --> H
+    G --> I
+    I --> J["ReadiumReaderWidget(sessionId)"]
+
+    subgraph iOS["iOS flureadium (Sessionized)"]
+      K["FlureadiumPlugin\npublicationBySession"]
+      L["ReadiumReaderViewFactory\nresolve by sessionId"]
+      M["ReadiumReaderView\nstatus/locator with sessionId"]
+    end
+
+    J --> K
+    K --> L
+    L --> M
+    M --> N["EventChannel payload\n{sessionId, status/locator}"]
+    N --> O["ReaderChannelMixin\nfilter by activeSessionId"]
+    O --> P["ReaderStore updateLocator / restore position"]
+```
+
+### 秒开成立条件（定义）
+
+- 目标书已经在热池中，且对应常驻 reader widget 已 `content_ready`。
+- 点击时命中 `entry.overlay_hit`。
+- 点击后不应再看到该书新一轮 `publication.open_native.start`（否则说明发生重开/重建）。
 
 ### Readium 渲染架构
 
@@ -51,7 +129,8 @@ EPUB → 拷贝到本地目录            原生 EPUB 解析与渲染           
 
 - 使用 Readium Locator（EPUB CFI 格式）代替章节 + 字符偏移。
 - Locator 包含 `href`（spine 位置）、`locations`（进度百分比）等字段。
-- 通过 `onTextLocatorChanged` 流实时获取当前位置，定时持久化到 `reading_progress` 表。
+- 通过 `onTextLocatorEvents` 实时获取当前位置事件，先用 locator 的 `href` 在 publication `readingOrder` 中定位章节索引，再结合章节内进度（`progression` 或 `page/totalPages`）换算为全书进度，更新 `ReaderState.bookPercent`。
+- 若无法定位到章节索引，则仅在有 `pageIndex/totalPages` 时按页码比值兜底；若仍缺失则本次不更新百分比。不使用 `locations.totalProgression` 作为进度来源。
 
 ### 高亮机制
 
@@ -115,7 +194,7 @@ EPUB → 拷贝到本地目录            原生 EPUB 解析与渲染           
   1. 入口是否命中 `entry.overlay_hit`；若否，先看为何预加载没命中。
   2. 若命中 overlay 但慢：看 `overlay.preload` 与 `overlay.reader_widget_ready`。
   3. 若走路由慢：看 `page.init_reader` 中 `store.open_book.query`、`publication.open_native`、`channel.restore` 三段。
-  4. 若 `publication.cache_hit` 频率低：检查是否频繁切换书导致缓存抖动（当前是单 Publication 缓存）。
+  4. 若 `publication.cache_hit` 频率低：检查是否频繁淘汰 session 或命中 TTL 回收（当前为 3 本热池）。
   5. 若 `setupUserScripts` 异常频繁：优先观察 `summary_*` 聚合字段，并结合 iOS 预加载窗口（当前 `preloadPrevious=0`、`preloadNext=2`）评估 WKWebView controller 创建压力。
   6. 若首屏仍慢：对比 `navigator_created_to_first_location` 与 `go_to_locator_to_location_changed`，判断瓶颈在初始渲染还是定位跳转链路。
   7. iOS Web 层细分：查看 `native.reader_view.web_perf_markers`（`domContentLoadedMs` / `firstPaintMs`），判断慢点在 DOM 构建还是首帧绘制。

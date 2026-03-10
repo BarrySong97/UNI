@@ -58,9 +58,10 @@ lib/stores/library/       — LibraryStore + LibraryState
 5. User taps any reader entry (Now Reading Continue / Library grid with progress / Book Detail Continue) → uses unified reader entry:
    - If target book is in reader hot pool (up to 3 books): show overlay-first path.
    - Otherwise: fallback to `/reader` route.
-6. User taps a book in the grid → `BookProfileEntryService` determines entry:
-   - No progress: Book Profile (`/book-detail`)
-   - Has progress: unified reader entry (overlay-first + route fallback)
+6. User taps a book in the grid:
+   - No saved progress record: Book Profile (`/book-detail`)
+   - Has saved progress record (even if percent is 0): unified reader entry (overlay-first + route fallback)
+7. When leaving reader, progress is flushed and `LibraryStore.refreshProgress()` reloads `progressMap/progressUpdatedMap` so grid badges and category filtering update without full page reload.
 
 ## Page Layout
 

@@ -4,7 +4,9 @@ import 'package:uni/entities/book-entity.dart';
 import 'package:uni/pages/shelf/shelf-page-layout.dart';
 
 void main() {
-  testWidgets('shows empty state button when shelf has no books', (tester) async {
+  testWidgets('shows empty state button when shelf has no books', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -13,7 +15,7 @@ void main() {
             isImporting: false,
             emptyMessage: 'No books yet',
             importingMessage: 'Importing...',
-            onBookTap: (_) {},
+            onBookTap: (_, __) {},
             onImportTap: () {},
           ),
         ),
@@ -32,7 +34,7 @@ void main() {
             isImporting: true,
             emptyMessage: 'No books yet',
             importingMessage: 'Importing...',
-            onBookTap: (_) {},
+            onBookTap: (_, __) {},
             onImportTap: () {},
           ),
         ),

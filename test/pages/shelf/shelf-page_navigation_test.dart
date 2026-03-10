@@ -42,7 +42,11 @@ class _FakeReaderOverlayController extends ReaderOverlayController {
   int showCallCount = 0;
 
   @override
-  Future<void> preloadForBook(String bookId, String resolvedEpubPath) async {}
+  Future<void> preloadForBook(
+    String bookId,
+    String resolvedEpubPath, {
+    String? initialLocatorJson,
+  }) async {}
 
   @override
   bool canShowInstantly(String bookId) => canOpenInstantly;
@@ -214,4 +218,47 @@ void main() {
     expect(overlayController.showCallCount, 1);
     expect(observer.pushedRouteNames, isNot(contains(RouteNames.reader)));
   });
+
+  testWidgets(
+    'recent book with saved progress record routes to reader when tapped',
+    (tester) async {
+      final providers = await _createProviders(hasProgress: true);
+      final observer = _RecordingNavigatorObserver();
+      final now = DateTime.now();
+
+      await providers.bookRepository.upsertBook(
+        BookEntity(
+          id: 'book-2',
+          title: 'Second Book',
+          author: 'Another Author',
+          sourceType: 'local_epub',
+          epubFilePath: '/tmp/book-2.epub',
+          createdAt: now,
+          updatedAt: now,
+        ),
+      );
+      await providers.progressRepository.saveProgress(
+        ReadingProgressEntity(
+          bookId: 'book-2',
+          locatorJson: '{"href":"/chapter2.xhtml","type":"text/html"}',
+          percent: 0,
+          updatedAt: now.subtract(const Duration(minutes: 1)),
+        ),
+      );
+      await providers.libraryStore.loadShelf();
+
+      await tester.pumpWidget(
+        _buildApp(providers: providers, observer: observer),
+      );
+      await tester.pumpAndSettle();
+
+      final secondBookTitle = find.text('Second Book').last;
+      await tester.ensureVisible(secondBookTitle);
+      await tester.tap(secondBookTitle);
+      await tester.pumpAndSettle();
+
+      expect(observer.pushedRouteNames, contains(RouteNames.reader));
+      expect(observer.pushedRouteNames, isNot(contains(RouteNames.bookDetail)));
+    },
+  );
 }

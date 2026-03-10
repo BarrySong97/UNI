@@ -18,7 +18,9 @@ void main() {
     );
   }
 
-  testWidgets('LibraryBookTile renders fallback cover with book title', (tester) async {
+  testWidgets('LibraryBookTile renders fallback cover with book title', (
+    tester,
+  ) async {
     final book = createBook();
 
     await tester.pumpWidget(
@@ -44,7 +46,9 @@ void main() {
     expect(find.text('My Title'), findsOneWidget);
   });
 
-  testWidgets('LibraryBookTile uses BoxFit.cover for real cover image', (tester) async {
+  testWidgets('LibraryBookTile uses BoxFit.cover for real cover image', (
+    tester,
+  ) async {
     const coverDataUrl =
         'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+3xkAAAAASUVORK5CYII=';
     final book = createBook(coverUrl: coverDataUrl);
@@ -72,11 +76,27 @@ void main() {
     expect(imageWidget.fit, BoxFit.cover);
   });
 
-  testWidgets('LibraryBookGrid renders 2-column grid with category tabs', (tester) async {
+  testWidgets('LibraryBookGrid renders 2-column grid with category tabs', (
+    tester,
+  ) async {
     final now = DateTime.now();
     final books = <BookEntity>[
-      BookEntity(id: 'b1', title: 'Book A', author: 'Author A', sourceType: 'local_epub', createdAt: now, updatedAt: now),
-      BookEntity(id: 'b2', title: 'Book B', author: 'Author B', sourceType: 'local_epub', createdAt: now, updatedAt: now),
+      BookEntity(
+        id: 'b1',
+        title: 'Book A',
+        author: 'Author A',
+        sourceType: 'local_epub',
+        createdAt: now,
+        updatedAt: now,
+      ),
+      BookEntity(
+        id: 'b2',
+        title: 'Book B',
+        author: 'Author B',
+        sourceType: 'local_epub',
+        createdAt: now,
+        updatedAt: now,
+      ),
     ];
 
     await tester.pumpWidget(
@@ -102,5 +122,40 @@ void main() {
     // Both book titles visible (once in fallback cover, once in label below)
     expect(find.text('Book A'), findsNWidgets(2));
     expect(find.text('Book B'), findsNWidgets(2));
+  });
+
+  testWidgets('LibraryBookGrid shows progress badge from progressMap', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    final books = <BookEntity>[
+      BookEntity(
+        id: 'b1',
+        title: 'Book A',
+        author: 'Author A',
+        sourceType: 'local_epub',
+        createdAt: now,
+        updatedAt: now,
+      ),
+    ];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: LibraryBookGrid(
+              books: books,
+              onBookTap: (_) {},
+              categories: const <String>['All'],
+              activeCategory: 'All',
+              onCategoryTap: (_) {},
+              progressMap: const <String, double>{'b1': 0.34},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('34%'), findsOneWidget);
   });
 }

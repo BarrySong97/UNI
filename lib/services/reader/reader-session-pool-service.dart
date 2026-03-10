@@ -48,6 +48,7 @@ class ReaderSessionPoolService {
     Duration interval = const Duration(seconds: 60),
     required Future<void> Function(List<String> bookIds) onEvict,
   }) {
+    // 定时 GC 只负责产出“该淘汰哪些 bookId”，真正资源释放交给上层 controller。
     _gcTimer?.cancel();
     _gcTimer = Timer.periodic(interval, (_) async {
       final evicted = evictExpired();
@@ -66,6 +67,7 @@ class ReaderSessionPoolService {
     final now = DateTime.now();
     final existed = _byBookId[bookId];
     if (existed != null) {
+      // 命中热池：提升活跃度和打开计数，优先保留常读书。
       existed.lastUsedAt = now;
       existed.lastOpenedAt = now;
       existed.openCount += 1;
@@ -145,6 +147,7 @@ class ReaderSessionPoolService {
       },
     );
     for (final bookId in expired) {
+      // 这里只维护池元数据；publication/WebView 释放由上层统一执行。
       _byBookId.remove(bookId);
       ReaderPerf.mark(
         'pool.evict',
@@ -160,6 +163,7 @@ class ReaderSessionPoolService {
       return const <String>[];
     }
     final candidate = _byBookId.values.reduce((a, b) {
+      // 先按 LFU（openCount）淘汰，平局再按 LRU（lastUsedAt）淘汰。
       if (a.openCount != b.openCount) {
         return a.openCount < b.openCount ? a : b;
       }

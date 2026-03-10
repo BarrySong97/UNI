@@ -10,13 +10,16 @@ private let TAG = "ReadiumReaderPlugin"
 
 internal var currentPublicationUrlStr: String?
 internal var currentPublication: Publication?
+// iOS 多实例核心：按 sessionId 保存 publication，避免只有一个 currentPublication。
 internal var publicationBySession: [String: Publication] = [:]
 internal var publicationUrlBySession: [String: String] = [:]
 internal var currentReaderView: ReadiumReaderView?
+// 记录 sessionId -> readerView，用于 session 定向 goToLocator。
 internal var readerViewBySession: [String: ReadiumReaderView] = [:]
 internal var currentPdfReaderView: PdfReaderView?
 
 func getCurrentPublication(sessionId: String? = nil) -> Publication? {
+  // 兼容旧逻辑：未传 sessionId 时仍走 legacy currentPublication。
   if let sessionId {
     return publicationBySession[sessionId]
   }

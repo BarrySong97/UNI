@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flureadium/flureadium.dart';
@@ -30,11 +31,18 @@ class _ReaderOverlayLayerState extends State<ReaderOverlayLayer>
 
   String? _activeBookId;
   String? _activeSessionId;
+  Publication? _activePublication;
+  String? _activatingSessionId;
   bool _channelsSubscribed = false;
   final Set<String> _readySessions = <String>{};
+  final Set<String> _activatedSessions = <String>{};
+  int _activationEpoch = 0;
 
   @override
   String? get activeSessionId => _activeSessionId;
+
+  @override
+  Publication? get activePublication => _activePublication;
 
   @override
   void dispose() {
@@ -42,29 +50,46 @@ class _ReaderOverlayLayerState extends State<ReaderOverlayLayer>
     super.dispose();
   }
 
-  Future<void> _activateVisibleSlot(ReaderOverlaySlot slot) async {
-    if (_activeBookId == slot.bookId && _activeSessionId == slot.sessionId) {
+  Future<void> _activateVisibleSlot(ReaderOverlaySlot slot, int epoch) async {
+    final sameSession =
+        _activeBookId == slot.bookId && _activeSessionId == slot.sessionId;
+    if (sameSession && _activatedSessions.contains(slot.sessionId)) {
       return;
     }
     _activeBookId = slot.bookId;
     _activeSessionId = slot.sessionId;
+    _activePublication = slot.publication;
     _channelsSubscribed = false;
     cancelChannels();
     final providers = AppProvidersScope.of(context);
     readerStore = providers.readerStore;
-    await readerStore!.openBook(slot.bookId);
+    _activatingSessionId = slot.sessionId;
+    try {
+      // 切到可见书时只切 store 上下文，不重建该 slot 的原生 reader widget。
+      await readerStore!.openBook(slot.bookId);
+      if (!mounted ||
+          epoch != _activationEpoch ||
+          _activeSessionId != slot.sessionId) {
+        return;
+      }
+      _activatedSessions.add(slot.sessionId);
+      _trySubscribeForSession(slot.sessionId);
+    } finally {
+      if (_activatingSessionId == slot.sessionId) {
+        _activatingSessionId = null;
+      }
+    }
   }
 
   void _onReaderReady(ReaderOverlaySlot slot) {
+    // 隐藏态也会触发 onReady：这正是“后台预热成功”的关键证据。
     _readySessions.add(slot.sessionId);
     AppProvidersScope.of(
       context,
     ).readerOverlayController.markContentReady(slot.bookId);
 
-    if (_activeSessionId == slot.sessionId && !_channelsSubscribed) {
-      _channelsSubscribed = true;
-      ReaderPerf.mark('overlay.reader_widget_ready', bookId: _activeBookId);
-      subscribeToChannels();
+    if (_activeSessionId == slot.sessionId) {
+      _trySubscribeForSession(slot.sessionId);
     }
   }
 
@@ -80,15 +105,76 @@ class _ReaderOverlayLayerState extends State<ReaderOverlayLayer>
   }
 
   void _handleBack() {
-    unawaited(readerStore?.flushProgress());
-    AppProvidersScope.of(context).readerOverlayController.hide();
+    final providers = AppProvidersScope.of(context);
+    unawaited(
+      (readerStore?.flushProgress() ?? Future<void>.value()).then((_) {
+        return providers.libraryStore.refreshProgress();
+      }),
+    );
+    providers.readerOverlayController.hide();
+  }
+
+  void _ensureVisibleSlotActivated(ReaderOverlaySlot slot) {
+    final sameSession =
+        _activeBookId == slot.bookId && _activeSessionId == slot.sessionId;
+    final activated = _activatedSessions.contains(slot.sessionId);
+    if (sameSession && activated) {
+      _trySubscribeForSession(slot.sessionId);
+      return;
+    }
+    if (_activatingSessionId == slot.sessionId) {
+      return;
+    }
+    final epoch = ++_activationEpoch;
+    unawaited(_activateVisibleSlot(slot, epoch));
+  }
+
+  void _trySubscribeForSession(String sessionId) {
+    if (_channelsSubscribed) {
+      return;
+    }
+    if (_activeSessionId != sessionId) {
+      return;
+    }
+    if (!_readySessions.contains(sessionId) ||
+        !_activatedSessions.contains(sessionId)) {
+      return;
+    }
+    _channelsSubscribed = true;
+    ReaderPerf.mark('overlay.reader_widget_ready', bookId: _activeBookId);
+    unawaited(subscribeToChannels());
+  }
+
+  void _pruneSessionFlags(List<ReaderOverlaySlot> slots) {
+    final activeIds = slots.map((slot) => slot.sessionId).toSet();
+    _readySessions.removeWhere((id) => !activeIds.contains(id));
+    _activatedSessions.removeWhere((id) => !activeIds.contains(id));
+    if (_activatingSessionId != null &&
+        !activeIds.contains(_activatingSessionId)) {
+      _activatingSessionId = null;
+    }
   }
 
   Widget _buildSlot(ReaderOverlaySlot slot, {required bool isVisible}) {
+    Locator? initialLocator;
+    final initialLocatorJson = slot.initialLocatorJson;
+    if (initialLocatorJson != null && initialLocatorJson.isNotEmpty) {
+      try {
+        final raw = jsonDecode(initialLocatorJson);
+        if (raw is Map<String, dynamic>) {
+          initialLocator = Locator.fromJson(raw);
+        } else if (raw is Map) {
+          initialLocator = Locator.fromJson(raw.cast<String, dynamic>());
+        }
+      } catch (_) {
+        initialLocator = null;
+      }
+    }
     return Positioned.fill(
       child: IgnorePointer(
         ignoring: !isVisible,
         child: AnimatedSlide(
+          // 只做位置切换来显示/隐藏，避免点击时新建 platform view 导致失去秒开。
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeOutCubic,
           offset: isVisible ? Offset.zero : const Offset(1.05, 0),
@@ -103,6 +189,7 @@ class _ReaderOverlayLayerState extends State<ReaderOverlayLayer>
                     ),
                     publication: slot.publication,
                     sessionId: slot.sessionId,
+                    initialLocator: initialLocator,
                     onReady: () => _onReaderReady(slot),
                   ),
                 ),
@@ -142,10 +229,14 @@ class _ReaderOverlayLayerState extends State<ReaderOverlayLayer>
           cancelChannels();
           _activeBookId = null;
           _activeSessionId = null;
+          _activePublication = null;
+          _activatingSessionId = null;
           _channelsSubscribed = false;
           _readySessions.clear();
+          _activatedSessions.clear();
           return const SizedBox.shrink();
         }
+        _pruneSessionFlags(slots);
 
         final visibleBookId = ctrl.visibleBookId;
         if (visibleBookId == null) {
@@ -158,16 +249,7 @@ class _ReaderOverlayLayerState extends State<ReaderOverlayLayer>
 
         final visibleSlot = ctrl.slotForBook(visibleBookId);
         if (visibleSlot != null) {
-          unawaited(_activateVisibleSlot(visibleSlot));
-          if (_readySessions.contains(visibleSlot.sessionId) &&
-              !_channelsSubscribed) {
-            _channelsSubscribed = true;
-            ReaderPerf.mark(
-              'overlay.reader_widget_ready',
-              bookId: _activeBookId,
-            );
-            subscribeToChannels();
-          }
+          _ensureVisibleSlotActivated(visibleSlot);
         }
 
         return Stack(

@@ -5,6 +5,7 @@ import '../../app/providers/app-providers.dart';
 import '../../app/routes/route-names.dart';
 import '../../components/library/library-book-grid.dart';
 import '../../components/library/library-header.dart';
+import '../../services/reader/reader-performance-tracker.dart';
 import '../../services/library/book-profile-entry-service.dart';
 import '../../shared/constants/common-design-tokens.dart';
 
@@ -141,14 +142,33 @@ class _LibraryPageState extends State<LibraryPage> {
         bookId,
         progressMap,
       );
+      ReaderPerf.mark(
+        'entry.tap',
+        bookId: bookId,
+        extras: <String, Object?>{
+          'source': 'library_grid',
+          'resolved_target': target.name,
+          'progress_value': progressMap[bookId],
+        },
+      );
       if (!mounted) return;
       switch (target) {
         case BookProfileEntryTarget.profile:
+          ReaderPerf.mark(
+            'entry.tap.route_decision',
+            bookId: bookId,
+            extras: const <String, Object?>{'target': 'book_detail'},
+          );
           await Navigator.of(
             context,
           ).pushNamed(RouteNames.bookDetail, arguments: bookId);
           break;
         case BookProfileEntryTarget.reader:
+          ReaderPerf.mark(
+            'entry.tap.route_decision',
+            bookId: bookId,
+            extras: const <String, Object?>{'target': 'reader'},
+          );
           await providers.readerEntryService.openBook(context, bookId);
           break;
       }

@@ -11,6 +11,7 @@ class LibraryState {
     this.lastImportMessage,
     this.errorMessage,
     this.progressMap = const <String, double>{},
+    this.progressLocatorMap = const <String, String>{},
     this.progressUpdatedMap = const <String, DateTime>{},
     this.lastImportedBookId,
   });
@@ -24,6 +25,7 @@ class LibraryState {
   final String? lastImportMessage;
   final String? errorMessage;
   final Map<String, double> progressMap;
+  final Map<String, String> progressLocatorMap;
   final Map<String, DateTime> progressUpdatedMap;
   final String? lastImportedBookId;
 
@@ -45,6 +47,7 @@ class LibraryState {
     String? lastImportMessage,
     String? errorMessage,
     Map<String, double>? progressMap,
+    Map<String, String>? progressLocatorMap,
     Map<String, DateTime>? progressUpdatedMap,
     String? lastImportedBookId,
   }) {
@@ -58,6 +61,7 @@ class LibraryState {
       lastImportMessage: lastImportMessage,
       errorMessage: errorMessage,
       progressMap: progressMap ?? this.progressMap,
+      progressLocatorMap: progressLocatorMap ?? this.progressLocatorMap,
       progressUpdatedMap: progressUpdatedMap ?? this.progressUpdatedMap,
       lastImportedBookId: lastImportedBookId,
     );

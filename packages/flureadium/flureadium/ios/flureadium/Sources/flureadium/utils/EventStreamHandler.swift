@@ -1,6 +1,19 @@
 import Flutter
 
 class EventStreamHandler: NSObject, FlutterStreamHandler {
+  private static var sharedHandlers: [String: EventStreamHandler] = [:]
+
+  static func shared(
+    withName streamName: String,
+    messenger: FlutterBinaryMessenger
+  ) -> EventStreamHandler {
+    if let existing = sharedHandlers[streamName] {
+      return existing
+    }
+    let handler = EventStreamHandler(withName: streamName, messenger: messenger)
+    sharedHandlers[streamName] = handler
+    return handler
+  }
 
   private let TAG: String
   private let streamName: String

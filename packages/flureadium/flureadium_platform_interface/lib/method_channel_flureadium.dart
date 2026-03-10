@@ -63,11 +63,13 @@ class MethodChannelFlureadium extends FlureadiumPlatform {
         final locator = Locator.fromJson(
           json.decode(event) as Map<String, dynamic>,
         );
-        return ReaderLocatorEvent(locator: locator!);
+        return ReaderLocatorEvent.fromLocator(locator!);
       }
       if (event is Map) {
         final map = event.cast<dynamic, dynamic>();
         final sessionId = map['sessionId'] as String?;
+        final pageIndex = _parseInt(map['pageIndex']);
+        final totalPages = _parseInt(map['totalPages']);
         final rawLocator = map['locator'];
         Locator? locator;
         if (rawLocator is String) {
@@ -78,12 +80,50 @@ class MethodChannelFlureadium extends FlureadiumPlatform {
           locator = Locator.fromJson(rawLocator.cast<String, dynamic>());
         }
         if (locator != null) {
-          return ReaderLocatorEvent(locator: locator, sessionId: sessionId);
+          return ReaderLocatorEvent(
+            locator: locator,
+            sessionId: sessionId,
+            pageIndex: pageIndex ?? _extractPageIndex(locator),
+            totalPages: totalPages ?? _extractTotalPages(locator),
+          );
         }
       }
       throw StateError('Unsupported text locator event: $event');
     });
     return _onTextLocatorEvents!;
+  }
+
+  int? _parseInt(Object? value) {
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
+    if (value is String) {
+      return int.tryParse(value);
+    }
+    return null;
+  }
+
+  int? _extractPageIndex(Locator locator) {
+    for (final fragment in locator.locations?.fragments ?? const <String>[]) {
+      if (!fragment.startsWith('page=')) {
+        continue;
+      }
+      return int.tryParse(fragment.substring('page='.length));
+    }
+    return null;
+  }
+
+  int? _extractTotalPages(Locator locator) {
+    for (final fragment in locator.locations?.fragments ?? const <String>[]) {
+      if (!fragment.startsWith('totalPages=')) {
+        continue;
+      }
+      return int.tryParse(fragment.substring('totalPages='.length));
+    }
+    return null;
   }
 
   /// Fires whenever the TimebasedNavigator changes state

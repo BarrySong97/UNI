@@ -21,6 +21,7 @@ class ShelfPageLayout extends StatelessWidget {
     required this.emptyMessage,
     required this.importingMessage,
     this.progressMap = const <String, double>{},
+    this.progressBookIds = const <String>{},
     this.hasReadingProgress = false,
     this.nowReadingBook,
     this.nowReadingProgress = 0,
@@ -32,11 +33,12 @@ class ShelfPageLayout extends StatelessWidget {
 
   final List<BookEntity> books;
   final bool isImporting;
-  final ValueChanged<BookEntity> onBookTap;
+  final void Function(BookEntity book, bool hasProgress) onBookTap;
   final VoidCallback onImportTap;
   final String emptyMessage;
   final String importingMessage;
   final Map<String, double> progressMap;
+  final Set<String> progressBookIds;
   final bool hasReadingProgress;
   final BookEntity? nowReadingBook;
   final double nowReadingProgress;
@@ -176,7 +178,7 @@ class ShelfPageLayout extends StatelessWidget {
         itemBuilder: (context, index) {
           final book = displayBooks[index];
           final progress = progressMap[book.id] ?? 0;
-          final percent = (progress * 100).round();
+          final hasProgress = progress > 0 || progressBookIds.contains(book.id);
 
           final isNewBook = book.id == lastImportedBookId;
           final shouldSlide = !isNewBook && lastImportedBookId != null;
@@ -186,7 +188,7 @@ class ShelfPageLayout extends StatelessWidget {
             animate: isNewBook,
             slideRight: shouldSlide,
             child: GestureDetector(
-              onTap: () => onBookTap(book),
+              onTap: () => onBookTap(book, hasProgress),
               child: SizedBox(
                 width: ShelfDesignTokens.homeGridItemWidth,
                 child: Column(
@@ -204,29 +206,8 @@ class ShelfPageLayout extends StatelessWidget {
                             coverMark: book.title.isEmpty
                                 ? 'B'
                                 : book.title.substring(0, 1).toUpperCase(),
-                            onTap: () => onBookTap(book),
-                          ),
-                          Positioned(
-                            top: 8,
-                            right: 8,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 3,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xAA000000),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                '$percent%',
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
+                            onTap: () => onBookTap(book, hasProgress),
+                            progress: progress,
                           ),
                         ],
                       ),

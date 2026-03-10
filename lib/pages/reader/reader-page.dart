@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import '../../app/providers/app-providers.dart';
 import '../../services/reader/publication-cache-service.dart';
 import '../../services/reader/reader-performance-tracker.dart';
+import '../../stores/library/library-store.dart';
 import '../../stores/reader/reader-store.dart';
 import 'reader-channel-mixin.dart';
 
@@ -33,9 +34,13 @@ class _ReaderPageState extends State<ReaderPage> with ReaderChannelMixin {
   bool _spinnerVisible = false;
   bool _pendingFirstPaintAfterSpinner = false;
   Publication? _publication;
+  LibraryStore? _libraryStore;
 
   @override
   ReaderStore? readerStore;
+
+  @override
+  Publication? get activePublication => _publication;
 
   @override
   String? get activeSessionId => widget.bookId;
@@ -63,6 +68,7 @@ class _ReaderPageState extends State<ReaderPage> with ReaderChannelMixin {
     }
     final providers = AppProvidersScope.of(context);
     readerStore = providers.readerStore;
+    _libraryStore = providers.libraryStore;
 
     final openBookWatch = ReaderPerf.start(
       'page.init_reader.open_store',
@@ -130,7 +136,11 @@ class _ReaderPageState extends State<ReaderPage> with ReaderChannelMixin {
   @override
   void dispose() {
     cancelChannels();
-    unawaited(readerStore?.flushProgress());
+    unawaited(
+      (readerStore?.flushProgress() ?? Future<void>.value()).then((_) {
+        return _libraryStore?.refreshProgress() ?? Future<void>.value();
+      }),
+    );
     super.dispose();
   }
 
@@ -172,7 +182,7 @@ class _ReaderPageState extends State<ReaderPage> with ReaderChannelMixin {
                       'page.reader_widget_ready',
                       bookId: widget.bookId,
                     );
-                    subscribeToChannels();
+                    unawaited(subscribeToChannels());
                   },
                 )
               : const Center(child: CircularProgressIndicator()),

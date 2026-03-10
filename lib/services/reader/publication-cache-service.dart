@@ -29,6 +29,7 @@ class PublicationCacheService {
     String resolvedPath, {
     String? sessionId,
   }) async {
+    // key 以 session 维度隔离，确保多本热书可并存（iOS first）。
     final key = sessionId ?? '__legacy__';
     final watch = ReaderPerf.start(
       'publication.get_or_open',
@@ -37,6 +38,7 @@ class PublicationCacheService {
     // Wait for any in-flight open to finish.
     final pending = _pendingBySession[key];
     if (pending != null) {
+      // 同一 session 的并发 open 要串行化，避免重复打开同一本 publication。
       ReaderPerf.mark(
         'publication.wait_pending',
         extras: <String, Object?>{'path': resolvedPath, 'sessionId': key},
@@ -115,6 +117,7 @@ class PublicationCacheService {
     if (_cachedPubs[key] == null) {
       return;
     }
+    // 关闭对应 session 的原生 publication，释放内存与 native 资源。
     await _flureadium.closePublication(sessionId: sessionId);
     _cachedPubs.remove(key);
     _cachedPaths.remove(key);
