@@ -57,10 +57,14 @@ class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
 
   @override
   Widget build(final BuildContext context) {
-    return SizedBox.expand(
-      child: ReadiumWebView(
-        publication: widget.publication,
-        currentLocator: widget.initialLocator,
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: widget.onTap,
+      child: SizedBox.expand(
+        child: ReadiumWebView(
+          publication: widget.publication,
+          currentLocator: widget.initialLocator,
+        ),
       ),
     );
   }

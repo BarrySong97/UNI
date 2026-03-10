@@ -59,9 +59,13 @@ class ReadiumReaderWidget extends StatefulWidget {
 class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
     with WakelockManagerMixin, ReaderLifecycleMixin, OrientationHandlerMixin
     implements ReadiumReaderWidgetInterface {
+  static const double _tapDistanceThreshold = 24;
+
   ReadiumReaderChannel? _channel;
   bool wasDestroyed = false;
   bool isReady = false;
+  Offset? _pointerDownPosition;
+  int? _activePointerId;
 
   final _isReadyCompleter = Completer<Locator>();
 
@@ -115,10 +119,28 @@ class _ReadiumReaderWidgetState extends State<ReadiumReaderWidget>
     return Listener(
       onPointerDown: (final event) {
         R2Log.d('[TAP-DEBUG] Listener onPointerDown at ${event.position}');
+        _activePointerId = event.pointer;
+        _pointerDownPosition = event.position;
         enableWakelock();
+      },
+      onPointerCancel: (event) {
+        if (_activePointerId == event.pointer) {
+          _activePointerId = null;
+          _pointerDownPosition = null;
+        }
       },
       onPointerUp: (final event) {
         R2Log.d('[TAP-DEBUG] Listener onPointerUp at ${event.position}');
+        if (_activePointerId == event.pointer &&
+            _pointerDownPosition != null &&
+            (event.position - _pointerDownPosition!).distance <=
+                _tapDistanceThreshold) {
+          widget.onTap?.call();
+        }
+        if (_activePointerId == event.pointer) {
+          _activePointerId = null;
+          _pointerDownPosition = null;
+        }
       },
       child: _readerWidget,
     );

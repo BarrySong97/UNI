@@ -152,6 +152,7 @@ class _ReaderPageState extends State<ReaderPage> with ReaderChannelMixin {
       animation: store,
       builder: (context, _) {
         final state = store.state;
+        const readingBackgroundColor = Color(0xFFFFFFFF);
 
         if (state.isLoading) {
           _markSpinnerVisible(reason: 'store_loading');
@@ -173,17 +174,27 @@ class _ReaderPageState extends State<ReaderPage> with ReaderChannelMixin {
         }
 
         return Scaffold(
+          backgroundColor: readingBackgroundColor,
           body: pub != null
-              ? ReadiumReaderWidget(
-                  publication: pub,
-                  sessionId: widget.bookId,
-                  onReady: () {
-                    ReaderPerf.mark(
-                      'page.reader_widget_ready',
-                      bookId: widget.bookId,
-                    );
-                    unawaited(subscribeToChannels());
-                  },
+              ? ColoredBox(
+                  color: readingBackgroundColor,
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                      top: MediaQuery.viewPaddingOf(context).top,
+                      bottom: MediaQuery.viewPaddingOf(context).bottom,
+                    ),
+                    child: ReadiumReaderWidget(
+                      publication: pub,
+                      sessionId: widget.bookId,
+                      onReady: () {
+                        ReaderPerf.mark(
+                          'page.reader_widget_ready',
+                          bookId: widget.bookId,
+                        );
+                        unawaited(subscribeToChannels());
+                      },
+                    ),
+                  ),
                 )
               : const Center(child: CircularProgressIndicator()),
         );

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flureadium/flureadium.dart';
 
 import '../../app/providers/app-providers.dart';
+import '../../components/reader/reader-overlay-controls.dart';
 import '../../services/reader/reader-overlay-controller.dart';
 import '../../services/reader/reader-performance-tracker.dart';
 import '../../stores/reader/reader-store.dart';
@@ -37,6 +38,9 @@ class _ReaderOverlayLayerState extends State<ReaderOverlayLayer>
   final Set<String> _readySessions = <String>{};
   final Set<String> _activatedSessions = <String>{};
   int _activationEpoch = 0;
+  String? _visibleBookId;
+  String? _controlsBookId;
+  bool _controlsVisible = false;
 
   @override
   String? get activeSessionId => _activeSessionId;
@@ -105,6 +109,7 @@ class _ReaderOverlayLayerState extends State<ReaderOverlayLayer>
   }
 
   void _handleBack() {
+    _hideControls();
     final providers = AppProvidersScope.of(context);
     unawaited(
       (readerStore?.flushProgress() ?? Future<void>.value()).then((_) {
@@ -155,7 +160,50 @@ class _ReaderOverlayLayerState extends State<ReaderOverlayLayer>
     }
   }
 
-  Widget _buildSlot(ReaderOverlaySlot slot, {required bool isVisible}) {
+  void _toggleControls(String bookId) {
+    setState(() {
+      if (_controlsVisible && _controlsBookId == bookId) {
+        _controlsVisible = false;
+        _controlsBookId = null;
+        return;
+      }
+      _controlsVisible = true;
+      _controlsBookId = bookId;
+    });
+  }
+
+  void _hideControls() {
+    if (!_controlsVisible && _controlsBookId == null) {
+      return;
+    }
+    setState(() {
+      _controlsVisible = false;
+      _controlsBookId = null;
+    });
+  }
+
+  void _showPlaceholderFeedback(String label) {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (messenger == null) {
+      return;
+    }
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(content: Text('$label is not implemented yet.')),
+    );
+  }
+
+  bool _shouldShowControlsFor(String bookId) {
+    return _controlsVisible && _controlsBookId == bookId;
+  }
+
+  Widget _buildSlot(
+    ReaderOverlaySlot slot, {
+    required bool isVisible,
+    required bool showControls,
+  }) {
+    final viewPadding = MediaQuery.viewPaddingOf(context);
+    const readingBackgroundColor = Color(0xFFFFFFFF);
     Locator? initialLocator;
     final initialLocatorJson = slot.initialLocatorJson;
     if (initialLocatorJson != null && initialLocatorJson.isNotEmpty) {
@@ -183,31 +231,44 @@ class _ReaderOverlayLayerState extends State<ReaderOverlayLayer>
             child: Stack(
               children: <Widget>[
                 Positioned.fill(
-                  child: ReadiumReaderWidget(
-                    key: ValueKey<String>(
-                      'overlay_slot_${slot.bookId}_${slot.sessionId}',
+                  child: ColoredBox(
+                    color: readingBackgroundColor,
+                    child: Padding(
+                      padding: EdgeInsets.only(
+                        top: viewPadding.top,
+                        bottom: viewPadding.bottom,
+                      ),
+                      child: ReadiumReaderWidget(
+                        key: ValueKey<String>(
+                          'overlay_slot_${slot.bookId}_${slot.sessionId}',
+                        ),
+                        publication: slot.publication,
+                        sessionId: slot.sessionId,
+                        initialLocator: initialLocator,
+                        onTap: isVisible
+                            ? () => _toggleControls(slot.bookId)
+                            : null,
+                        onReady: () => _onReaderReady(slot),
+                      ),
                     ),
-                    publication: slot.publication,
-                    sessionId: slot.sessionId,
-                    initialLocator: initialLocator,
-                    onReady: () => _onReaderReady(slot),
                   ),
                 ),
                 if (isVisible)
-                  Positioned(
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    child: SafeArea(
-                      bottom: false,
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: IconButton(
-                          onPressed: _handleBack,
-                          icon: const Icon(Icons.arrow_back_ios_new),
-                        ),
-                      ),
-                    ),
+                  ReaderOverlayControls(
+                    isVisible: showControls,
+                    onBack: _handleBack,
+                    onSettings: () => _showPlaceholderFeedback('Settings'),
+                    onActionTap: (actionId) {
+                      final label = switch (actionId) {
+                        'contents' => 'Contents',
+                        'notes' => 'Notes',
+                        'progress' => 'Progress',
+                        'brightness' => 'Brightness',
+                        'font' => 'Font',
+                        _ => 'Action',
+                      };
+                      _showPlaceholderFeedback(label);
+                    },
                   ),
               ],
             ),
@@ -219,10 +280,12 @@ class _ReaderOverlayLayerState extends State<ReaderOverlayLayer>
 
   @override
   Widget build(BuildContext context) {
-    final ctrl = AppProvidersScope.of(context).readerOverlayController;
+    final providers = AppProvidersScope.of(context);
+    final ctrl = providers.readerOverlayController;
+    readerStore = providers.readerStore;
 
     return AnimatedBuilder(
-      animation: ctrl,
+      animation: Listenable.merge(<Listenable>[ctrl, providers.readerStore]),
       builder: (context, _) {
         final slots = ctrl.slots;
         if (slots.isEmpty) {
@@ -230,6 +293,9 @@ class _ReaderOverlayLayerState extends State<ReaderOverlayLayer>
           _activeBookId = null;
           _activeSessionId = null;
           _activePublication = null;
+          _visibleBookId = null;
+          _controlsBookId = null;
+          _controlsVisible = false;
           _activatingSessionId = null;
           _channelsSubscribed = false;
           _readySessions.clear();
@@ -240,11 +306,22 @@ class _ReaderOverlayLayerState extends State<ReaderOverlayLayer>
 
         final visibleBookId = ctrl.visibleBookId;
         if (visibleBookId == null) {
+          _visibleBookId = null;
+          _controlsBookId = null;
+          _controlsVisible = false;
           return Stack(
             children: slots
-                .map((slot) => _buildSlot(slot, isVisible: false))
+                .map(
+                  (slot) =>
+                      _buildSlot(slot, isVisible: false, showControls: false),
+                )
                 .toList(growable: false),
           );
+        }
+        if (_visibleBookId != visibleBookId) {
+          _visibleBookId = visibleBookId;
+          _controlsBookId = null;
+          _controlsVisible = false;
         }
 
         final visibleSlot = ctrl.slotForBook(visibleBookId);
@@ -254,10 +331,15 @@ class _ReaderOverlayLayerState extends State<ReaderOverlayLayer>
 
         return Stack(
           children: slots
-              .map(
-                (slot) =>
-                    _buildSlot(slot, isVisible: slot.bookId == visibleBookId),
-              )
+              .map((slot) {
+                final isVisible = slot.bookId == visibleBookId;
+                return _buildSlot(
+                  slot,
+                  isVisible: isVisible,
+                  showControls:
+                      isVisible && _shouldShowControlsFor(slot.bookId),
+                );
+              })
               .toList(growable: false),
         );
       },
