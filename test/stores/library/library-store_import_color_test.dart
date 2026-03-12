@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:archive/archive.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uni/repositories/book/book-repository-impl.dart';
@@ -19,10 +22,30 @@ class _FakeBookImportService extends BookImportService {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   const coverDataUrl =
       'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+3xkAAAAASUVORK5CYII=';
 
-  Future<LibraryStore> createStore(ImportedBookDraft draft) async {
+  Future<(LibraryStore, String)> createStore(ImportedBookDraft draft) async {
+    final tempDir = await Directory.systemTemp.createTemp('library-import-');
+    final sourcePath = draft.sourcePath;
+    final archive = Archive()
+      ..addFile(ArchiveFile.string('mimetype', 'application/epub+zip'));
+    final bytes = ZipEncoder().encode(archive);
+    File(sourcePath)
+      ..createSync(recursive: true)
+      ..writeAsBytesSync(bytes);
+    addTearDown(() async {
+      final sourceFile = File(sourcePath);
+      if (await sourceFile.exists()) {
+        await sourceFile.delete();
+      }
+      if (await tempDir.exists()) {
+        await tempDir.delete(recursive: true);
+      }
+    });
+
     final database = AppDatabase();
     final bookRepository = BookRepositoryImpl(
       booksDao: BooksDao(database: database),
@@ -30,21 +53,22 @@ void main() {
     final progressRepository = ProgressRepositoryImpl(
       progressDao: ProgressDao(database: database),
     );
-    return LibraryStore(
+    final store = LibraryStore(
       bookRepository: bookRepository,
       bookImportService: _FakeBookImportService(draft),
-      booksDirectory: '/tmp/test_books',
+      booksDirectory: tempDir.path,
       progressRepository: progressRepository,
       bookProfileColorService: BookProfileColorService(
         dominantColorExtractor: (bytes) async => const Color(0xFF336699),
       ),
     );
+    return (store, sourcePath);
   }
 
   test(
     'importBookFromPath stores extracted profileBgColor when cover exists',
     () async {
-      final store = await createStore(
+      final (store, sourcePath) = await createStore(
         const ImportedBookDraft(
           title: 'Book A',
           author: 'Author A',
@@ -55,7 +79,7 @@ void main() {
         ),
       );
 
-      await store.importBookFromPath('/tmp/book-a.epub');
+      await store.importBookFromPath(sourcePath);
 
       final imported = store.state.books.single;
       expect(imported.profileBgColor, isNotNull);
@@ -66,7 +90,7 @@ void main() {
   test(
     'importBookFromPath keeps profileBgColor null when cover is missing',
     () async {
-      final store = await createStore(
+      final (store, sourcePath) = await createStore(
         const ImportedBookDraft(
           title: 'Book B',
           author: 'Author B',
@@ -77,7 +101,7 @@ void main() {
         ),
       );
 
-      await store.importBookFromPath('/tmp/book-b.epub');
+      await store.importBookFromPath(sourcePath);
 
       final imported = store.state.books.single;
       expect(imported.profileBgColor, isNull);

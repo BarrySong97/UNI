@@ -1,13 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 
-import 'package:path/path.dart' as p;
-
 import '../../app/i18n/app-localizations.dart';
 import '../../app/providers/app-providers.dart';
 import '../../app/routes/route-names.dart';
 import '../../entities/book-entity.dart';
-import '../../services/reader/reader-performance-tracker.dart';
 import '../../stores/library/library-state.dart';
 import 'shelf-page-layout.dart';
 
@@ -52,25 +49,6 @@ class _ShelfPageState extends State<ShelfPage> {
         final nowReading = _computeNowReading(state);
         final gridBooks = _computeGridBooks(state, nowReading?.id);
 
-        // Warm up up to three likely books for instant overlay opening.
-        final warmCandidates = _computeWarmCandidates(state, nowReading?.id);
-        if (warmCandidates.isNotEmpty) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!mounted) return;
-            final ctrl = AppProvidersScope.of(context).readerOverlayController;
-            for (final book in warmCandidates) {
-              final path = book.epubFilePath;
-              if (path == null) continue;
-              final resolved = _resolveEpubPath(path);
-              ctrl.preloadForBook(
-                book.id,
-                resolved,
-                initialLocatorJson: state.progressLocatorMap[book.id],
-              );
-            }
-          });
-        }
-
         return ShelfPageLayout(
           books: state.books,
           isImporting: state.isImporting,
@@ -88,7 +66,7 @@ class _ShelfPageState extends State<ShelfPage> {
               _openBookFromLibrary(book.id, hasProgress),
           onImportTap: () => _pickAndImportBook(context),
           onContinueReadingTap: nowReading != null
-              ? () => _navigateToReader(nowReading.id)
+              ? () => _openReaderStub(nowReading.id)
               : null,
           lastImportedBookId: lastImportedBookId,
         );
@@ -121,12 +99,6 @@ class _ShelfPageState extends State<ShelfPage> {
     }
   }
 
-  String _resolveEpubPath(String storedPath) {
-    if (p.isAbsolute(storedPath)) return storedPath;
-    final docsPath = AppProvidersScope.of(context).documentsDirectoryPath;
-    return p.join(docsPath, storedPath);
-  }
-
   List<BookEntity> _computeGridBooks(LibraryState state, String? nowReadingId) {
     final remaining = state.filteredBooks
         .where((b) => b.id != nowReadingId)
@@ -148,46 +120,6 @@ class _ShelfPageState extends State<ShelfPage> {
     });
 
     return remaining;
-  }
-
-  List<BookEntity> _computeWarmCandidates(
-    LibraryState state,
-    String? nowReadingId,
-  ) {
-    final sorted = state.books.toList(growable: false)
-      ..sort((a, b) {
-        final aTime = state.progressUpdatedMap[a.id];
-        final bTime = state.progressUpdatedMap[b.id];
-        if (aTime == null && bTime == null) {
-          return 0;
-        }
-        if (aTime == null) {
-          return 1;
-        }
-        if (bTime == null) {
-          return -1;
-        }
-        return bTime.compareTo(aTime);
-      });
-
-    final result = <BookEntity>[];
-    if (nowReadingId != null) {
-      final nowReading = sorted.where((b) => b.id == nowReadingId);
-      result.addAll(nowReading);
-    }
-    for (final book in sorted) {
-      if (result.length >= 3) {
-        break;
-      }
-      if (book.epubFilePath == null) {
-        continue;
-      }
-      if (result.any((e) => e.id == book.id)) {
-        continue;
-      }
-      result.add(book);
-    }
-    return result;
   }
 
   Future<void> _pickAndImportBook(BuildContext context) async {
@@ -213,15 +145,10 @@ class _ShelfPageState extends State<ShelfPage> {
     await store.importBookFromPath(picked.files.single.path!);
   }
 
-  Future<void> _navigateToReader(String bookId) async {
-    ReaderPerf.mark(
-      'entry.tap',
-      bookId: bookId,
-      extras: const <String, Object?>{'source': 'shelf_now_reading'},
-    );
-    await AppProvidersScope.of(
-      context,
-    ).readerEntryService.openBook(context, bookId);
+  Future<void> _openReaderStub(String bookId) async {
+    await AppProvidersScope.of(context)
+        .readerEntryService
+        .openBook(context, bookId);
   }
 
   Future<void> _openBookFromLibrary(String bookId, bool hasProgress) async {
@@ -230,31 +157,12 @@ class _ShelfPageState extends State<ShelfPage> {
     }
     _isNavigatingBook = true;
     try {
-      final providers = AppProvidersScope.of(context);
       if (!mounted) {
         return;
       }
-      ReaderPerf.mark(
-        'entry.tap',
-        bookId: bookId,
-        extras: <String, Object?>{
-          'source': 'shelf_recent',
-          'has_progress': hasProgress,
-        },
-      );
       if (hasProgress) {
-        ReaderPerf.mark(
-          'entry.tap.route_decision',
-          bookId: bookId,
-          extras: const <String, Object?>{'target': 'reader'},
-        );
-        await providers.readerEntryService.openBook(context, bookId);
+        await _openReaderStub(bookId);
       } else {
-        ReaderPerf.mark(
-          'entry.tap.route_decision',
-          bookId: bookId,
-          extras: const <String, Object?>{'target': 'book_detail'},
-        );
         await Navigator.of(
           context,
         ).pushNamed(RouteNames.bookDetail, arguments: bookId);

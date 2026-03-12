@@ -4,11 +4,8 @@ import '../../pages/highlight/highlight-list-page.dart';
 import '../../pages/statistics/statistics-page.dart';
 import '../../pages/word-of-day/word-of-day-page.dart';
 import '../../pages/library/book-detail-page.dart';
-import '../../pages/reader/reader-page.dart';
 import '../../pages/shelf/shelf-page.dart';
-import '../../pages/reader/reader-settings-page.dart';
 import '../../pages/shell/main-tab-shell-page.dart';
-import 'route-guards.dart';
 import 'route-names.dart';
 
 class AppRouter {
@@ -32,26 +29,6 @@ class AppRouter {
         final bookId = settings.arguments as String?;
         return MaterialPageRoute<void>(
           builder: (_) => BookDetailPage(bookId: bookId ?? ''),
-        );
-      case RouteNames.reader:
-        final bookId = settings.arguments as String?;
-        if (!RouteGuards.canOpenReader(bookId)) {
-          return MaterialPageRoute<void>(
-            builder: (_) => const MainTabShellPage(),
-          );
-        }
-        return PageRouteBuilder<void>(
-          settings: settings,
-          pageBuilder: (_, __, ___) => ReaderPage(bookId: bookId!),
-          transitionDuration: const Duration(milliseconds: 120),
-          reverseTransitionDuration: const Duration(milliseconds: 120),
-          transitionsBuilder: (_, animation, __, child) {
-            return FadeTransition(opacity: animation, child: child);
-          },
-        );
-      case RouteNames.readerSettings:
-        return MaterialPageRoute<void>(
-          builder: (_) => const ReaderSettingsPage(),
         );
       case RouteNames.statistics:
         return MaterialPageRoute<void>(builder: (_) => const StatisticsPage());

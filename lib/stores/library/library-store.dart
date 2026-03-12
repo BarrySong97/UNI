@@ -11,8 +11,6 @@ import '../../repositories/book/book-repository.dart';
 import '../../repositories/progress/progress-repository.dart';
 import '../../services/library/book-profile-color-service.dart';
 import '../../services/parser/book-import-service.dart';
-import '../../services/reader/publication-cache-service.dart';
-import '../../services/reader/reader-performance-tracker.dart';
 import 'library-state.dart';
 
 class LibraryStore extends ChangeNotifier {
@@ -68,14 +66,6 @@ class LibraryStore extends ChangeNotifier {
   Future<void> refreshProgress() async {
     try {
       final progressData = await _loadProgressData(_state.books);
-      ReaderPerf.mark(
-        'library.refresh_progress',
-        extras: <String, Object?>{
-          'book_count': _state.books.length,
-          'progress_count': progressData.percentMap.length,
-          'book_ids': progressData.percentMap.keys.join(','),
-        },
-      );
       _state = _state.copyWith(
         progressMap: progressData.percentMap,
         progressLocatorMap: progressData.locatorMap,
@@ -128,15 +118,6 @@ class LibraryStore extends ChangeNotifier {
           extractDir: p.join(_booksDirectory, bookId),
         ),
       );
-
-      // Pre-cache: trigger native openPublication to generate manifest cache.
-      // This way the first user-visible open uses DirectoryContainer + cached manifest.
-      final resolvedPath = _resolveEpubPath(epubFilePath);
-      try {
-        await PublicationCacheService().getOrOpen(resolvedPath);
-      } catch (_) {
-        // Non-fatal: first open will do the full parse instead.
-      }
 
       final coverBytes = _decodeCoverDataUrl(imported.coverUrl);
       final profileBgColor = await _bookProfileColorService
@@ -240,10 +221,6 @@ class LibraryStore extends ChangeNotifier {
         );
         if (await extractedDir.exists()) {
           await extractedDir.delete(recursive: true);
-        }
-        final cacheFile = File('$resolvedPath.manifest.json');
-        if (await cacheFile.exists()) {
-          await cacheFile.delete();
         }
       }
 

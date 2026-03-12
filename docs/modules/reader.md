@@ -1,6 +1,35 @@
-# 模块：reader
+# 模块：reader（已删除 - 重构中）
 
-## 模块目的
+> **⚠️ 状态**: 本模块已于 2026-03-12 完全删除，正在进行重构。
+>
+> **已删除内容**:
+> - 所有 reader UI 组件 (pages/reader/*, components/reader/*)
+> - Flureadium 包集成 (EPUB 渲染引擎)
+> - Reader overlay 系统 (快速阅读器切换)
+> - Visual pagination 缓存
+> - Reader preferences 存储 (字体、主题、边距等)
+>
+> **保留数据**:
+> - ✅ 阅读进度数据 (`reading_progress` 表)
+> - ✅ 高亮数据 (`highlights` 表)
+> - ✅ 书籍元数据 (`books` 表)
+>
+> **迁移信息**:
+> - 数据库版本: v8 → v9
+> - 已删除表: `reader_preferences`, `reader_visual_pagination_cache`
+> - 用户行为: "继续阅读" 等按钮显示 "Reader Under Reconstruction" 对话框
+>
+> **Stub Service**:
+> - `ReaderEntryService` 保留最小实现，显示重构提示对话框
+> - 所有其他 reader 服务已移除
+>
+> ---
+>
+> **以下为历史文档，供重构参考**
+>
+> ---
+
+## 模块目的（历史）
 
 提供沉浸式书籍阅读体验，使用 Readium SDK (flureadium) 进行 EPUB 渲染与分页，支持点击显隐上下控制层、章节目录/笔记/进度/亮度/字体五入口面板，以及按书保存阅读偏好。
 
@@ -143,12 +172,15 @@ EPUB → 拷贝到本地目录            原生 EPUB 解析与渲染           
 - `ReaderState.book` — 当前图书实体
 - `ReaderState.locatorJson` — 当前 Readium Locator JSON
 - `ReaderState.bookPercent` — 阅读进度百分比
+- `ReaderState.visualCurrentPage / visualTotalPages / visualLayoutSignature` — iOS 自定义视觉分页会话态（仅 reflowable EPUB 分页模式）
+- `ReaderState.visualResourceCurrentPage / visualResourceTotalPages / visualPageCountsByHref` — 当前资源页与按 spine resource 聚合的视觉分页缓存
 - `ReaderState.preferences` — 阅读偏好
 - `ReaderState.isLoading / isReaderReady`
 - `ReadingProgressEntity(bookId, locatorJson, percent, updatedAt)`
 - `ReaderPreferencesEntity(bookId, fontSize, pagePaddingLevel, lineHeightLevel, letterSpacing, textColor, backgroundColor, brightness, fontFamily, firstLineIndent, pageTurnMode)`
 - `reader_preferences` 表（`book_id` 主键）
 - `reading_progress` 表（`book_id` 主键，存储 `locator_json`）
+- `reader_visual_pagination_cache` 表（唯一键 `book_id + layout_signature`，存储当前版式下整书视觉总页数与 `page_counts_json`）
 - `PublicationCacheService` — 多 session Publication 缓存（iOS first）。按 `sessionId(bookId)` 维护最多 3 本热书可复用 Publication，并支持按 session 回收。
 - `ReaderSessionPoolService` — 热书会话池（`maxSize=3`），维护 `openCount`、`lastOpenedAt`、`lastUsedAt`，淘汰策略为 `LFU + LRU`，并带 `TTL=15min` 自动回收。
 - **原生 Manifest 磁盘缓存** — 首次打开 EPUB 后，原生层（ReadiumReader / FlureadiumPlugin）将 manifest JSON 写入 `{epubPath}.manifest.json`。后续打开同一 EPUB 时直接从缓存重建 Publication（跳过 OPF 解析）。缓存对 Dart 层完全透明。
@@ -164,8 +196,15 @@ EPUB → 拷贝到本地目录            原生 EPUB 解析与渲染           
 - **Overlay 入口**：单击正文后显示顶部/底部控制层，再次单击隐藏；切换到其他可见书籍或关闭 overlay 时重置为隐藏。
 - Overlay 控制层为白色主题，顶部/底部栏会覆盖状态栏与系统手势区域，并从屏幕外滑入。
 - Overlay 顶部 header：左侧返回按钮（退出阅读），右侧设置按钮（当前为 UI 占位）。
-- Overlay 底部配置区：`Contents / Notes / Progress / Brightness / Font` 五入口（当前为仅图标工具栏 UI 占位）。
-- 章节面板支持 Readium TOC 导航与章节跳转。
+- 章节标题显示在阅读内容顶部（非 controls 栏）：优先使用 locator `toc=` fragment 匹配 TOC，失败时回退 `href` 匹配。
+- 阅读进度显示在阅读内容底部两侧（非 controls 栏）：左下显示 `xx%`，右下仅在“iOS + reflowable EPUB + 分页模式”下显示整书 `current/total`；页码不再使用章节 `page/totalPages`，也不再用 `% + total` 反推当前页。
+- iOS 分页模式页码来源已改为**自定义视觉分页**：Web 层用当前 viewport 计算资源内 `resourceCurrentPage / resourceTotalPages`，原生再结合 `readingOrder` 与 `pageCountsByHref` 聚合为整书 `visualCurrentPage / visualTotalPages`，通过现有 locator 事件回传 Flutter。
+- `total` 真值源为本地 `reader_visual_pagination_cache`，按 `book_id + layout_signature` 维度缓存；`books.estimated_total_pages` 仅保留旧链路兼容，不再作为 iOS 阅读页码展示真值。
+- 首个 locator 到达时会先按 `visualLayoutSignature` 查本地缓存；命中则立即显示 `current/total`，未命中则先只显示百分比，并异步触发 snapshot 重算。
+- 同一 `visualLayoutSignature` 的 snapshot miss 会在 Flutter 侧按 request key 合并调度，重复 locator 事件不会持续重置同一次重算。
+- snapshot 重算触发时机：reader ready 后首次 cache miss、版式相关偏好变化（字体/行距/页边距/字距/字体/首行缩进/翻页模式）以及视口尺寸/方向变化；重算串行且可取消，不阻塞阅读。
+- 滚动模式、非支持版式或 snapshot 未就绪时固定只显示百分比；章节标题、TOC 高亮和进度百分比链路保持不变。
+- 点击 `Contents` 打开底部章节列表（TOC），支持高亮当前章节并跳转；跳转后自动关闭列表。
 - 亮度通过阅读层遮罩实现，不调用系统亮度 API。
 - 图书不存在或 EPUB 文件缺失时显示错误态。
 - 偏好或进度保存失败时不阻断阅读流程。
@@ -209,9 +248,9 @@ EPUB → 拷贝到本地目录            原生 EPUB 解析与渲染           
 - 阅读页使用 Readium 原生渲染，支持点击显隐控制层。
 - EPUB 富文本（粗体、斜体、标题、列表、图片等）正确渲染。
 - Overlay 顶部提供返回 + 设置按钮（设置为占位，不含真实业务）。
-- 底部存在五个入口并能弹出对应面板。
+- 底部显示阅读进度文本，并存在五个入口。
 - Overlay 入口支持点击显隐 header + 底部五入口，占位按钮可点击且不阻断阅读主流程。
-- 章节目录支持跳转。
+- 章节目录支持跳转，并与顶部章节标题高亮保持联动。
 - 亮度/字体设置实时生效且重启后可恢复。
 - 阅读进度（Locator）重启后正确恢复。
 - 高亮创建与回显功能正常。

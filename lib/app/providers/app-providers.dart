@@ -4,13 +4,10 @@ import '../../repositories/book/book-repository.dart';
 import '../../repositories/chapter/chapter-repository.dart';
 import '../../repositories/highlight/highlight-repository.dart';
 import '../../repositories/progress/progress-repository.dart';
-import '../../repositories/reader-preferences/reader-preferences-repository.dart';
 import '../../services/library/book-profile-entry-service.dart';
 import '../../services/reader/reader-entry-service.dart';
-import '../../services/reader/reader-overlay-controller.dart';
 import '../../stores/highlight/highlight-store.dart';
 import '../../stores/library/library-store.dart';
-import '../../stores/reader/reader-store.dart';
 import '../i18n/app-locale.dart';
 
 class AppProviders {
@@ -19,38 +16,29 @@ class AppProviders {
     required this.chapterRepository,
     required this.progressRepository,
     required this.highlightRepository,
-    required this.readerPreferencesRepository,
     required this.bookProfileEntryService,
     required this.appLocaleController,
     this.documentsDirectoryPath = '',
-    ReaderOverlayController? readerOverlayController,
     ReaderEntryService? readerEntryService,
-  }) : readerOverlayController =
-           readerOverlayController ?? ReaderOverlayController(),
-       readerEntryService = readerEntryService ?? ReaderEntryService();
+  }) : readerEntryService = readerEntryService ?? ReaderEntryService();
 
   final BookRepository bookRepository;
   final ChapterRepository chapterRepository;
   final ProgressRepository progressRepository;
   final HighlightRepository highlightRepository;
-  final ReaderPreferencesRepository readerPreferencesRepository;
   final BookProfileEntryService bookProfileEntryService;
   final AppLocaleController appLocaleController;
   final String documentsDirectoryPath;
-  final ReaderOverlayController readerOverlayController;
   final ReaderEntryService readerEntryService;
 
   late final LibraryStore libraryStore;
-  late final ReaderStore readerStore;
   late final HighlightStore highlightStore;
 
   void registerStores({
     required LibraryStore libraryStore,
-    required ReaderStore readerStore,
     required HighlightStore highlightStore,
   }) {
     this.libraryStore = libraryStore;
-    this.readerStore = readerStore;
     this.highlightStore = highlightStore;
   }
 }

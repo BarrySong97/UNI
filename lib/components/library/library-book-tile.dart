@@ -48,33 +48,8 @@ class LibraryBookTile extends StatelessWidget {
                 )
               else
                 _buildFallbackCover(),
-              if (progress != null && progress! > 0)
-                Positioned(
-                  top: 6,
-                  right: 6,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: const Color(0xCC000000),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      '${(progress! * 100).round()}%',
-                      style: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                )
-              else if (showNewBadge)
-                const Positioned(
-                  top: 8,
-                  right: 8,
-                  child: LibraryNewBadge(),
-                ),
+              if (showNewBadge)
+                const Positioned(top: 8, right: 8, child: LibraryNewBadge()),
             ],
           ),
         ),

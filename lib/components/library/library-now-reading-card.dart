@@ -44,7 +44,9 @@ class NowReadingCard extends StatelessWidget {
       height: ShelfDesignTokens.nowReadingCoverHeight,
       decoration: BoxDecoration(
         color: ShelfDesignTokens.nowReadingCoverPlaceholderBg,
-        borderRadius: BorderRadius.circular(ShelfDesignTokens.nowReadingCoverRadius),
+        borderRadius: BorderRadius.circular(
+          ShelfDesignTokens.nowReadingCoverRadius,
+        ),
         boxShadow: const <BoxShadow>[
           BoxShadow(
             color: Color(0x20000000),
@@ -104,8 +106,6 @@ class NowReadingCard extends StatelessWidget {
   }
 
   Widget _buildInfo() {
-    final progressPercent = (progress * 100).round();
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -132,38 +132,6 @@ class NowReadingCard extends StatelessWidget {
             ),
           ),
         ],
-        const SizedBox(height: 12),
-        Row(
-          children: <Widget>[
-            Text(
-              'Chapter',
-              style: TextStyle(
-                fontSize: 13,
-                color: CommonDesignTokens.textSecondary,
-              ),
-            ),
-            const Spacer(),
-            Text(
-              '$progressPercent%',
-              style: TextStyle(
-                fontSize: 13,
-                color: CommonDesignTokens.textSecondary,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(3),
-          child: LinearProgressIndicator(
-            value: progress,
-            minHeight: 5,
-            backgroundColor: ShelfDesignTokens.nowReadingProgressBg,
-            valueColor: const AlwaysStoppedAnimation<Color>(
-              ShelfDesignTokens.nowReadingProgressFill,
-            ),
-          ),
-        ),
         const SizedBox(height: 14),
         Align(
           alignment: Alignment.centerRight,
@@ -173,7 +141,9 @@ class NowReadingCard extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               decoration: BoxDecoration(
                 color: ShelfDesignTokens.continueButtonBg,
-                borderRadius: BorderRadius.circular(ShelfDesignTokens.continueButtonRadius),
+                borderRadius: BorderRadius.circular(
+                  ShelfDesignTokens.continueButtonRadius,
+                ),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -200,5 +170,4 @@ class NowReadingCard extends StatelessWidget {
       ],
     );
   }
-
 }

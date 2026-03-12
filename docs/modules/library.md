@@ -62,6 +62,7 @@ lib/stores/library/       — LibraryStore + LibraryState
    - No saved progress record: Book Profile (`/book-detail`)
    - Has saved progress record (even if percent is 0): unified reader entry (overlay-first + route fallback)
 7. When leaving reader, progress is flushed and `LibraryStore.refreshProgress()` reloads `progressMap/progressUpdatedMap` so grid badges and category filtering update without full page reload.
+8. iOS reflowable EPUB visual pagination cache (`reader_visual_pagination_cache`) is shared with Reader as the single source for layout-specific total-page data; Shelf/Library currently still render percent-first UI and do not show live `current/total`.
 
 ## Page Layout
 
@@ -91,6 +92,7 @@ Header + "Add Your First Book" button (on Shelf).
 - `LibraryState.progressMap` (Map<String, double>)
 - `LibraryState.progressUpdatedMap` (Map<String, DateTime>)
 - `LibraryState.isLoading / isImporting`
+- `reader_visual_pagination_cache` (`book_id + layout_signature`) — 与 Reader 共用的视觉分页缓存，保存当前设备/版式下的整书总页数
 - `BookEntity.coverUrl` (data url cover)
 - `BookEntity.profileBgColor` (`#AARRGGBB`)
 - `BookEntity.epubFilePath` (relative path, e.g. `books/book_xxx.epub`, resolved at runtime)
@@ -107,6 +109,7 @@ Header + "Add Your First Book" button (on Shelf).
 - Book Profile settings menu can delete book with cascading cleanup.
 - Importing: top linear progress indicator (no blocking overlay).
 - Grid items show progress percentage badge (top-right) on cover.
+- Shelf/Library progress UI keeps using persisted percent as the primary display; if future page-total UI is needed, it must read the shared visual pagination cache instead of `estimated_total_pages`.
 
 ## Acceptance Criteria
 - Shelf renders stable dashboard (Header / Stats / Now Reading / Word of Day / Grid).

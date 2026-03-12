@@ -4,12 +4,10 @@ import 'package:sqflite/sqflite.dart';
 import '../../dtos/db/book-dto.dart';
 import '../../dtos/db/chapter-dto.dart';
 import '../../dtos/db/highlight-dto.dart';
-import '../../dtos/db/reader-preferences-dto.dart';
 import '../../dtos/db/reading-progress-dto.dart';
 import 'tables/books-table.dart';
 import 'tables/chapters-table.dart';
 import 'tables/highlights-table.dart';
-import 'tables/reader-preferences-table.dart';
 import 'tables/reading-progress-table.dart';
 
 class AppDatabase {
@@ -24,7 +22,7 @@ class AppDatabase {
     final path = p.join(root, 'uni_reader.db');
     final database = await openDatabase(
       path,
-      version: 7,
+      version: 9,
       onCreate: (db, _) async {
         await db.execute('''
 CREATE TABLE ${BooksTable.tableName} (
@@ -71,7 +69,6 @@ CREATE TABLE ${HighlightsTable.tableName} (
   ${HighlightsTable.updatedAt} INTEGER NOT NULL
 )
 ''');
-        await _createReaderPreferencesTable(db);
         await db.execute(
           'CREATE INDEX idx_chapters_book_idx ON ${ChaptersTable.tableName} (${ChaptersTable.bookId}, ${ChaptersTable.idx})',
         );
@@ -82,6 +79,12 @@ CREATE TABLE ${HighlightsTable.tableName} (
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 7) {
           await _migrateToV7(db);
+        }
+        if (oldVersion < 8) {
+          // V8: Visual pagination cache table (now removed in V9)
+        }
+        if (oldVersion < 9) {
+          await _migrateToV9(db);
         }
       },
     );
@@ -127,6 +130,13 @@ CREATE TABLE ${HighlightsTable.tableName} (
     await db.execute('DELETE FROM ${ChaptersTable.tableName}');
   }
 
+  static Future<void> _migrateToV9(DatabaseExecutor db) async {
+    // Drop reader-specific tables while preserving user data
+    await db.execute('DROP TABLE IF EXISTS reader_preferences');
+    await db.execute('DROP TABLE IF EXISTS reader_visual_pagination_cache');
+    // Note: reading_progress, highlights, books tables are preserved
+  }
+
   Future<List<BookDto>> listBooks() => _backend.listBooks();
 
   Future<BookDto?> getBook(String bookId) => _backend.getBook(bookId);
@@ -165,30 +175,6 @@ CREATE TABLE ${HighlightsTable.tableName} (
 
   Future<void> deleteHighlight(String highlightId) =>
       _backend.deleteHighlight(highlightId);
-
-  Future<ReaderPreferencesDto?> getReaderPreferences(String bookId) =>
-      _backend.getReaderPreferences(bookId);
-
-  Future<void> upsertReaderPreferences(ReaderPreferencesDto preferences) =>
-      _backend.upsertReaderPreferences(preferences);
-
-  static Future<void> _createReaderPreferencesTable(DatabaseExecutor db) async {
-    await db.execute('''
-CREATE TABLE ${ReaderPreferencesTable.tableName} (
-  ${ReaderPreferencesTable.bookId} TEXT PRIMARY KEY,
-  ${ReaderPreferencesTable.fontSize} REAL NOT NULL,
-  ${ReaderPreferencesTable.pagePaddingLevel} INTEGER NOT NULL,
-  ${ReaderPreferencesTable.lineHeightLevel} INTEGER NOT NULL,
-  ${ReaderPreferencesTable.letterSpacing} REAL NOT NULL,
-  ${ReaderPreferencesTable.textColor} INTEGER NOT NULL,
-  ${ReaderPreferencesTable.backgroundColor} INTEGER NOT NULL,
-  ${ReaderPreferencesTable.brightness} REAL NOT NULL,
-  ${ReaderPreferencesTable.fontFamily} TEXT NOT NULL,
-  ${ReaderPreferencesTable.firstLineIndent} INTEGER NOT NULL,
-  ${ReaderPreferencesTable.pageTurnMode} TEXT NOT NULL
-)
-''');
-  }
 }
 
 abstract class _DatabaseBackend {
@@ -205,8 +191,6 @@ abstract class _DatabaseBackend {
   Future<List<HighlightDto>> listHighlights(String bookId);
   Future<void> upsertHighlight(HighlightDto highlight);
   Future<void> deleteHighlight(String highlightId);
-  Future<ReaderPreferencesDto?> getReaderPreferences(String bookId);
-  Future<void> upsertReaderPreferences(ReaderPreferencesDto preferences);
 }
 
 class _InMemoryBackend implements _DatabaseBackend {
@@ -215,8 +199,6 @@ class _InMemoryBackend implements _DatabaseBackend {
   final Map<String, ReadingProgressDto> _progress =
       <String, ReadingProgressDto>{};
   final Map<String, HighlightDto> _highlights = <String, HighlightDto>{};
-  final Map<String, ReaderPreferencesDto> _readerPreferences =
-      <String, ReaderPreferencesDto>{};
 
   @override
   Future<List<BookDto>> listBooks() async =>
@@ -236,7 +218,6 @@ class _InMemoryBackend implements _DatabaseBackend {
     _chapters.removeWhere((_, chapter) => chapter.bookId == bookId);
     _progress.remove(bookId);
     _highlights.removeWhere((_, highlight) => highlight.bookId == bookId);
-    _readerPreferences.remove(bookId);
   }
 
   @override
@@ -272,9 +253,7 @@ class _InMemoryBackend implements _DatabaseBackend {
 
   @override
   Future<List<HighlightDto>> listHighlights(String bookId) async {
-    final filtered = _highlights.values.where(
-      (item) => item.bookId == bookId,
-    );
+    final filtered = _highlights.values.where((item) => item.bookId == bookId);
     final list = filtered.toList(growable: false)
       ..sort((a, b) => a.createdAtMillis.compareTo(b.createdAtMillis));
     return list;
@@ -288,15 +267,6 @@ class _InMemoryBackend implements _DatabaseBackend {
   @override
   Future<void> deleteHighlight(String highlightId) async {
     _highlights.remove(highlightId);
-  }
-
-  @override
-  Future<ReaderPreferencesDto?> getReaderPreferences(String bookId) async =>
-      _readerPreferences[bookId];
-
-  @override
-  Future<void> upsertReaderPreferences(ReaderPreferencesDto preferences) async {
-    _readerPreferences[preferences.bookId] = preferences;
   }
 }
 
@@ -356,11 +326,6 @@ class _SqfliteBackend implements _DatabaseBackend {
       await txn.delete(
         ReadingProgressTable.tableName,
         where: '${ReadingProgressTable.bookId} = ?',
-        whereArgs: <Object?>[bookId],
-      );
-      await txn.delete(
-        ReaderPreferencesTable.tableName,
-        where: '${ReaderPreferencesTable.bookId} = ?',
         whereArgs: <Object?>[bookId],
       );
       await txn.delete(
@@ -477,42 +442,6 @@ class _SqfliteBackend implements _DatabaseBackend {
     );
   }
 
-  @override
-  Future<ReaderPreferencesDto?> getReaderPreferences(String bookId) async {
-    final rows = await _database.query(
-      ReaderPreferencesTable.tableName,
-      where: '${ReaderPreferencesTable.bookId} = ?',
-      whereArgs: <Object?>[bookId],
-      limit: 1,
-    );
-    if (rows.isEmpty) {
-      return null;
-    }
-    return _readerPreferencesFromRow(rows.first);
-  }
-
-  @override
-  Future<void> upsertReaderPreferences(ReaderPreferencesDto preferences) {
-    return _database.insert(
-      ReaderPreferencesTable.tableName,
-      <String, Object?>{
-        ReaderPreferencesTable.bookId: preferences.bookId,
-        ReaderPreferencesTable.fontSize: preferences.fontSize,
-        ReaderPreferencesTable.pagePaddingLevel: preferences.pagePaddingLevel,
-        ReaderPreferencesTable.lineHeightLevel: preferences.lineHeightLevel,
-        ReaderPreferencesTable.letterSpacing: preferences.letterSpacing,
-        ReaderPreferencesTable.textColor: preferences.textColorValue,
-        ReaderPreferencesTable.backgroundColor:
-            preferences.backgroundColorValue,
-        ReaderPreferencesTable.brightness: preferences.brightness,
-        ReaderPreferencesTable.fontFamily: preferences.fontFamily,
-        ReaderPreferencesTable.firstLineIndent: preferences.firstLineIndent,
-        ReaderPreferencesTable.pageTurnMode: preferences.pageTurnMode,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
-  }
-
   BookDto _bookFromRow(Map<String, Object?> row) {
     return BookDto(
       id: row[BooksTable.id]! as String,
@@ -559,23 +488,6 @@ class _SqfliteBackend implements _DatabaseBackend {
       note: row[HighlightsTable.note] as String?,
       createdAtMillis: row[HighlightsTable.createdAt]! as int,
       updatedAtMillis: row[HighlightsTable.updatedAt]! as int,
-    );
-  }
-
-  ReaderPreferencesDto _readerPreferencesFromRow(Map<String, Object?> row) {
-    return ReaderPreferencesDto(
-      bookId: row[ReaderPreferencesTable.bookId]! as String,
-      fontSize: (row[ReaderPreferencesTable.fontSize]! as num).toDouble(),
-      pagePaddingLevel: row[ReaderPreferencesTable.pagePaddingLevel]! as int,
-      lineHeightLevel: row[ReaderPreferencesTable.lineHeightLevel]! as int,
-      letterSpacing: (row[ReaderPreferencesTable.letterSpacing]! as num)
-          .toDouble(),
-      textColorValue: row[ReaderPreferencesTable.textColor]! as int,
-      backgroundColorValue: row[ReaderPreferencesTable.backgroundColor]! as int,
-      brightness: (row[ReaderPreferencesTable.brightness]! as num).toDouble(),
-      fontFamily: row[ReaderPreferencesTable.fontFamily]! as String,
-      firstLineIndent: row[ReaderPreferencesTable.firstLineIndent]! as int,
-      pageTurnMode: row[ReaderPreferencesTable.pageTurnMode]! as String,
     );
   }
 }

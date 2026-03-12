@@ -25,7 +25,7 @@ void main() {
     expect(find.text('Add Your First Book'), findsOneWidget);
   });
 
-  testWidgets('shows loading overlay while importing', (tester) async {
+  testWidgets('shows top linear progress while importing', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -41,7 +41,8 @@ void main() {
       ),
     );
 
-    expect(find.text('Importing...'), findsOneWidget);
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.text('Importing...'), findsNothing);
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
   });
 }

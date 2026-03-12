@@ -1,3 +1,0 @@
-dependency_overrides:
-  flureadium_platform_interface:
-    path: ../flureadium_platform_interface

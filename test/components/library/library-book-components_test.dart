@@ -123,39 +123,4 @@ void main() {
     expect(find.text('Book A'), findsNWidgets(2));
     expect(find.text('Book B'), findsNWidgets(2));
   });
-
-  testWidgets('LibraryBookGrid shows progress badge from progressMap', (
-    tester,
-  ) async {
-    final now = DateTime.now();
-    final books = <BookEntity>[
-      BookEntity(
-        id: 'b1',
-        title: 'Book A',
-        author: 'Author A',
-        sourceType: 'local_epub',
-        createdAt: now,
-        updatedAt: now,
-      ),
-    ];
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: LibraryBookGrid(
-              books: books,
-              onBookTap: (_) {},
-              categories: const <String>['All'],
-              activeCategory: 'All',
-              onCategoryTap: (_) {},
-              progressMap: const <String, double>{'b1': 0.34},
-            ),
-          ),
-        ),
-      ),
-    );
-
-    expect(find.text('34%'), findsOneWidget);
-  });
 }

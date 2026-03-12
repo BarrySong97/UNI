@@ -1,6 +1,0 @@
-dartdoc:
-  name: Flureadium
-  description: Flutter plugin for Readium ebook reading
-
-  exclude:
-    - 'package:flureadium/src/**'
