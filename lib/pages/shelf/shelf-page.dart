@@ -146,9 +146,9 @@ class _ShelfPageState extends State<ShelfPage> {
   }
 
   Future<void> _openReaderStub(String bookId) async {
-    await AppProvidersScope.of(context)
-        .readerEntryService
-        .openBook(context, bookId);
+    await AppProvidersScope.of(
+      context,
+    ).readerEntryService.openBook(context, bookId);
   }
 
   Future<void> _openBookFromLibrary(String bookId, bool hasProgress) async {

@@ -6,9 +6,11 @@ class ProgressDao {
 
   final AppDatabase _database;
 
-  Future<ReadingProgressDto?> getByBookId(String bookId) => _database.getProgress(bookId);
+  Future<ReadingProgressDto?> getByBookId(String bookId) =>
+      _database.getProgress(bookId);
 
   Future<List<ReadingProgressDto>> getAll() => _database.getAllProgress();
 
-  Future<void> upsertProgress(ReadingProgressDto dto) => _database.upsertProgress(dto);
+  Future<void> upsertProgress(ReadingProgressDto dto) =>
+      _database.upsertProgress(dto);
 }

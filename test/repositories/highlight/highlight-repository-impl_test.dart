@@ -14,7 +14,8 @@ void main() {
     final entity = HighlightEntity(
       id: 'h1',
       bookId: 'b1',
-      locatorJson: '{"href":"/chapter1.xhtml","locations":{"cssSelector":"p.intro"}}',
+      locatorJson:
+          '{"href":"/chapter1.xhtml","locations":{"cssSelector":"p.intro"}}',
       selectedText: 'x',
       color: '#FF0000',
       createdAt: now,

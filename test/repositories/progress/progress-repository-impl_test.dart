@@ -6,7 +6,9 @@ import 'package:uni/services/db/daos/progress-dao.dart';
 
 void main() {
   test('save and read progress maps dto/entity correctly', () async {
-    final repository = ProgressRepositoryImpl(progressDao: ProgressDao(database: AppDatabase()));
+    final repository = ProgressRepositoryImpl(
+      progressDao: ProgressDao(database: AppDatabase()),
+    );
 
     final now = DateTime.now();
     final entity = ReadingProgressEntity(

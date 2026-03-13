@@ -48,8 +48,9 @@ class _SimplePage extends StatelessWidget {
 }
 
 void main() {
-  testWidgets('MainTabShellPage preserves tab state via IndexedStack',
-      (tester) async {
+  testWidgets('MainTabShellPage preserves tab state via IndexedStack', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: MainTabShellPage(

@@ -4,7 +4,8 @@ import '../../services/db/daos/highlights-dao.dart';
 import 'highlight-repository.dart';
 
 class HighlightRepositoryImpl implements HighlightRepository {
-  HighlightRepositoryImpl({required HighlightsDao highlightsDao}) : _highlightsDao = highlightsDao;
+  HighlightRepositoryImpl({required HighlightsDao highlightsDao})
+    : _highlightsDao = highlightsDao;
 
   final HighlightsDao _highlightsDao;
 

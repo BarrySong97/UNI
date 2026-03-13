@@ -10,6 +10,7 @@ import 'package:uni/services/db/daos/books-dao.dart';
 import 'package:uni/services/db/daos/progress-dao.dart';
 import 'package:uni/services/library/book-profile-color-service.dart';
 import 'package:uni/services/parser/book-import-service.dart';
+import 'package:uni/services/reader/epub_preparse_service.dart';
 import 'package:uni/stores/library/library-store.dart';
 
 class _FakeBookImportService extends BookImportService {
@@ -61,6 +62,7 @@ void main() {
       bookProfileColorService: BookProfileColorService(
         dominantColorExtractor: (bytes) async => const Color(0xFF336699),
       ),
+      epubPreparseService: EpubPreparseService(),
     );
     return (store, sourcePath);
   }

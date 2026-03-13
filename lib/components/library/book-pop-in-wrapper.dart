@@ -95,10 +95,7 @@ class _BookPopInWrapperState extends State<BookPopInWrapper>
     if (_mode == _AnimationMode.slideRight) {
       return FadeTransition(
         opacity: _slideFadeAnimation,
-        child: SlideTransition(
-          position: _slideAnimation,
-          child: widget.child,
-        ),
+        child: SlideTransition(position: _slideAnimation, child: widget.child),
       );
     }
 
@@ -107,10 +104,7 @@ class _BookPopInWrapperState extends State<BookPopInWrapper>
       builder: (context, child) {
         return Opacity(
           opacity: _opacityAnimation.value,
-          child: Transform.scale(
-            scale: _scaleAnimation.value,
-            child: child,
-          ),
+          child: Transform.scale(scale: _scaleAnimation.value, child: child),
         );
       },
       child: widget.child,

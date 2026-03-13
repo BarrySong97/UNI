@@ -5,6 +5,7 @@ import '../../repositories/chapter/chapter-repository.dart';
 import '../../repositories/highlight/highlight-repository.dart';
 import '../../repositories/progress/progress-repository.dart';
 import '../../services/library/book-profile-entry-service.dart';
+import '../../services/reader/epub_preparse_service.dart';
 import '../../services/reader/reader-entry-service.dart';
 import '../../stores/highlight/highlight-store.dart';
 import '../../stores/library/library-store.dart';
@@ -19,6 +20,7 @@ class AppProviders {
     required this.bookProfileEntryService,
     required this.appLocaleController,
     this.documentsDirectoryPath = '',
+    required this.epubPreparseService,
     ReaderEntryService? readerEntryService,
   }) : readerEntryService = readerEntryService ?? ReaderEntryService();
 
@@ -29,6 +31,7 @@ class AppProviders {
   final BookProfileEntryService bookProfileEntryService;
   final AppLocaleController appLocaleController;
   final String documentsDirectoryPath;
+  final EpubPreparseService epubPreparseService;
   final ReaderEntryService readerEntryService;
 
   late final LibraryStore libraryStore;

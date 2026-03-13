@@ -13,7 +13,8 @@ void main() {
 
     final created = await store.createHighlight(
       bookId: 'book-1',
-      locatorJson: '{"href":"/chapter1.xhtml","locations":{"cssSelector":"p.intro"}}',
+      locatorJson:
+          '{"href":"/chapter1.xhtml","locations":{"cssSelector":"p.intro"}}',
       selectedText: 'highlighted text',
     );
 

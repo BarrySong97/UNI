@@ -14,6 +14,8 @@ import '../services/db/daos/highlights-dao.dart';
 import '../services/db/daos/progress-dao.dart';
 import '../services/library/book-profile-entry-service.dart';
 import '../services/parser/book-import-service.dart';
+import '../services/reader/epub_preparse_service.dart';
+import '../src/rust/frb_generated.dart';
 import '../stores/highlight/highlight-store.dart';
 import '../stores/library/library-store.dart';
 import 'app.dart';
@@ -55,6 +57,10 @@ class AppBootstrap {
     final appLocale = AppLocaleController();
     await appLocale.initialize();
 
+    // Initialize Rust FFI via flutter_rust_bridge.
+    await RustLib.init();
+    final epubPreparseService = EpubPreparseService();
+
     final providers = AppProviders(
       bookRepository: bookRepository,
       chapterRepository: chapterRepository,
@@ -63,6 +69,7 @@ class AppBootstrap {
       bookProfileEntryService: bookProfileEntryService,
       appLocaleController: appLocale,
       documentsDirectoryPath: docsPath,
+      epubPreparseService: epubPreparseService,
     );
 
     providers.registerStores(
@@ -71,6 +78,7 @@ class AppBootstrap {
         bookImportService: BookImportService(),
         booksDirectory: booksDirectory,
         progressRepository: progressRepository,
+        epubPreparseService: epubPreparseService,
       ),
       highlightStore: HighlightStore(highlightRepository: highlightRepository),
     );

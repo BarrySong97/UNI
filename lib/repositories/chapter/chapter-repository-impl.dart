@@ -4,7 +4,8 @@ import '../../services/db/daos/chapters-dao.dart';
 import 'chapter-repository.dart';
 
 class ChapterRepositoryImpl implements ChapterRepository {
-  ChapterRepositoryImpl({required ChaptersDao chaptersDao}) : _chaptersDao = chaptersDao;
+  ChapterRepositoryImpl({required ChaptersDao chaptersDao})
+    : _chaptersDao = chaptersDao;
 
   final ChaptersDao _chaptersDao;
 

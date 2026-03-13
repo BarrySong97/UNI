@@ -14,7 +14,9 @@ void main() {
   });
 
   test('stored preference is loaded and persisted', () async {
-    SharedPreferences.setMockInitialValues(<String, Object>{'preferred_locale': 'zh'});
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'preferred_locale': 'zh',
+    });
     final controller = AppLocaleController();
 
     await controller.initialize();

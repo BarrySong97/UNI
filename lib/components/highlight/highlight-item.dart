@@ -18,7 +18,10 @@ class HighlightItem extends StatelessWidget {
       child: ListTile(
         title: Text(highlight.selectedText),
         subtitle: Text(highlight.color),
-        trailing: IconButton(icon: const Icon(Icons.delete_outline), onPressed: onDelete),
+        trailing: IconButton(
+          icon: const Icon(Icons.delete_outline),
+          onPressed: onDelete,
+        ),
       ),
     );
   }

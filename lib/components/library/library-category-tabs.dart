@@ -29,7 +29,8 @@ class LibraryCategoryTabs extends StatelessWidget {
             onTap: () => onChange(label),
           );
         },
-        separatorBuilder: (_, _) => const SizedBox(width: CommonDesignTokens.tabGap),
+        separatorBuilder: (_, _) =>
+            const SizedBox(width: CommonDesignTokens.tabGap),
         itemCount: items.length,
       ),
     );

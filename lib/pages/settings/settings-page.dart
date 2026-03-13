@@ -107,18 +107,12 @@ class SettingsPage extends StatelessWidget {
                         icon: Icons.chat_bubble_outline,
                         label: 'Feedback',
                       ),
-                      SettingsRow(
-                        icon: Icons.email_outlined,
-                        label: 'Email',
-                      ),
+                      SettingsRow(icon: Icons.email_outlined, label: 'Email'),
                       SettingsRow(
                         icon: Icons.share_outlined,
                         label: 'Social Media',
                       ),
-                      SettingsRow(
-                        icon: Icons.help_outline,
-                        label: 'Help',
-                      ),
+                      SettingsRow(icon: Icons.help_outline, label: 'Help'),
                       SettingsRow(
                         icon: Icons.quiz_outlined,
                         label: 'FAQ',

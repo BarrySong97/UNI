@@ -4,10 +4,7 @@ import '../../../shared/constants/common-design-tokens.dart';
 import '../../../shared/constants/shell-design-tokens.dart';
 
 class AppBottomTabItem {
-  const AppBottomTabItem({
-    required this.icon,
-    required this.label,
-  });
+  const AppBottomTabItem({required this.icon, required this.label});
 
   final IconData icon;
   final String label;
@@ -46,7 +43,9 @@ class AppBottomTabBar extends StatelessWidget {
                   Icon(
                     item.icon,
                     size: ShellDesignTokens.bottomIconSize,
-                    color: isActive ? CommonDesignTokens.textPrimary : CommonDesignTokens.tabInactiveText,
+                    color: isActive
+                        ? CommonDesignTokens.textPrimary
+                        : CommonDesignTokens.tabInactiveText,
                   ),
                   const SizedBox(height: 6),
                   Text(
@@ -54,7 +53,9 @@ class AppBottomTabBar extends StatelessWidget {
                     style: TextStyle(
                       fontSize: ShellDesignTokens.bottomLabelSize,
                       fontWeight: FontWeight.w700,
-                      color: isActive ? CommonDesignTokens.textPrimary : CommonDesignTokens.tabInactiveText,
+                      color: isActive
+                          ? CommonDesignTokens.textPrimary
+                          : CommonDesignTokens.tabInactiveText,
                       letterSpacing: 0.4,
                     ),
                   ),

@@ -13,9 +13,36 @@ class LibraryReadingStats extends StatelessWidget {
   static const int _mockBooksRead = 12;
 
   static const List<double> _mockBarHeights = [
-    0.3, 0.5, 0.8, 0.4, 0.6, 0.9, 0.7, 0.5, 0.3, 0.6,
-    0.8, 0.4, 0.5, 0.7, 0.9, 0.6, 0.4, 0.8, 0.5, 0.3,
-    0.7, 0.6, 0.4, 0.8, 0.5, 0.9, 0.3, 0.6, 0.7, 0.4,
+    0.3,
+    0.5,
+    0.8,
+    0.4,
+    0.6,
+    0.9,
+    0.7,
+    0.5,
+    0.3,
+    0.6,
+    0.8,
+    0.4,
+    0.5,
+    0.7,
+    0.9,
+    0.6,
+    0.4,
+    0.8,
+    0.5,
+    0.3,
+    0.7,
+    0.6,
+    0.4,
+    0.8,
+    0.5,
+    0.9,
+    0.3,
+    0.6,
+    0.7,
+    0.4,
   ];
 
   @override
@@ -107,7 +134,13 @@ class LibraryReadingStats extends StatelessWidget {
                 ),
               ),
               const Spacer(),
-              Icon(Icons.menu_book_rounded, size: 18, color: ShelfDesignTokens.statsBooksReadText.withValues(alpha: 0.6)),
+              Icon(
+                Icons.menu_book_rounded,
+                size: 18,
+                color: ShelfDesignTokens.statsBooksReadText.withValues(
+                  alpha: 0.6,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 8),
@@ -141,7 +174,9 @@ class LibraryReadingStats extends StatelessWidget {
             child: Icon(
               Icons.auto_stories_outlined,
               size: 36,
-              color: ShelfDesignTokens.statsBooksReadText.withValues(alpha: 0.15),
+              color: ShelfDesignTokens.statsBooksReadText.withValues(
+                alpha: 0.15,
+              ),
             ),
           ),
         ],
@@ -151,8 +186,18 @@ class LibraryReadingStats extends StatelessWidget {
 
   static String _currentMonthLabel() {
     const months = [
-      'JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE',
-      'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER',
+      'JANUARY',
+      'FEBRUARY',
+      'MARCH',
+      'APRIL',
+      'MAY',
+      'JUNE',
+      'JULY',
+      'AUGUST',
+      'SEPTEMBER',
+      'OCTOBER',
+      'NOVEMBER',
+      'DECEMBER',
     ];
     return months[DateTime.now().month - 1];
   }
@@ -168,18 +213,12 @@ class LibraryReadingStats extends StatelessWidget {
         children: <InlineSpan>[
           TextSpan(
             text: '$hours',
-            style: const TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w700,
-            ),
+            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700),
           ),
           const TextSpan(text: 'h '),
           TextSpan(
             text: '$minutes',
-            style: const TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w700,
-            ),
+            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700),
           ),
           const TextSpan(text: 'm'),
         ],

@@ -5,9 +5,8 @@ import '../../repositories/highlight/highlight-repository.dart';
 import 'highlight-state.dart';
 
 class HighlightStore extends ChangeNotifier {
-  HighlightStore({
-    required HighlightRepository highlightRepository,
-  }) : _highlightRepository = highlightRepository;
+  HighlightStore({required HighlightRepository highlightRepository})
+    : _highlightRepository = highlightRepository;
 
   final HighlightRepository _highlightRepository;
 
@@ -52,7 +51,9 @@ class HighlightStore extends ChangeNotifier {
   Future<void> deleteHighlight(String highlightId) async {
     await _highlightRepository.deleteHighlight(highlightId);
     _state = _state.copyWith(
-      items: _state.items.where((item) => item.id != highlightId).toList(growable: false),
+      items: _state.items
+          .where((item) => item.id != highlightId)
+          .toList(growable: false),
     );
     notifyListeners();
   }

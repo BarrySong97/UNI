@@ -29,7 +29,9 @@ class PillTab extends StatelessWidget {
               ? CommonDesignTokens.tabActiveBg
               : CommonDesignTokens.tabInactiveBg,
           border: Border.all(color: CommonDesignTokens.borderColor),
-          borderRadius: BorderRadius.circular(CommonDesignTokens.tabBorderRadius),
+          borderRadius: BorderRadius.circular(
+            CommonDesignTokens.tabBorderRadius,
+          ),
         ),
         child: Text(
           label,

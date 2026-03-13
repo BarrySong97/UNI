@@ -27,7 +27,9 @@ class LibraryTopBar extends StatelessWidget {
           TopIconButton(icon: Icons.search, onTap: onSearchTap),
           TopIconButton(icon: Icons.menu, onTap: onMenuTap),
           TopIconButton(
-            icon: isImporting ? Icons.hourglass_top : Icons.file_upload_outlined,
+            icon: isImporting
+                ? Icons.hourglass_top
+                : Icons.file_upload_outlined,
             onTap: isImporting ? null : onImportTap,
           ),
         ],

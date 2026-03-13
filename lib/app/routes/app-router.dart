@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../pages/highlight/highlight-list-page.dart';
 import '../../pages/statistics/statistics-page.dart';
 import '../../pages/word-of-day/word-of-day-page.dart';
 import '../../pages/library/book-detail-page.dart';
@@ -34,11 +33,6 @@ class AppRouter {
         return MaterialPageRoute<void>(builder: (_) => const StatisticsPage());
       case RouteNames.wordOfDay:
         return MaterialPageRoute<void>(builder: (_) => const WordOfDayPage());
-      case RouteNames.highlights:
-        final args = settings.arguments as Map<String, String>?;
-        return MaterialPageRoute<void>(
-          builder: (_) => HighlightListPage(bookId: args?['bookId'] ?? ''),
-        );
       default:
         return null;
     }

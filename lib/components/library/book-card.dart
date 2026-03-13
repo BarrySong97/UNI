@@ -3,11 +3,7 @@ import 'package:flutter/material.dart';
 import '../../entities/book-entity.dart';
 
 class BookCard extends StatelessWidget {
-  const BookCard({
-    required this.book,
-    required this.onTap,
-    super.key,
-  });
+  const BookCard({required this.book, required this.onTap, super.key});
 
   final BookEntity book;
   final VoidCallback onTap;

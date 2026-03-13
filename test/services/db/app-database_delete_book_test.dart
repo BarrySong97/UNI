@@ -55,7 +55,8 @@ void main() {
       HighlightDto(
         id: 'h-1',
         bookId: 'book-1',
-        locatorJson: '{"href":"/chapter1.xhtml","locations":{"cssSelector":"p"}}',
+        locatorJson:
+            '{"href":"/chapter1.xhtml","locations":{"cssSelector":"p"}}',
         selectedText: 'Book1',
         color: '#FFFFEB3B',
         createdAtMillis: nowMillis,
@@ -66,7 +67,8 @@ void main() {
       HighlightDto(
         id: 'h-2',
         bookId: 'book-2',
-        locatorJson: '{"href":"/chapter1.xhtml","locations":{"cssSelector":"p"}}',
+        locatorJson:
+            '{"href":"/chapter1.xhtml","locations":{"cssSelector":"p"}}',
         selectedText: 'Book2',
         color: '#FFFFEB3B',
         createdAtMillis: nowMillis,

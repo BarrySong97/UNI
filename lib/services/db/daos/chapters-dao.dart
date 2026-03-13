@@ -6,9 +6,11 @@ class ChaptersDao {
 
   final AppDatabase _database;
 
-  Future<List<ChapterDto>> listByBookId(String bookId) => _database.listChaptersByBook(bookId);
+  Future<List<ChapterDto>> listByBookId(String bookId) =>
+      _database.listChaptersByBook(bookId);
 
-  Future<ChapterDto?> getById(String chapterId) => _database.getChapter(chapterId);
+  Future<ChapterDto?> getById(String chapterId) =>
+      _database.getChapter(chapterId);
 
   Future<void> upsertChapter(ChapterDto dto) => _database.upsertChapter(dto);
 }

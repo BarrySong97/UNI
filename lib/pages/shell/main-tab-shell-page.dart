@@ -7,11 +7,7 @@ import '../settings/settings-page.dart';
 import '../shelf/shelf-page.dart';
 
 class MainTabShellPage extends StatefulWidget {
-  const MainTabShellPage({
-    this.initialIndex = 0,
-    this.pages,
-    super.key,
-  });
+  const MainTabShellPage({this.initialIndex = 0, this.pages, super.key});
 
   final int initialIndex;
   final List<Widget>? pages;
@@ -31,17 +27,15 @@ class _MainTabShellPageState extends State<MainTabShellPage> {
 
   @override
   Widget build(BuildContext context) {
-    final pages = widget.pages ??
+    final pages =
+        widget.pages ??
         const <Widget>[ShelfPage(), LibraryPage(), SettingsPage()];
 
     return Scaffold(
       backgroundColor: CommonDesignTokens.pageBackground,
       body: Stack(
         children: <Widget>[
-          IndexedStack(
-            index: currentIndex,
-            children: pages,
-          ),
+          IndexedStack(index: currentIndex, children: pages),
           Positioned(
             left: 0,
             right: 0,

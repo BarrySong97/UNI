@@ -4,7 +4,8 @@ import '../../services/db/daos/progress-dao.dart';
 import 'progress-repository.dart';
 
 class ProgressRepositoryImpl implements ProgressRepository {
-  ProgressRepositoryImpl({required ProgressDao progressDao}) : _progressDao = progressDao;
+  ProgressRepositoryImpl({required ProgressDao progressDao})
+    : _progressDao = progressDao;
 
   final ProgressDao _progressDao;
 

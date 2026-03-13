@@ -11,6 +11,7 @@ import '../../repositories/book/book-repository.dart';
 import '../../repositories/progress/progress-repository.dart';
 import '../../services/library/book-profile-color-service.dart';
 import '../../services/parser/book-import-service.dart';
+import '../../services/reader/epub_preparse_service.dart';
 import 'library-state.dart';
 
 class LibraryStore extends ChangeNotifier {
@@ -20,18 +21,21 @@ class LibraryStore extends ChangeNotifier {
     required String booksDirectory,
     required ProgressRepository progressRepository,
     BookProfileColorService? bookProfileColorService,
+    required EpubPreparseService epubPreparseService,
   }) : _bookRepository = bookRepository,
        _bookImportService = bookImportService,
        _booksDirectory = booksDirectory,
        _progressRepository = progressRepository,
        _bookProfileColorService =
-           bookProfileColorService ?? const BookProfileColorService();
+           bookProfileColorService ?? const BookProfileColorService(),
+       _epubPreparseService = epubPreparseService;
 
   final BookRepository _bookRepository;
   final BookImportService _bookImportService;
   final String _booksDirectory;
   final ProgressRepository _progressRepository;
   final BookProfileColorService _bookProfileColorService;
+  final EpubPreparseService _epubPreparseService;
   LibraryState _state = LibraryState.initial();
 
   LibraryState get state => _state;
@@ -118,6 +122,18 @@ class LibraryStore extends ChangeNotifier {
           extractDir: p.join(_booksDirectory, bookId),
         ),
       );
+
+      // Pre-parse EPUB into cached JSON for the Canvas reader.
+      try {
+        await _epubPreparseService.preparse(
+          epubPath: p.join(_booksDirectory, '$bookId.epub'),
+          booksDirectory: _booksDirectory,
+          bookId: bookId,
+        );
+      } catch (e) {
+        debugPrint('EPUB pre-parse warning: $e');
+        // Non-fatal: reader will show an error when opened.
+      }
 
       final coverBytes = _decodeCoverDataUrl(imported.coverUrl);
       final profileBgColor = await _bookProfileColorService
@@ -215,12 +231,17 @@ class LibraryStore extends ChangeNotifier {
         if (await file.exists()) {
           await file.delete();
         }
-        // Clean up extracted directory and manifest cache.
+        // Clean up extracted directory.
         final extractedDir = Directory(
           resolvedPath.replaceAll(RegExp(r'\.epub$'), ''),
         );
         if (await extractedDir.exists()) {
           await extractedDir.delete(recursive: true);
+        }
+        // Clean up pre-parsed cache directory.
+        final parsedDir = Directory('${extractedDir.path}_parsed');
+        if (await parsedDir.exists()) {
+          await parsedDir.delete(recursive: true);
         }
       }
 

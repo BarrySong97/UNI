@@ -4,7 +4,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 class AppLocaleController extends ChangeNotifier {
   static const String preferredLocaleKey = 'preferred_locale';
   static const Locale defaultLocale = Locale('en');
-  static const List<Locale> supportedLocales = <Locale>[Locale('en'), Locale('zh')];
+  static const List<Locale> supportedLocales = <Locale>[
+    Locale('en'),
+    Locale('zh'),
+  ];
 
   Locale _locale = defaultLocale;
 

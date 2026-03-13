@@ -10,7 +10,9 @@ class HighlightsDao {
     return _database.listHighlights(bookId);
   }
 
-  Future<void> upsertHighlight(HighlightDto dto) => _database.upsertHighlight(dto);
+  Future<void> upsertHighlight(HighlightDto dto) =>
+      _database.upsertHighlight(dto);
 
-  Future<void> deleteHighlight(String highlightId) => _database.deleteHighlight(highlightId);
+  Future<void> deleteHighlight(String highlightId) =>
+      _database.deleteHighlight(highlightId);
 }
