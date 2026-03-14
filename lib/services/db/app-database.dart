@@ -22,7 +22,7 @@ class AppDatabase {
     final path = p.join(root, 'uni_reader.db');
     final database = await openDatabase(
       path,
-      version: 9,
+      version: 10,
       onCreate: (db, _) async {
         await db.execute('''
 CREATE TABLE ${BooksTable.tableName} (
@@ -54,7 +54,8 @@ CREATE TABLE ${ReadingProgressTable.tableName} (
   ${ReadingProgressTable.bookId} TEXT PRIMARY KEY,
   ${ReadingProgressTable.locatorJson} TEXT NOT NULL,
   ${ReadingProgressTable.percent} REAL NOT NULL,
-  ${ReadingProgressTable.updatedAt} INTEGER NOT NULL
+  ${ReadingProgressTable.updatedAt} INTEGER NOT NULL,
+  ${ReadingProgressTable.prefsJson} TEXT
 )
 ''');
         await db.execute('''
@@ -85,6 +86,9 @@ CREATE TABLE ${HighlightsTable.tableName} (
         }
         if (oldVersion < 9) {
           await _migrateToV9(db);
+        }
+        if (oldVersion < 10) {
+          await _migrateToV10(db);
         }
       },
     );
@@ -128,6 +132,12 @@ CREATE TABLE ${HighlightsTable.tableName} (
     await db.execute('DROP TABLE IF EXISTS book_images');
 
     await db.execute('DELETE FROM ${ChaptersTable.tableName}');
+  }
+
+  static Future<void> _migrateToV10(DatabaseExecutor db) async {
+    await db.execute(
+      'ALTER TABLE ${ReadingProgressTable.tableName} ADD COLUMN ${ReadingProgressTable.prefsJson} TEXT',
+    );
   }
 
   static Future<void> _migrateToV9(DatabaseExecutor db) async {
@@ -405,6 +415,7 @@ class _SqfliteBackend implements _DatabaseBackend {
       ReadingProgressTable.locatorJson: progress.locatorJson,
       ReadingProgressTable.percent: progress.percent,
       ReadingProgressTable.updatedAt: progress.updatedAtMillis,
+      ReadingProgressTable.prefsJson: progress.prefsJson,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
@@ -475,6 +486,7 @@ class _SqfliteBackend implements _DatabaseBackend {
       locatorJson: row[ReadingProgressTable.locatorJson]! as String,
       percent: (row[ReadingProgressTable.percent]! as num).toDouble(),
       updatedAtMillis: row[ReadingProgressTable.updatedAt]! as int,
+      prefsJson: row[ReadingProgressTable.prefsJson] as String?,
     );
   }
 

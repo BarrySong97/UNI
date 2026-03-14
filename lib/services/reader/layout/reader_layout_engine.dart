@@ -101,14 +101,22 @@ class ReaderLayoutEngine {
   }) {
     switch (node) {
       case ParagraphNode():
-        final paragraph = nestingIndentEm > 0
+        // Override to justified only for flowing body text. Short paragraphs,
+        // structured content (ISBN lists, TOC entries, poetry with forced
+        // line breaks) stay left-aligned.
+        final effectiveAlign =
+            node.align == ui.TextAlign.left && _shouldJustify(node, ctx)
+                ? ui.TextAlign.justify
+                : node.align;
+        final needsCopy = nestingIndentEm > 0 || effectiveAlign != node.align;
+        final paragraph = needsCopy
             ? ParagraphNode(
                 children: node.children,
                 marginTopEm: node.marginTopEm,
                 marginBottomEm: node.marginBottomEm,
                 marginLeftEm: node.marginLeftEm + nestingIndentEm,
                 marginRightEm: node.marginRightEm,
-                align: node.align,
+                align: effectiveAlign,
                 textIndentEm: node.textIndentEm,
                 lineHeightEm: node.lineHeightEm,
                 paddingEm: node.paddingEm,
@@ -134,12 +142,40 @@ class ReaderLayoutEngine {
       case HorizontalRuleNode():
         _layoutHorizontalRule(ctx);
       case TextNode():
-        // Bare text node outside a paragraph — wrap in a simple paragraph.
+        // Bare text node outside a paragraph — wrap in a paragraph.
+        final bareNode = ParagraphNode(
+          children: [node],
+          marginLeftEm: nestingIndentEm,
+        );
         ParagraphLayouter.layout(
-          ParagraphNode(children: [node], marginLeftEm: nestingIndentEm),
+          _shouldJustify(bareNode, ctx)
+              ? ParagraphNode(
+                  children: [node],
+                  marginLeftEm: nestingIndentEm,
+                  align: ui.TextAlign.justify,
+                )
+              : bareNode,
           ctx,
         );
     }
+  }
+
+  /// Whether a paragraph looks like flowing body text that benefits from
+  /// justification. Returns `false` for structured content (forced line
+  /// breaks, short metadata lines, TOC entries, etc.).
+  bool _shouldJustify(ParagraphNode node, LayoutContext ctx) {
+    // Paragraphs with forced line breaks are structured content
+    // (ISBN lists, addresses, poetry) — don't justify.
+    if (node.children.any((c) => c is LineBreakNode)) return false;
+
+    // Estimate whether text fills at least ~1.5 lines.
+    // Average char width ≈ fontSize * 0.5 for Latin text.
+    final totalChars = node.children
+        .whereType<TextNode>()
+        .fold<int>(0, (sum, t) => sum + t.content.length);
+    final fontSize = ctx.preferences.baseFontSizePx;
+    final charsPerLine = ctx.contentWidth / (fontSize * 0.5);
+    return totalChars > charsPerLine * 1.5;
   }
 
   // ---------------------------------------------------------------------------

@@ -277,19 +277,18 @@ class ReaderStore extends ChangeNotifier {
       return;
     }
 
+    final needsRelayout = newPrefs.layoutHash != _preferences.layoutHash;
     _preferences = newPrefs;
-    _cache.clear();
 
-    if (_dataSource != null) {
-      _isLoading = true;
-      notifyListeners();
-
-      await _loadChapter(_currentChapterIndex);
-
-      _isLoading = false;
+    if (needsRelayout) {
+      _cache.clear();
+      if (_dataSource != null) {
+        await _loadChapter(_currentChapterIndex);
+      }
     }
 
     notifyListeners();
+    _saveProgress();
   }
 
   // ---------------------------------------------------------------------------
@@ -408,9 +407,19 @@ class ReaderStore extends ChangeNotifier {
       _currentChapterIndex = locator['chapterIndex'] as int? ?? 0;
       _currentPageIndex = locator['pageIndex'] as int? ?? 0;
     } catch (_) {
-      // If locator JSON is from old reader format, start from beginning.
       _currentChapterIndex = 0;
       _currentPageIndex = 0;
+    }
+
+    // Restore per-book preferences.
+    if (progress.prefsJson != null) {
+      try {
+        final prefsMap =
+            jsonDecode(progress.prefsJson!) as Map<String, dynamic>;
+        _preferences = ReaderPreferences.fromJson(prefsMap);
+      } catch (_) {
+        // Ignore malformed preferences JSON; keep defaults.
+      }
     }
   }
 
@@ -428,6 +437,7 @@ class ReaderStore extends ChangeNotifier {
         locatorJson: locator,
         percent: bookPercent,
         updatedAt: DateTime.now(),
+        prefsJson: jsonEncode(_preferences.toJson()),
       ),
     );
   }

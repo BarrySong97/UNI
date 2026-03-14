@@ -30,14 +30,14 @@ class ReaderFontPanel extends StatelessWidget {
   // ---------------------------------------------------------------------------
 
   static const _marginPresets = <String, double>{
-    'Small': 16.0,
-    'Medium': 24.0,
-    'Large': 36.0,
+    'SM': 16.0,
+    'Margin': 24.0,
+    'LG': 36.0,
   };
 
   static const _lineHeightPresets = <String, double>{
     'Tight': 1.2,
-    'Medium': 1.6,
+    'Spacing': 1.6,
     'Loose': 2.0,
   };
 
@@ -47,7 +47,7 @@ class ReaderFontPanel extends StatelessWidget {
         return e.key;
       }
     }
-    return 'Medium';
+    return 'Margin';
   }
 
   String _currentLineHeightLabel() {
@@ -56,7 +56,7 @@ class ReaderFontPanel extends StatelessWidget {
         return e.key;
       }
     }
-    return 'Medium';
+    return 'Spacing';
   }
 
   // ---------------------------------------------------------------------------
@@ -133,17 +133,34 @@ class ReaderFontPanel extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Small A - decrease.
+          // A- decrease.
           _fontSizeTapArea(
-            child: Text(
-              'A',
-              style: TextStyle(
-                color: preferences.baseFontSizePx > 12
-                    ? _textColor
-                    : _textColor.withValues(alpha: 0.3),
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  'A',
+                  style: TextStyle(
+                    color: preferences.baseFontSizePx > 12
+                        ? _textColor
+                        : _textColor.withValues(alpha: 0.3),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                Text(
+                  '\u2212', // minus sign
+                  style: TextStyle(
+                    color: preferences.baseFontSizePx > 12
+                        ? _textColor
+                        : _textColor.withValues(alpha: 0.3),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
             ),
             onTap: preferences.baseFontSizePx > 12
                 ? () => onPreferencesChanged(preferences.copyWith(
@@ -167,17 +184,34 @@ class ReaderFontPanel extends StatelessWidget {
               ),
             ),
           ),
-          // Large A - increase.
+          // A+ increase.
           _fontSizeTapArea(
-            child: Text(
-              'A',
-              style: TextStyle(
-                color: preferences.baseFontSizePx < 32
-                    ? _textColor
-                    : _textColor.withValues(alpha: 0.3),
-                fontSize: 22,
-                fontWeight: FontWeight.w500,
-              ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  'A',
+                  style: TextStyle(
+                    color: preferences.baseFontSizePx < 32
+                        ? _textColor
+                        : _textColor.withValues(alpha: 0.3),
+                    fontSize: 21,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                Text(
+                  '+',
+                  style: TextStyle(
+                    color: preferences.baseFontSizePx < 32
+                        ? _textColor
+                        : _textColor.withValues(alpha: 0.3),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
             ),
             onTap: preferences.baseFontSizePx < 32
                 ? () => onPreferencesChanged(preferences.copyWith(
@@ -215,7 +249,6 @@ class ReaderFontPanel extends StatelessWidget {
           child: _buildSegmentControl(
             labels: _marginPresets.keys.toList(),
             selected: currentMargin,
-            centerLabel: 'Margin',
             onSelected: (label) {
               final value = _marginPresets[label]!;
               onPreferencesChanged(preferences.copyWith(
@@ -230,7 +263,6 @@ class ReaderFontPanel extends StatelessWidget {
           child: _buildSegmentControl(
             labels: _lineHeightPresets.keys.toList(),
             selected: currentLineHeight,
-            centerLabel: 'Spacing',
             onSelected: (label) {
               final value = _lineHeightPresets[label]!;
               onPreferencesChanged(preferences.copyWith(
@@ -246,7 +278,6 @@ class ReaderFontPanel extends StatelessWidget {
   Widget _buildSegmentControl({
     required List<String> labels,
     required String selected,
-    required String centerLabel,
     required ValueChanged<String> onSelected,
   }) {
     return Container(
@@ -258,7 +289,6 @@ class ReaderFontPanel extends StatelessWidget {
       child: Row(
         children: labels.map((label) {
           final isSelected = label == selected;
-          final isCenter = label == labels[1]; // Middle item shows label text.
           return Expanded(
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
@@ -271,7 +301,7 @@ class ReaderFontPanel extends StatelessWidget {
                 alignment: Alignment.center,
                 margin: const EdgeInsets.all(3),
                 child: Text(
-                  isCenter ? centerLabel : label,
+                  label,
                   style: TextStyle(
                     color: isSelected
                         ? _textColor

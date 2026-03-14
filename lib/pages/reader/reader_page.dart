@@ -94,8 +94,8 @@ class _ReaderPageState extends State<ReaderPage> {
   Widget build(BuildContext context) {
     final prefs = _store.preferences;
 
-    // Show loading until openBook() completes (book is null before that).
-    final showLoading = _store.isLoading || _store.book == null;
+    // Full-screen loading only before the first chapter is loaded.
+    final initialLoading = _store.book == null;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: prefs.theme == ReaderTheme.dark
@@ -103,7 +103,7 @@ class _ReaderPageState extends State<ReaderPage> {
           : SystemUiOverlayStyle.dark,
       child: Scaffold(
         backgroundColor: prefs.theme.backgroundColor,
-        body: showLoading
+        body: initialLoading
             ? _buildLoading(prefs)
             : _store.error != null
             ? _buildError(prefs)

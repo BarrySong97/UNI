@@ -365,7 +365,7 @@ TextAlign _parseTextAlign(String? value) {
   return switch (value) {
     'Center' => TextAlign.center,
     'Right' => TextAlign.right,
-    'Justify' => TextAlign.left,
+    'Justify' => TextAlign.justify,
     _ => TextAlign.left,
   };
 }

@@ -37,10 +37,12 @@ Provides an immersive book reading experience using Canvas-based rendering. The 
 ## Architecture
 
 ```
-Rust CLI (epub_parser)           Flutter Layout Engine           Canvas Renderer
-EPUB → parse_chapter()           RenderNode[] → paginate()       PageLayout → paint()
-     → JSON stdout               ↓ TextPainter measure           CustomPainter draws
-                                  ↓ Line-boundary split           text/bg/borders
+Rust CLI (epub_parser)           Flutter Layout Engine               Canvas Renderer
+EPUB → parse_chapter()           RenderNode[] → paginate()           PageLayout → paint()
+     → JSON stdout               ↓ Justified? → Knuth-Plass         CustomPainter draws
+                                  ↓   Items → Solver → Breakpoints   text/bg/borders
+                                  ↓   positionItems() → x offsets
+                                  ↓ Else → TextPainter greedy
                                   → PageLayout[]
 ```
 
@@ -70,6 +72,11 @@ lib/
       paragraph_layouter.dart       # Paragraph measurement + cross-page line splitting
       text_span_builder.dart        # RenderNode children → TextSpan tree
       layout_context.dart           # Mutable context (cursorY, currentPage, margin state)
+      knuth_plass/
+        kp_items.dart               # Box/Glue/Penalty sealed classes for K-P algorithm
+        kp_solver.dart              # K-P solver (ported from tex-linebreak) + adjustmentRatios()/positionItems()
+        kp_item_builder.dart        # RenderNode children → K-P item sequence (TextPainter reuse)
+        width_cache.dart            # Structural-key space width cache per TextStyle
     data/
       chapter_data_source.dart      # Abstract interface for chapter loading
       cached_chapter_data_source.dart # Reads pre-parsed JSON from cache dir
@@ -94,7 +101,9 @@ lib/
 2. Walk each `RenderNode` through `LayoutContext` (tracks `cursorY`, current page, margin state)
 3. For each paragraph:
    - Apply CSS margin collapsing (max of adjacent top/bottom margins)
-   - Build `TextSpan` from children, measure with `TextPainter`
+   - **Smart justify override**: paragraphs with `TextAlign.left` (the default when EPUB CSS omits `text-align`) are automatically overridden to `TextAlign.justify` only when `_shouldJustify()` returns true — i.e. the paragraph has no `LineBreakNode` children (ruling out ISBN metadata, addresses, poetry) and its text fills at least ~1.5 lines (ruling out short TOC entries and titles). This matches the behaviour of mainstream reader apps (Apple Books, Kindle) for body text while preserving natural spacing for structured content. Headings and explicitly-centered/right-aligned text are never overridden.
+   - **Justified text (Knuth-Plass path)**: convert children to Box/Glue/Penalty items (word measurement via reused `TextPainter` stored on each `KPBox`) using a mixed tokenizer: space-delimited Latin text stays word-based, while no-space CJK runs are split into per-character boxes with breakable zero-width glue/soft penalties. Run K-P solver (ported from tex-linebreak) to find optimal breakpoints minimising total demerits. The solver now follows tex-linebreak's two-pass helper strategy: first pass uses `maxAdjustmentRatio=1` to avoid loose lines (especially for English), and only when that fails does it retry with relaxed limits. Solver includes Restriction-1 guarded pruning, look-ahead to next box, and emergency breaks. Then run `positionItems()` and render each box/hyphen fragment at exact x offsets (no uniform `wordSpacing` approximation). Non-last lines get a per-line right-edge gap correction to compensate for sub-pixel measurement drift. Falls back to greedy if both solver passes fail or the result is a single line (nothing to justify). Additionally, `positionItems()` caps the stretch ratio for non-last lines at 2.0 (`_maxVisualRatio`) — lines with few words won't get excessively wide word spacing; they simply won't fill the full width, which looks far better than huge gaps.
+   - **Non-justified text (greedy path)**: Build `TextSpan` from children, measure with `TextPainter`
    - If fits on current page → place as single `LayoutElement`
    - If overflows → split at line boundary using `computeLineMetrics()` + `getPositionForOffset()`, place first part, start new page, recursively layout remainder
 4. Heading: widow prevention (push to next page if < 2 lines of space would follow)
@@ -127,15 +136,16 @@ Invalidated by: font size/family change, line height change, page margin change,
 
 - `ReaderStore` (ChangeNotifier): manages book, chapters, pagination cache, current position, preferences
 - `ReaderPreferences`: baseFontSizePx, fontFamily, pageHorizontalPaddingPx, pageVerticalPaddingPx, lineHeightMultiplier, paragraphSpacingMultiplier, theme
-- `ReadingProgressEntity(bookId, locatorJson, percent, updatedAt)`: locatorJson stores `{"chapterIndex": N, "pageIndex": M}`
+- `ReadingProgressEntity(bookId, locatorJson, percent, updatedAt, prefsJson)`: locatorJson stores `{"chapterIndex": N, "pageIndex": M}`, prefsJson stores per-book ReaderPreferences as JSON
 - `ChapterPagination`: cached per chapter, invalidated on layout parameter changes
 
 ## Interaction & Error Handling
 
 - Content area avoids system status bar and bottom gesture area (safe area insets)
 - Tap left 30% = previous page, right 30% = next page, center 40% = toggle controls
-- Controls overlay: top bar (back + more menu), bottom icon toolbar (5 buttons: TOC, annotation, progress, theme, font)
-- Font settings panel (toggled by "A" button): font size control, margin presets, line spacing presets, font family picker with system fonts
+- Controls overlay with slide animation: top bar slides down (back + more menu), bottom icon toolbar slides up (5 buttons: TOC, annotation, progress, theme, font)
+- Font settings panel (toggled by "A" button): A-/A+ font size control, margin presets (SM/Margin/LG), line spacing presets (Tight/Spacing/Loose), font family picker with curated system fonts
+- Preference changes keep controls overlay visible (no close on setting change)
 - TOC sheet: scrollable chapter list with current chapter highlighted
 - Cross-chapter navigation: next page on last page advances to next chapter, previous on first page goes back
 - Error state shows message + "Go Back" button
@@ -152,6 +162,7 @@ Invalidated by: font size/family change, line height change, page margin change,
 - Font size adjustment causes repagination with correct results
 - Theme switching (light/sepia/dark) applies immediately
 - Reading progress persists across app restarts
+- Reader preferences persist per book (font size, font family, margins, line spacing, theme)
 - Chapter navigation (next/previous) works
 - TOC sheet lists chapters and supports jump-to-chapter
 - `flutter analyze` passes with no issues in reader code

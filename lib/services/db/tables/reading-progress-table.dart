@@ -4,4 +4,5 @@ abstract final class ReadingProgressTable {
   static const String locatorJson = 'locator_json';
   static const String percent = 'percent';
   static const String updatedAt = 'updated_at';
+  static const String prefsJson = 'prefs_json';
 }

@@ -3,9 +3,33 @@ import 'dart:ui' as ui;
 import 'package:flutter/painting.dart';
 
 import '../models/page_layout.dart';
+import '../models/reader_preferences.dart';
 import '../models/render_node.dart';
+import 'knuth_plass/kp_item_builder.dart';
+import 'knuth_plass/kp_items.dart';
+import 'knuth_plass/kp_solver.dart';
+import 'knuth_plass/width_cache.dart';
 import 'layout_context.dart';
 import 'text_span_builder.dart';
+
+class _KPLineFragment {
+  const _KPLineFragment({
+    required this.painter,
+    required this.xOffset,
+    required this.width,
+  });
+
+  final TextPainter painter;
+  final double xOffset;
+  final double width;
+}
+
+class _KPLineLayout {
+  const _KPLineLayout({required this.fragments, required this.height});
+
+  final List<_KPLineFragment> fragments;
+  final double height;
+}
 
 /// Lays out a [ParagraphNode] within the pagination context.
 ///
@@ -85,7 +109,25 @@ class ParagraphLayouter {
       bgPaint = Paint()..color = Color(node.backgroundColor!);
     }
 
-    // 8. Split paragraph across pages.
+    // 7. Knuth-Plass justified layout path.
+    if (node.align == TextAlign.justify) {
+      final kpDone = _tryKnuthPlassLayout(
+        ctx: ctx,
+        node: node,
+        availableWidth: availableWidth,
+        marginLeftPx: marginLeftPx,
+        marginBottomPx: marginBottomPx,
+        paddingPx: paddingPx,
+        bgPaint: bgPaint,
+        headingLevel: headingLevel,
+        effectiveLineHeight: effectiveLineHeight,
+        defaultColor: defaultColor,
+      );
+      if (kpDone) return;
+      // K-P failed — fall through to greedy layout.
+    }
+
+    // 8. Split paragraph across pages (greedy fallback).
     final textHeight = painter.height;
     final totalHeight = textHeight + 2 * paddingPx;
     if (totalHeight <= ctx.remainingHeight) {
@@ -165,6 +207,347 @@ class ParagraphLayouter {
     );
 
     ctx.cursorY += totalHeight;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Knuth-Plass justified layout
+  // ---------------------------------------------------------------------------
+
+  /// Attempt Knuth-Plass layout for a justified paragraph.
+  ///
+  /// Returns `true` if K-P produced a valid layout, `false` if the caller
+  /// should fall back to the greedy algorithm.
+  static bool _tryKnuthPlassLayout({
+    required LayoutContext ctx,
+    required ParagraphNode node,
+    required double availableWidth,
+    required double marginLeftPx,
+    required double marginBottomPx,
+    required double paddingPx,
+    required Paint? bgPaint,
+    required int? headingLevel,
+    required double effectiveLineHeight,
+    required Color? defaultColor,
+  }) {
+    final prefs = ctx.preferences;
+    final widthCache = WidthCache();
+
+    // 1. Build K-P items from paragraph children.
+    final items = KPItemBuilder.build(
+      children: node.children,
+      prefs: prefs,
+      widthCache: widthCache,
+      headingLevel: headingLevel,
+      lineHeightOverride: effectiveLineHeight,
+      defaultColor: defaultColor,
+    );
+    if (items == null || items.isEmpty) return false;
+
+    // 2. Solve for optimal break points.
+    // Match tex-linebreak's helper flow: strict ratio first, then relaxed.
+    List<int> breakpoints;
+    try {
+      breakpoints = KPSolver.solve(
+        items,
+        availableWidth,
+        const KPOptions(
+          maxAdjustmentRatio: 1.0,
+          initialMaxAdjustmentRatio: 1.0,
+        ),
+      );
+    } on MaxAdjustmentExceededError {
+      try {
+        // We don't currently hyphenate, so fall back to an unrestricted pass.
+        breakpoints = KPSolver.solve(items, availableWidth);
+      } on MaxAdjustmentExceededError {
+        // Solver could not fit within ratio limits — fall back to greedy.
+        _disposeItemPainters(items);
+        return false;
+      }
+    }
+    if (breakpoints.length < 2) {
+      _disposeItemPainters(items);
+      return false;
+    }
+
+    // Single-line paragraph — nothing to justify, fall back to greedy.
+    if (breakpoints.length == 2) {
+      _disposeItemPainters(items);
+      return false;
+    }
+
+    // 3. Position K-P items on each line.
+    // Note: positionItems() caps the stretch ratio for non-last lines to
+    // prevent excessively wide word spacing (see _maxVisualRatio).
+    final positioned = KPSolver.positionItems(
+      items,
+      availableWidth,
+      breakpoints,
+    );
+
+    // 4. Build per-line positioned fragments.
+    final lines = _buildJustifiedLines(
+      items: items,
+      breakpoints: breakpoints,
+      positioned: positioned,
+      fallbackLineHeight: _fallbackKpLineHeight(
+        items: items,
+        prefs: prefs,
+        headingLevel: headingLevel,
+        effectiveLineHeight: effectiveLineHeight,
+        defaultColor: defaultColor,
+      ),
+      availableWidth: availableWidth,
+    );
+    if (lines.isEmpty) return false;
+
+    // 5. Place lines with page splitting.
+    _placeJustifiedLines(
+      ctx: ctx,
+      node: node,
+      lines: lines,
+      marginLeftPx: marginLeftPx,
+      marginBottomPx: marginBottomPx,
+      paddingPx: paddingPx,
+      bgPaint: bgPaint,
+    );
+
+    return true;
+  }
+
+  /// Build positioned fragments for each K-P line.
+  ///
+  /// Uses [KPSolver.positionItems] output instead of uniform word spacing so
+  /// each glue stretch/shrink value is applied exactly.
+  ///
+  /// Reuses [KPBox.painter] from the item builder to eliminate measurement
+  /// drift. For non-last lines, distributes any residual right-edge gap
+  /// across all glue intervals.
+  static List<_KPLineLayout> _buildJustifiedLines({
+    required List<KPItem> items,
+    required List<int> breakpoints,
+    required List<KPPositionedItem> positioned,
+    required double fallbackLineHeight,
+    required double availableWidth,
+  }) {
+    final lines = <_KPLineLayout>[];
+    final byLine = <int, List<KPPositionedItem>>{};
+    for (final pos in positioned) {
+      byLine.putIfAbsent(pos.line, () => <KPPositionedItem>[]).add(pos);
+    }
+
+    final isLastLine = breakpoints.length - 2;
+
+    for (var b = 0; b < breakpoints.length - 1; b++) {
+      final linePositions = byLine[b] ?? const <KPPositionedItem>[];
+      final fragments = <_KPLineFragment>[];
+      var lineHeight = 0.0;
+
+      for (final pos in linePositions) {
+        final item = items[pos.item];
+        TextPainter? painter;
+        if (item is KPBox) {
+          // Reuse the painter from item building to avoid measurement drift.
+          painter = item.painter ?? _singleRunPainter(item.text, item.style);
+        } else if (item is KPPenalty && item.width > 0) {
+          painter = _singleRunPainter('-', _lastBoxStyle(items, pos.item));
+        }
+        if (painter == null) continue;
+
+        lineHeight = lineHeight < painter.height ? painter.height : lineHeight;
+        fragments.add(
+          _KPLineFragment(
+            painter: painter,
+            xOffset: pos.xOffset,
+            width: pos.width,
+          ),
+        );
+      }
+
+      // Correct sub-pixel drift for non-last lines: distribute the residual
+      // gap evenly across all inter-fragment intervals.
+      if (b != isLastLine && fragments.length >= 2) {
+        final lastFrag = fragments.last;
+        final lineEnd = lastFrag.xOffset + lastFrag.width;
+        final gap = availableWidth - lineEnd;
+        if (gap.abs() > 0.01 && gap.abs() < 5.0) {
+          final intervalCount = fragments.length - 1;
+          final perInterval = gap / intervalCount;
+          final corrected = <_KPLineFragment>[];
+          for (var i = 0; i < fragments.length; i++) {
+            corrected.add(_KPLineFragment(
+              painter: fragments[i].painter,
+              xOffset: fragments[i].xOffset + perInterval * i,
+              width: fragments[i].width,
+            ));
+          }
+          fragments
+            ..clear()
+            ..addAll(corrected);
+        }
+      }
+
+      if (lineHeight == 0.0) {
+        final start = b == 0 ? breakpoints[b] : breakpoints[b] + 1;
+        final end = breakpoints[b + 1];
+        lineHeight = _lineHeightForRange(items, start, end);
+      }
+      if (lineHeight == 0.0) {
+        lineHeight = fallbackLineHeight;
+      }
+      lines.add(_KPLineLayout(fragments: fragments, height: lineHeight));
+    }
+
+    return lines;
+  }
+
+  static TextPainter _singleRunPainter(String text, TextStyle? style) {
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: ui.TextDirection.ltr,
+    )..layout();
+    return painter;
+  }
+
+  static double _lineHeightForRange(List<KPItem> items, int start, int end) {
+    TextStyle? style;
+    for (var i = start; i <= end; i++) {
+      final it = items[i];
+      if (it is KPBox) {
+        style = it.style;
+        break;
+      }
+    }
+    style ??= _lastBoxStyle(items, end + 1);
+    if (style == null) return 0.0;
+    final painter = _singleRunPainter(' ', style);
+    final height = painter.height;
+    painter.dispose();
+    return height;
+  }
+
+  static double _fallbackKpLineHeight({
+    required List<KPItem> items,
+    required ReaderPreferences prefs,
+    required int? headingLevel,
+    required double effectiveLineHeight,
+    required Color? defaultColor,
+  }) {
+    for (final item in items) {
+      if (item is KPBox) {
+        final painter = _singleRunPainter(' ', item.style);
+        final height = painter.height;
+        painter.dispose();
+        return height;
+      }
+    }
+
+    final baseStyle = TextStyle(
+      fontSize: prefs.emToPx(
+        headingLevel != null
+            ? (TextSpanBuilder.headingScaleEm[headingLevel] ?? 1.0)
+            : 1.0,
+      ),
+      fontWeight: headingLevel != null ? FontWeight.bold : FontWeight.normal,
+      fontFamily: prefs.fontFamily,
+      height: effectiveLineHeight,
+      color: defaultColor ?? prefs.theme.textColor,
+    );
+    final painter = _singleRunPainter(' ', baseStyle);
+    final height = painter.height;
+    painter.dispose();
+    return height;
+  }
+
+  /// Find the style of the most recent KPBox at or before index [i].
+  static TextStyle? _lastBoxStyle(List<KPItem> items, int i) {
+    for (var j = i - 1; j >= 0; j--) {
+      if (items[j] is KPBox) return (items[j] as KPBox).style;
+    }
+    return null;
+  }
+
+  /// Dispose all [TextPainter]s stored in [KPBox] items.
+  /// Called when K-P layout fails and we fall back to greedy.
+  static void _disposeItemPainters(List<KPItem> items) {
+    for (final item in items) {
+      if (item is KPBox) {
+        item.painter?.dispose();
+      }
+    }
+  }
+
+  /// Place justified lines onto pages, splitting across pages as needed.
+  static void _placeJustifiedLines({
+    required LayoutContext ctx,
+    required ParagraphNode node,
+    required List<_KPLineLayout> lines,
+    required double marginLeftPx,
+    required double marginBottomPx,
+    required double paddingPx,
+    required Paint? bgPaint,
+  }) {
+    final x = marginLeftPx;
+    var isFirstLine = true;
+
+    for (var i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      final lineHeight = line.height;
+
+      // Add top padding before the first line.
+      final extraTop = isFirstLine ? paddingPx : 0.0;
+      // Add bottom padding after the last line.
+      final extraBottom = i == lines.length - 1 ? paddingPx : 0.0;
+      final totalLineHeight = lineHeight + extraTop + extraBottom;
+
+      // Check if this line fits on the current page.
+      if (totalLineHeight > ctx.remainingHeight && !ctx.isPageEmpty) {
+        ctx.startNewPage();
+        isFirstLine = true;
+      }
+
+      final y = ctx.cursorY;
+
+      // Background for this line's area.
+      if (bgPaint != null) {
+        ctx.addElement(
+          LayoutElement(
+            rect: Rect.fromLTWH(
+              x,
+              y,
+              ctx.contentWidth -
+                  marginLeftPx -
+                  (ctx.preferences.emToPx(node.marginRightEm)),
+              totalLineHeight,
+            ),
+            sourceNode: node,
+            backgroundPaint: bgPaint,
+          ),
+        );
+      }
+
+      // Text element.
+      final lineY = y + (isFirstLine ? paddingPx : 0.0);
+      for (final fragment in line.fragments) {
+        ctx.addElement(
+          LayoutElement(
+            rect: Rect.fromLTWH(
+              x + paddingPx + fragment.xOffset,
+              lineY,
+              fragment.width,
+              lineHeight,
+            ),
+            sourceNode: node,
+            textPainter: fragment.painter,
+          ),
+        );
+      }
+
+      ctx.cursorY += totalLineHeight;
+      isFirstLine = false;
+    }
+
+    ctx.recordBottomMargin(marginBottomPx);
   }
 
   /// Split the paragraph at line boundaries across pages.

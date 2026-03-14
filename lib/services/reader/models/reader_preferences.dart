@@ -56,6 +56,35 @@ class ReaderPreferences {
     lineHeightMultiplier,
     paragraphSpacingMultiplier,
   );
+
+  Map<String, dynamic> toJson() => {
+    'baseFontSizePx': baseFontSizePx,
+    'fontFamily': fontFamily,
+    'pageHorizontalPaddingPx': pageHorizontalPaddingPx,
+    'pageVerticalPaddingPx': pageVerticalPaddingPx,
+    'lineHeightMultiplier': lineHeightMultiplier,
+    'paragraphSpacingMultiplier': paragraphSpacingMultiplier,
+    'theme': theme.name,
+  };
+
+  factory ReaderPreferences.fromJson(Map<String, dynamic> json) {
+    return ReaderPreferences(
+      baseFontSizePx: (json['baseFontSizePx'] as num?)?.toDouble() ?? 18.0,
+      fontFamily: json['fontFamily'] as String?,
+      pageHorizontalPaddingPx:
+          (json['pageHorizontalPaddingPx'] as num?)?.toDouble() ?? 24.0,
+      pageVerticalPaddingPx:
+          (json['pageVerticalPaddingPx'] as num?)?.toDouble() ?? 40.0,
+      lineHeightMultiplier:
+          (json['lineHeightMultiplier'] as num?)?.toDouble() ?? 1.6,
+      paragraphSpacingMultiplier:
+          (json['paragraphSpacingMultiplier'] as num?)?.toDouble() ?? 1.0,
+      theme: ReaderTheme.values.firstWhere(
+        (t) => t.name == json['theme'],
+        orElse: () => ReaderTheme.light,
+      ),
+    );
+  }
 }
 
 enum ReaderTheme {

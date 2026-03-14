@@ -6,12 +6,14 @@ class ReadingProgressDto {
     required this.locatorJson,
     required this.percent,
     required this.updatedAtMillis,
+    this.prefsJson,
   });
 
   final String bookId;
   final String locatorJson;
   final double percent;
   final int updatedAtMillis;
+  final String? prefsJson;
 
   ReadingProgressEntity toEntity() {
     return ReadingProgressEntity(
@@ -19,6 +21,7 @@ class ReadingProgressDto {
       locatorJson: locatorJson,
       percent: percent,
       updatedAt: DateTime.fromMillisecondsSinceEpoch(updatedAtMillis),
+      prefsJson: prefsJson,
     );
   }
 
@@ -28,6 +31,7 @@ class ReadingProgressDto {
       locatorJson: entity.locatorJson,
       percent: entity.percent,
       updatedAtMillis: entity.updatedAt.millisecondsSinceEpoch,
+      prefsJson: entity.prefsJson,
     );
   }
 }

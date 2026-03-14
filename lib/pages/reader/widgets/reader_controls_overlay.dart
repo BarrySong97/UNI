@@ -5,8 +5,8 @@ import 'reader_font_panel.dart';
 
 /// Reader controls overlay with a bottom icon toolbar.
 ///
-/// Tapping the "A" (font) button toggles a settings panel above the toolbar
-/// for adjusting font size, margins, line spacing, and font family.
+/// Top bar slides down, bottom bar slides up on mount.
+/// Tapping the "A" button toggles the font settings panel.
 class ReaderControlsOverlay extends StatefulWidget {
   const ReaderControlsOverlay({
     super.key,
@@ -35,8 +35,12 @@ class ReaderControlsOverlay extends StatefulWidget {
   State<ReaderControlsOverlay> createState() => _ReaderControlsOverlayState();
 }
 
-class _ReaderControlsOverlayState extends State<ReaderControlsOverlay> {
+class _ReaderControlsOverlayState extends State<ReaderControlsOverlay>
+    with SingleTickerProviderStateMixin {
   bool _showFontPanel = false;
+  late final AnimationController _animController;
+  late final Animation<Offset> _topSlide;
+  late final Animation<Offset> _bottomSlide;
 
   ReaderPreferences get _prefs => widget.preferences;
 
@@ -45,6 +49,30 @@ class _ReaderControlsOverlayState extends State<ReaderControlsOverlay> {
       : Colors.white;
 
   Color get _textColor => _prefs.theme.textColor;
+
+  @override
+  void initState() {
+    super.initState();
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
+    );
+    _topSlide = Tween<Offset>(
+      begin: const Offset(0, -1),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _animController, curve: Curves.easeOut));
+    _bottomSlide = Tween<Offset>(
+      begin: const Offset(0, 1),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _animController, curve: Curves.easeOut));
+    _animController.forward();
+  }
+
+  @override
+  void dispose() {
+    _animController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -60,79 +88,85 @@ class _ReaderControlsOverlayState extends State<ReaderControlsOverlay> {
           ),
         ),
 
-        // Top bar.
+        // Top bar (slides down).
         Positioned(
           top: 0,
           left: 0,
           right: 0,
-          child: Container(
-            padding: EdgeInsets.only(
-              top: mediaPadding.top + 8,
-              left: 4,
-              right: 4,
-              bottom: 8,
-            ),
-            decoration: BoxDecoration(
-              color: _barColor,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.08),
-                  blurRadius: 4,
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                IconButton(
-                  icon: Icon(Icons.arrow_back, color: _textColor, size: 22),
-                  onPressed: widget.onBack,
-                ),
-                const Spacer(),
-                IconButton(
-                  icon: Icon(Icons.more_horiz, color: _textColor, size: 22),
-                  onPressed: () {},
-                ),
-              ],
+          child: SlideTransition(
+            position: _topSlide,
+            child: Container(
+              padding: EdgeInsets.only(
+                top: mediaPadding.top + 8,
+                left: 4,
+                right: 4,
+                bottom: 8,
+              ),
+              decoration: BoxDecoration(
+                color: _barColor,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.08),
+                    blurRadius: 4,
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  IconButton(
+                    icon: Icon(Icons.arrow_back, color: _textColor, size: 22),
+                    onPressed: widget.onBack,
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon:
+                        Icon(Icons.more_horiz, color: _textColor, size: 22),
+                    onPressed: () {},
+                  ),
+                ],
+              ),
             ),
           ),
         ),
 
-        // Bottom area: font panel + toolbar.
+        // Bottom area: font panel + toolbar (slides up).
         Positioned(
           bottom: 0,
           left: 0,
           right: 0,
-          child: Container(
-            decoration: BoxDecoration(
-              color: _barColor,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.08),
-                  blurRadius: 4,
-                  offset: const Offset(0, -2),
-                ),
-              ],
-            ),
-            child: SafeArea(
-              top: false,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Font settings panel (collapsible).
-                  if (_showFontPanel)
-                    ReaderFontPanel(
-                      preferences: _prefs,
-                      onPreferencesChanged: widget.onPreferencesChanged,
-                    ),
-                  // Divider above toolbar when panel is open.
-                  if (_showFontPanel)
-                    Divider(
-                      height: 1,
-                      color: _textColor.withValues(alpha: 0.1),
-                    ),
-                  // Bottom icon toolbar.
-                  _buildToolbar(),
+          child: SlideTransition(
+            position: _bottomSlide,
+            child: Container(
+              decoration: BoxDecoration(
+                color: _barColor,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.08),
+                    blurRadius: 4,
+                    offset: const Offset(0, -2),
+                  ),
                 ],
+              ),
+              child: SafeArea(
+                top: false,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Font settings panel (collapsible).
+                    if (_showFontPanel)
+                      ReaderFontPanel(
+                        preferences: _prefs,
+                        onPreferencesChanged: widget.onPreferencesChanged,
+                      ),
+                    if (_showFontPanel)
+                      Divider(
+                        height: 1,
+                        color: _textColor.withValues(alpha: 0.1),
+                      ),
+                    // Bottom icon toolbar.
+                    _buildToolbar(),
+                  ],
+                ),
               ),
             ),
           ),
@@ -153,22 +187,22 @@ class _ReaderControlsOverlayState extends State<ReaderControlsOverlay> {
         children: [
           // 1. TOC
           _toolbarButton(
-            icon: Icons.menu,
+            icon: Icons.format_list_bulleted,
             onTap: widget.onTocPressed,
           ),
           // 2. Annotation (placeholder)
           _toolbarButton(
-            icon: Icons.edit_off_outlined,
+            icon: Icons.border_color_outlined,
             onTap: () {},
           ),
           // 3. Progress
           _toolbarButton(
-            icon: Icons.linear_scale,
+            icon: Icons.data_usage_outlined,
             onTap: () {},
           ),
           // 4. Theme
           _toolbarButton(
-            icon: Icons.light_mode_outlined,
+            icon: Icons.brightness_medium_outlined,
             onTap: _cycleTheme,
           ),
           // 5. Font settings
