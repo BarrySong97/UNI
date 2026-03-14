@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../../../services/reader/models/reader_preferences.dart';
+import 'reader_font_panel.dart';
 
-/// Top and bottom bars shown when the user taps the center of the reader.
-class ReaderControlsOverlay extends StatelessWidget {
+/// Reader controls overlay with a bottom icon toolbar.
+///
+/// Tapping the "A" (font) button toggles a settings panel above the toolbar
+/// for adjusting font size, margins, line spacing, and font family.
+class ReaderControlsOverlay extends StatefulWidget {
   const ReaderControlsOverlay({
     super.key,
     required this.preferences,
@@ -27,11 +31,20 @@ class ReaderControlsOverlay extends StatelessWidget {
   final ValueChanged<ReaderPreferences> onPreferencesChanged;
   final VoidCallback onTocPressed;
 
-  Color get _barColor => preferences.theme == ReaderTheme.dark
+  @override
+  State<ReaderControlsOverlay> createState() => _ReaderControlsOverlayState();
+}
+
+class _ReaderControlsOverlayState extends State<ReaderControlsOverlay> {
+  bool _showFontPanel = false;
+
+  ReaderPreferences get _prefs => widget.preferences;
+
+  Color get _barColor => _prefs.theme == ReaderTheme.dark
       ? const Color(0xFF2A2A2A)
       : Colors.white;
 
-  Color get _textColor => preferences.theme.textColor;
+  Color get _textColor => _prefs.theme.textColor;
 
   @override
   Widget build(BuildContext context) {
@@ -39,11 +52,11 @@ class ReaderControlsOverlay extends StatelessWidget {
 
     return Stack(
       children: [
-        // Backdrop.
+        // Backdrop: closes overlay on tap.
         Positioned.fill(
           child: GestureDetector(
-            onTap: onClose,
-            child: Container(color: Colors.black26),
+            onTap: widget.onClose,
+            child: Container(color: Colors.transparent),
           ),
         ),
 
@@ -63,7 +76,7 @@ class ReaderControlsOverlay extends StatelessWidget {
               color: _barColor,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.1),
+                  color: Colors.black.withValues(alpha: 0.08),
                   blurRadius: 4,
                 ),
               ],
@@ -71,152 +84,143 @@ class ReaderControlsOverlay extends StatelessWidget {
             child: Row(
               children: [
                 IconButton(
-                  icon: Icon(Icons.arrow_back, color: _textColor),
-                  onPressed: onBack,
+                  icon: Icon(Icons.arrow_back, color: _textColor, size: 22),
+                  onPressed: widget.onBack,
                 ),
-                Expanded(
-                  child: Text(
-                    chapterTitle,
-                    style: TextStyle(color: _textColor, fontSize: 16),
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                  ),
-                ),
+                const Spacer(),
                 IconButton(
-                  icon: Icon(Icons.list, color: _textColor),
-                  onPressed: onTocPressed,
+                  icon: Icon(Icons.more_horiz, color: _textColor, size: 22),
+                  onPressed: () {},
                 ),
               ],
             ),
           ),
         ),
 
-        // Bottom bar.
+        // Bottom area: font panel + toolbar.
         Positioned(
           bottom: 0,
           left: 0,
           right: 0,
           child: Container(
-            padding: EdgeInsets.only(
-              bottom: mediaPadding.bottom + 12,
-              left: 16,
-              right: 16,
-              top: 12,
-            ),
             decoration: BoxDecoration(
               color: _barColor,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.1),
+                  color: Colors.black.withValues(alpha: 0.08),
                   blurRadius: 4,
                   offset: const Offset(0, -2),
                 ),
               ],
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Progress bar.
-                _buildProgressBar(),
-                const SizedBox(height: 12),
-                // Font size controls.
-                _buildFontSizeControls(),
-                const SizedBox(height: 8),
-                // Theme selector.
-                _buildThemeSelector(),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildProgressBar() {
-    return Row(
-      children: [
-        Text(
-          '${currentPage + 1}',
-          style: TextStyle(color: _textColor, fontSize: 12),
-        ),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: LinearProgressIndicator(
-              value: totalPages > 0 ? (currentPage + 1) / totalPages : 0,
-              backgroundColor: _textColor.withValues(alpha: 0.15),
-              valueColor: AlwaysStoppedAnimation<Color>(
-                _textColor.withValues(alpha: 0.5),
+            child: SafeArea(
+              top: false,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Font settings panel (collapsible).
+                  if (_showFontPanel)
+                    ReaderFontPanel(
+                      preferences: _prefs,
+                      onPreferencesChanged: widget.onPreferencesChanged,
+                    ),
+                  // Divider above toolbar when panel is open.
+                  if (_showFontPanel)
+                    Divider(
+                      height: 1,
+                      color: _textColor.withValues(alpha: 0.1),
+                    ),
+                  // Bottom icon toolbar.
+                  _buildToolbar(),
+                ],
               ),
-              minHeight: 3,
             ),
           ),
         ),
-        Text('$totalPages', style: TextStyle(color: _textColor, fontSize: 12)),
       ],
     );
   }
 
-  Widget _buildFontSizeControls() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        IconButton(
-          icon: Icon(Icons.text_decrease, color: _textColor),
-          onPressed: preferences.baseFontSizePx > 12
-              ? () => onPreferencesChanged(
-                  preferences.copyWith(
-                    baseFontSizePx: preferences.baseFontSizePx - 1,
-                  ),
-                )
-              : null,
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Text(
-            '${preferences.baseFontSizePx.round()}',
-            style: TextStyle(color: _textColor, fontSize: 16),
+  // ---------------------------------------------------------------------------
+  // Bottom toolbar with 5 icons
+  // ---------------------------------------------------------------------------
+
+  Widget _buildToolbar() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          // 1. TOC
+          _toolbarButton(
+            icon: Icons.menu,
+            onTap: widget.onTocPressed,
           ),
-        ),
-        IconButton(
-          icon: Icon(Icons.text_increase, color: _textColor),
-          onPressed: preferences.baseFontSizePx < 32
-              ? () => onPreferencesChanged(
-                  preferences.copyWith(
-                    baseFontSizePx: preferences.baseFontSizePx + 1,
-                  ),
-                )
-              : null,
-        ),
-      ],
+          // 2. Annotation (placeholder)
+          _toolbarButton(
+            icon: Icons.edit_off_outlined,
+            onTap: () {},
+          ),
+          // 3. Progress
+          _toolbarButton(
+            icon: Icons.linear_scale,
+            onTap: () {},
+          ),
+          // 4. Theme
+          _toolbarButton(
+            icon: Icons.light_mode_outlined,
+            onTap: _cycleTheme,
+          ),
+          // 5. Font settings
+          _toolbarButton(
+            icon: null,
+            label: 'A',
+            isActive: _showFontPanel,
+            onTap: () => setState(() => _showFontPanel = !_showFontPanel),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildThemeSelector() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: ReaderTheme.values.map((theme) {
-        final isSelected = preferences.theme == theme;
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 6),
-          child: GestureDetector(
-            onTap: () =>
-                onPreferencesChanged(preferences.copyWith(theme: theme)),
-            child: Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: theme.backgroundColor,
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: isSelected ? Colors.blue : Colors.grey.shade400,
-                  width: isSelected ? 2.5 : 1.0,
+  Widget _toolbarButton({
+    IconData? icon,
+    String? label,
+    bool isActive = false,
+    required VoidCallback onTap,
+  }) {
+    final color = isActive ? Colors.blue : _textColor.withValues(alpha: 0.75);
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: SizedBox(
+        width: 52,
+        height: 44,
+        child: Center(
+          child: icon != null
+              ? Icon(icon, color: color, size: 24)
+              : Text(
+                  label!,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
-            ),
-          ),
-        );
-      }).toList(),
+        ),
+      ),
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Theme cycling
+  // ---------------------------------------------------------------------------
+
+  void _cycleTheme() {
+    final themes = ReaderTheme.values;
+    final currentIndex = themes.indexOf(_prefs.theme);
+    final next = themes[(currentIndex + 1) % themes.length];
+    widget.onPreferencesChanged(_prefs.copyWith(theme: next));
   }
 }

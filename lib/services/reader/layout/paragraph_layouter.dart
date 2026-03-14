@@ -32,7 +32,7 @@ class ParagraphLayouter {
     //    When CSS specifies zero margins (common in books that use text-indent
     //    for paragraph separation), apply a minimum gap so paragraphs don't
     //    visually stick together.
-    final minParagraphGapPx = prefs.baseFontSizePx * 0.35;
+    final minParagraphGapPx = prefs.baseFontSizePx * 0.65;
     var marginTopPx =
         prefs.emToPx(node.marginTopEm) * prefs.paragraphSpacingMultiplier;
     var marginBottomPx =
@@ -43,6 +43,9 @@ class ParagraphLayouter {
         marginBottomPx == 0 &&
         !ctx.isPageEmpty) {
       marginTopPx = minParagraphGapPx;
+    }
+    if (headingLevel == null && marginBottomPx < minParagraphGapPx) {
+      marginBottomPx = minParagraphGapPx;
     }
     final marginLeftPx = prefs.emToPx(node.marginLeftEm);
     final marginRightPx = prefs.emToPx(node.marginRightEm);
@@ -60,11 +63,13 @@ class ParagraphLayouter {
 
     // 4. Build TextSpan from children.
     final effectiveLineHeight = node.lineHeightEm ?? prefs.lineHeightMultiplier;
+    final defaultColor = node.color != null ? Color(node.color!) : null;
     final textSpan = TextSpanBuilder.build(
       children: node.children,
       prefs: prefs,
       headingLevel: headingLevel,
       lineHeightOverride: effectiveLineHeight,
+      defaultColor: defaultColor,
     );
 
     // 5. Measure with TextPainter.
@@ -74,16 +79,15 @@ class ParagraphLayouter {
       textAlign: node.align,
     )..layout(maxWidth: availableWidth);
 
-    final textHeight = painter.height;
-    final totalHeight = textHeight + 2 * paddingPx;
-
     // 6. Background paint.
     Paint? bgPaint;
     if (node.backgroundColor != null) {
       bgPaint = Paint()..color = Color(node.backgroundColor!);
     }
 
-    // 7. Check if entire paragraph fits on current page.
+    // 8. Split paragraph across pages.
+    final textHeight = painter.height;
+    final totalHeight = textHeight + 2 * paddingPx;
     if (totalHeight <= ctx.remainingHeight) {
       _placeParagraph(
         ctx: ctx,
@@ -99,7 +103,6 @@ class ParagraphLayouter {
       return;
     }
 
-    // 8. Split paragraph across pages.
     _splitParagraph(
       ctx: ctx,
       textSpan: textSpan,
@@ -213,10 +216,10 @@ class ParagraphLayouter {
     }
 
     // Find character offset at the split point.
-    final splitOffset = _findSplitOffset(painter, lineMetrics, fittingLines);
+    final splitOffset = findSplitOffset(painter, lineMetrics, fittingLines);
 
     // Build and place Part 1 (fits on current page).
-    final fullText = _extractPlainText(textSpan);
+    final fullText = extractPlainText(textSpan);
     if (splitOffset <= 0 || splitOffset >= fullText.length) {
       // Edge case: can't split meaningfully, push to next page.
       ctx.startNewPage();
@@ -224,7 +227,7 @@ class ParagraphLayouter {
       return;
     }
 
-    final firstPartSpan = _truncateTextSpan(textSpan, splitOffset);
+    final firstPartSpan = truncateTextSpan(textSpan, splitOffset);
     final firstPainter = TextPainter(
       text: firstPartSpan,
       textDirection: ui.TextDirection.ltr,
@@ -233,6 +236,23 @@ class ParagraphLayouter {
 
     final x = marginLeftPx;
     final y = ctx.cursorY;
+
+    if (bgPaint != null) {
+      ctx.addElement(
+        LayoutElement(
+          rect: Rect.fromLTWH(
+            x,
+            y,
+            ctx.contentWidth -
+                marginLeftPx -
+                (ctx.preferences.emToPx(node.marginRightEm)),
+            firstPainter.height + 2 * paddingPx,
+          ),
+          sourceNode: node,
+          backgroundPaint: bgPaint,
+        ),
+      );
+    }
 
     ctx.addElement(
       LayoutElement(
@@ -251,7 +271,7 @@ class ParagraphLayouter {
     ctx.startNewPage();
 
     // Build Part 2 (remaining text) as a new paragraph with zero top margin.
-    final remainingSpan = _skipTextSpan(textSpan, splitOffset);
+    final remainingSpan = skipTextSpan(textSpan, splitOffset);
     final remainingPainter = TextPainter(
       text: remainingSpan,
       textDirection: ui.TextDirection.ltr,
@@ -291,7 +311,7 @@ class ParagraphLayouter {
   }
 
   /// Find the character offset at the end of line [maxLines] (0-indexed count).
-  static int _findSplitOffset(
+  static int findSplitOffset(
     TextPainter painter,
     List<ui.LineMetrics> metrics,
     int maxLines,
@@ -306,7 +326,7 @@ class ParagraphLayouter {
   }
 
   /// Extract the plain text from a TextSpan tree.
-  static String _extractPlainText(TextSpan span) {
+  static String extractPlainText(TextSpan span) {
     final buffer = StringBuffer();
     span.visitChildren((child) {
       if (child is TextSpan && child.text != null) {
@@ -321,7 +341,7 @@ class ParagraphLayouter {
   }
 
   /// Create a new TextSpan containing only the first [charCount] characters.
-  static TextSpan _truncateTextSpan(TextSpan span, int charCount) {
+  static TextSpan truncateTextSpan(TextSpan span, int charCount) {
     var remaining = charCount;
     final result = <InlineSpan>[];
 
@@ -349,7 +369,7 @@ class ParagraphLayouter {
   }
 
   /// Create a new TextSpan skipping the first [charCount] characters.
-  static TextSpan _skipTextSpan(TextSpan span, int charCount) {
+  static TextSpan skipTextSpan(TextSpan span, int charCount) {
     var remaining = charCount;
     final result = <InlineSpan>[];
 

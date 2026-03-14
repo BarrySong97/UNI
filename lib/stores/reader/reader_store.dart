@@ -384,7 +384,8 @@ class ReaderStore extends ChangeNotifier {
           safeAreaBottom: _safeAreaBottom,
         );
         _chapterPageCounts[i] = pagination.pages.length;
-        _cache[cacheKey] = pagination;
+        // Don't cache here — images were not decoded for speed.
+        // _loadChapter() will do a full load with image decoding on demand.
       } catch (e) {
         debugPrint('[ReaderStore] _computeAllPageCounts chapter $i error: $e');
         _chapterPageCounts[i] = 0;

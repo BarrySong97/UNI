@@ -27,10 +27,12 @@ class TextSpanBuilder {
     required ReaderPreferences prefs,
     int? headingLevel,
     double? lineHeightOverride,
+    Color? defaultColor,
   }) {
     final spans = <InlineSpan>[];
     for (final child in children) {
-      _buildSpan(child, prefs, headingLevel, lineHeightOverride, spans);
+      _buildSpan(
+          child, prefs, headingLevel, lineHeightOverride, defaultColor, spans);
     }
     return TextSpan(children: spans);
   }
@@ -40,11 +42,13 @@ class TextSpanBuilder {
     ReaderPreferences prefs,
     int? headingLevel,
     double? lineHeightOverride,
+    Color? defaultColor,
     List<InlineSpan> out,
   ) {
     switch (node) {
       case TextNode():
-        out.add(_textNodeToSpan(node, prefs, headingLevel, lineHeightOverride));
+        out.add(_textNodeToSpan(
+            node, prefs, headingLevel, lineHeightOverride, defaultColor));
       case LineBreakNode():
         out.add(const TextSpan(text: '\n'));
       case ImageNode():
@@ -71,6 +75,7 @@ class TextSpanBuilder {
     ReaderPreferences prefs,
     int? headingLevel,
     double? lineHeightOverride,
+    Color? defaultColor,
   ) {
     var fontSizeEm = node.fontSizeEm;
 
@@ -82,13 +87,31 @@ class TextSpanBuilder {
     final effectiveLineHeight =
         lineHeightOverride ?? prefs.lineHeightMultiplier;
 
-    final color = node.color != null
+    // Color priority: node.color > defaultColor > theme.textColor
+    final baseColor = node.color != null
         ? Color(node.color!)
-        : prefs.theme.textColor;
+        : defaultColor ?? prefs.theme.textColor;
+
+    // Link styling: blue color when href is set and no explicit color.
+    final isLink = node.href != null && node.href!.isNotEmpty;
+    final color = (isLink && node.color == null)
+        ? const Color(0xFF1A73E8)
+        : baseColor;
 
     final decorations = <TextDecoration>[];
     if (node.underline) decorations.add(TextDecoration.underline);
     if (node.lineThrough) decorations.add(TextDecoration.lineThrough);
+    if (isLink) decorations.add(TextDecoration.underline);
+
+    // Superscript / subscript font features.
+    final fontFeatures = <FontFeature>[];
+    if (node.superscript) fontFeatures.add(const FontFeature('sups'));
+    if (node.subscript) fontFeatures.add(const FontFeature('subs'));
+
+    // Inline background color (e.g. <mark> highlight).
+    final bgColor = node.backgroundColor != null
+        ? Color(node.backgroundColor!)
+        : null;
 
     return TextSpan(
       text: node.content,
@@ -101,9 +124,12 @@ class TextSpanBuilder {
         decoration: decorations.isEmpty
             ? TextDecoration.none
             : TextDecoration.combine(decorations),
+        decorationColor: isLink ? color : null,
         color: color,
         fontFamily: prefs.fontFamily,
         height: effectiveLineHeight,
+        fontFeatures: fontFeatures.isNotEmpty ? fontFeatures : null,
+        backgroundColor: bgColor,
       ),
     );
   }

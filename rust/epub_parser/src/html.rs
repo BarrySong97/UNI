@@ -22,6 +22,12 @@ struct WalkCtx<'a> {
     line_through: bool,
     font_size_em: f32,
     color: Option<u32>,
+    background_color: Option<u32>,
+    href: Option<String>,
+    superscript: bool,
+    subscript: bool,
+    /// Ancestor tag stack for descendant CSS selector matching.
+    ancestors: Vec<String>,
 }
 
 /// Parse an XHTML string into a flat list of block-level `RenderNode`s.
@@ -45,6 +51,11 @@ pub fn parse_xhtml(
         line_through: false,
         font_size_em: 1.0,
         color: None,
+        background_color: None,
+        href: None,
+        superscript: false,
+        subscript: false,
+        ancestors: Vec::new(),
     };
 
     let mut nodes = Vec::new();
@@ -79,6 +90,10 @@ fn walk_children_of_node(elem: ElementRef, ctx: &mut WalkCtx, out: &mut Vec<Rend
                         font_size_em: ctx.font_size_em,
                         color: ctx.color,
                         node_index,
+                        href: ctx.href.clone(),
+                        superscript: ctx.superscript,
+                        subscript: ctx.subscript,
+                        background_color: ctx.background_color,
                     });
                 }
             }
@@ -90,11 +105,16 @@ fn walk_children_of_node(elem: ElementRef, ctx: &mut WalkCtx, out: &mut Vec<Rend
                 }
 
                 let child_elem = ElementRef::wrap(child).unwrap();
-                let classes = element_classes(child_elem);
-                let style = css::resolve_styles(ctx.css_map, &tag, &classes);
+                let style = resolve_styles_with_inline(ctx, child_elem, &tag);
+
+                // Skip elements with display:none.
+                if style.display.as_deref() == Some("none") {
+                    continue;
+                }
 
                 if filter::should_flatten(&tag) {
                     let mut sub = inherit_ctx(ctx, &style);
+                    sub.ancestors.push(tag.clone());
                     walk_children_of_node(child_elem, &mut sub, out);
                     *ctx.char_offset = *sub.char_offset;
                     continue;
@@ -103,7 +123,7 @@ fn walk_children_of_node(elem: ElementRef, ctx: &mut WalkCtx, out: &mut Vec<Rend
                 match tag.as_str() {
                     "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
                         let level = filter::heading_level(&tag).unwrap_or(1);
-                        let children = collect_inline(child_elem, ctx, &style);
+                        let children = collect_inline(child_elem, ctx, &style, &tag);
                         if !children.is_empty() {
                             out.push(RenderNode::Heading {
                                 level,
@@ -123,7 +143,7 @@ fn walk_children_of_node(elem: ElementRef, ctx: &mut WalkCtx, out: &mut Vec<Rend
                     }
 
                     "p" => {
-                        let children = collect_inline(child_elem, ctx, &style);
+                        let children = collect_inline(child_elem, ctx, &style, &tag);
                         if !children.is_empty() {
                             out.push(RenderNode::Paragraph {
                                 children,
@@ -136,25 +156,83 @@ fn walk_children_of_node(elem: ElementRef, ctx: &mut WalkCtx, out: &mut Vec<Rend
                                 line_height_em: style.line_height_em,
                                 padding_em: style.padding_em,
                                 background_color: style.background_color,
+                                color: style.color,
                             });
                         }
                     }
 
-                    "strong" | "b" | "em" | "i" | "cite" | "dfn" | "a" | "u" | "small"
-                    | "sub" | "sup" | "abbr" | "mark" | "del" | "ins" | "s" => {
+                    // --- Inline formatting tags at block level ---
+                    "strong" | "b" => {
                         let mut sub = inherit_ctx(ctx, &style);
-                        if filter::is_bold_tag(&tag) {
-                            sub.bold = true;
+                        sub.bold = true;
+                        sub.ancestors.push(tag.clone());
+                        walk_children_of_node(child_elem, &mut sub, out);
+                        *ctx.char_offset = *sub.char_offset;
+                    }
+                    "em" | "i" | "cite" | "dfn" => {
+                        let mut sub = inherit_ctx(ctx, &style);
+                        sub.italic = true;
+                        sub.ancestors.push(tag.clone());
+                        walk_children_of_node(child_elem, &mut sub, out);
+                        *ctx.char_offset = *sub.char_offset;
+                    }
+                    "u" | "ins" => {
+                        let mut sub = inherit_ctx(ctx, &style);
+                        sub.underline = true;
+                        sub.ancestors.push(tag.clone());
+                        walk_children_of_node(child_elem, &mut sub, out);
+                        *ctx.char_offset = *sub.char_offset;
+                    }
+                    "del" | "s" => {
+                        let mut sub = inherit_ctx(ctx, &style);
+                        sub.line_through = true;
+                        sub.ancestors.push(tag.clone());
+                        walk_children_of_node(child_elem, &mut sub, out);
+                        *ctx.char_offset = *sub.char_offset;
+                    }
+                    "a" => {
+                        let mut sub = inherit_ctx(ctx, &style);
+                        sub.underline = true;
+                        sub.href = child_elem.value().attr("href").map(|s| s.to_string());
+                        sub.ancestors.push(tag.clone());
+                        walk_children_of_node(child_elem, &mut sub, out);
+                        *ctx.char_offset = *sub.char_offset;
+                    }
+                    "sup" => {
+                        let mut sub = inherit_ctx(ctx, &style);
+                        sub.font_size_em *= 0.7;
+                        sub.superscript = true;
+                        sub.ancestors.push(tag.clone());
+                        walk_children_of_node(child_elem, &mut sub, out);
+                        *ctx.char_offset = *sub.char_offset;
+                    }
+                    "sub" => {
+                        let mut sub = inherit_ctx(ctx, &style);
+                        sub.font_size_em *= 0.7;
+                        sub.subscript = true;
+                        sub.ancestors.push(tag.clone());
+                        walk_children_of_node(child_elem, &mut sub, out);
+                        *ctx.char_offset = *sub.char_offset;
+                    }
+                    "small" => {
+                        let mut sub = inherit_ctx(ctx, &style);
+                        sub.font_size_em *= 0.8;
+                        sub.ancestors.push(tag.clone());
+                        walk_children_of_node(child_elem, &mut sub, out);
+                        *ctx.char_offset = *sub.char_offset;
+                    }
+                    "mark" => {
+                        let mut sub = inherit_ctx(ctx, &style);
+                        if sub.background_color.is_none() {
+                            sub.background_color = Some(0xFFFFFF00);
                         }
-                        if filter::is_italic_tag(&tag) {
-                            sub.italic = true;
-                        }
-                        if filter::is_underline_tag(&tag) {
-                            sub.underline = true;
-                        }
-                        if filter::is_strikethrough_tag(&tag) {
-                            sub.line_through = true;
-                        }
+                        sub.ancestors.push(tag.clone());
+                        walk_children_of_node(child_elem, &mut sub, out);
+                        *ctx.char_offset = *sub.char_offset;
+                    }
+                    "abbr" => {
+                        let mut sub = inherit_ctx(ctx, &style);
+                        sub.ancestors.push(tag.clone());
                         walk_children_of_node(child_elem, &mut sub, out);
                         *ctx.char_offset = *sub.char_offset;
                     }
@@ -181,13 +259,14 @@ fn walk_children_of_node(elem: ElementRef, ctx: &mut WalkCtx, out: &mut Vec<Rend
 
                     "figure" | "figcaption" => {
                         let mut sub = inherit_ctx(ctx, &style);
+                        sub.ancestors.push(tag.clone());
                         walk_children_of_node(child_elem, &mut sub, out);
                         *ctx.char_offset = *sub.char_offset;
                     }
 
                     "ol" | "ul" => {
                         let ordered = tag == "ol";
-                        let items = collect_list_items(child_elem, ctx);
+                        let items = collect_list_items(child_elem, ctx, &tag);
                         if !items.is_empty() {
                             out.push(RenderNode::List {
                                 ordered,
@@ -198,7 +277,7 @@ fn walk_children_of_node(elem: ElementRef, ctx: &mut WalkCtx, out: &mut Vec<Rend
                     }
 
                     "li" => {
-                        let children = collect_inline(child_elem, ctx, &style);
+                        let children = collect_inline(child_elem, ctx, &style, &tag);
                         if !children.is_empty() {
                             out.push(RenderNode::Paragraph {
                                 children,
@@ -211,14 +290,15 @@ fn walk_children_of_node(elem: ElementRef, ctx: &mut WalkCtx, out: &mut Vec<Rend
                                 line_height_em: style.line_height_em,
                                 padding_em: style.padding_em,
                                 background_color: style.background_color,
+                                color: style.color,
                             });
                         }
                     }
 
                     "table" => {
-                        let rows = collect_table_rows(child_elem, ctx);
+                        let (rows, caption) = collect_table_rows(child_elem, ctx);
                         if !rows.is_empty() {
-                            out.push(RenderNode::Table { rows });
+                            out.push(RenderNode::Table { rows, caption });
                         }
                     }
 
@@ -226,29 +306,100 @@ fn walk_children_of_node(elem: ElementRef, ctx: &mut WalkCtx, out: &mut Vec<Rend
                         let mut children = Vec::new();
                         let mut sub = inherit_ctx(ctx, &style);
                         sub.italic = true;
+                        sub.ancestors.push(tag.clone());
                         walk_children_of_node(child_elem, &mut sub, &mut children);
                         *ctx.char_offset = *sub.char_offset;
                         if !children.is_empty() {
                             out.push(RenderNode::BlockQuote {
                                 children,
                                 background_color: style.background_color,
+                                margin_top_em: style.margin_top_em.unwrap_or(0.5),
+                                margin_bottom_em: style.margin_bottom_em.unwrap_or(0.5),
+                                margin_left_em: style.margin_left_em.unwrap_or(2.0),
+                                margin_right_em: style.margin_right_em.unwrap_or(1.0),
                             });
                         }
                     }
 
                     "pre" => {
-                        let text = child_elem.text().collect::<String>();
-                        if !text.trim().is_empty() {
-                            *ctx.char_offset += text.len();
-                            out.push(RenderNode::CodeBlock { content: text });
+                        // Walk inline children to preserve <span>/<code> styling.
+                        let mut children = Vec::new();
+                        let mut sub = inherit_ctx(ctx, &style);
+                        sub.font_size_em *= 0.85;
+                        sub.ancestors.push(tag.clone());
+                        walk_inline_children(child_elem, &mut sub, &mut children);
+                        *ctx.char_offset = *sub.char_offset;
+                        if !children.is_empty() {
+                            out.push(RenderNode::CodeBlock {
+                                children,
+                                background_color: style.background_color.or(Some(0xFFF5F5F5)),
+                                padding_em: style.padding_em.or(Some(0.5)),
+                            });
                         }
                     }
 
                     "code" => {
                         let mut sub = inherit_ctx(ctx, &style);
                         sub.bold = true;
+                        sub.ancestors.push(tag.clone());
                         walk_children_of_node(child_elem, &mut sub, out);
                         *ctx.char_offset = *sub.char_offset;
+                    }
+
+                    "dl" => {
+                        // Definition list: <dt> → bold paragraph, <dd> → indented paragraph.
+                        ctx.ancestors.push(tag.clone());
+                        for dl_child in child_elem.children() {
+                            if let Some(dl_child_elem) = ElementRef::wrap(dl_child) {
+                                let dt_tag = dl_child_elem.value().name.local.as_ref().to_lowercase();
+                                let dl_style = resolve_styles_with_inline(ctx, dl_child_elem, &dt_tag);
+                                match dt_tag.as_str() {
+                                    "dt" => {
+                                        let mut sub = inherit_ctx(ctx, &dl_style);
+                                        sub.bold = true;
+                                        let children = collect_inline(dl_child_elem, &mut sub, &dl_style, &dt_tag);
+                                        *ctx.char_offset = *sub.char_offset;
+                                        if !children.is_empty() {
+                                            out.push(RenderNode::Paragraph {
+                                                children,
+                                                margin_top_em: dl_style.margin_top_em.unwrap_or(0.3),
+                                                margin_bottom_em: dl_style.margin_bottom_em.unwrap_or(0.1),
+                                                margin_left_em: dl_style.margin_left_em.unwrap_or(0.0),
+                                                margin_right_em: dl_style.margin_right_em.unwrap_or(0.0),
+                                                align: TextAlign::Left,
+                                                text_indent_em: None,
+                                                line_height_em: None,
+                                                padding_em: None,
+                                                background_color: None,
+                                                color: dl_style.color,
+                                            });
+                                        }
+                                    }
+                                    "dd" => {
+                                        let children = collect_inline(dl_child_elem, ctx, &dl_style, &dt_tag);
+                                        if !children.is_empty() {
+                                            out.push(RenderNode::Paragraph {
+                                                children,
+                                                margin_top_em: dl_style.margin_top_em.unwrap_or(0.0),
+                                                margin_bottom_em: dl_style.margin_bottom_em.unwrap_or(0.3),
+                                                margin_left_em: dl_style.margin_left_em.unwrap_or(2.0),
+                                                margin_right_em: dl_style.margin_right_em.unwrap_or(0.0),
+                                                align: TextAlign::Left,
+                                                text_indent_em: None,
+                                                line_height_em: None,
+                                                padding_em: None,
+                                                background_color: None,
+                                                color: dl_style.color,
+                                            });
+                                        }
+                                    }
+                                    _ => {
+                                        walk_children_of_node(dl_child_elem, ctx, out);
+                                    }
+                                }
+                            }
+                        }
+                        ctx.ancestors.pop();
                     }
 
                     "thead" | "tbody" | "tfoot" | "tr" | "td" | "th" | "caption"
@@ -274,9 +425,11 @@ fn collect_inline(
     elem: ElementRef,
     ctx: &mut WalkCtx,
     parent_style: &StyleProps,
+    parent_tag: &str,
 ) -> Vec<RenderNode> {
     let mut nodes = Vec::new();
     let mut sub = inherit_ctx(ctx, parent_style);
+    sub.ancestors.push(parent_tag.to_string());
     walk_inline_children(elem, &mut sub, &mut nodes);
     *ctx.char_offset = *sub.char_offset;
     nodes
@@ -299,6 +452,10 @@ fn walk_inline_children(elem: ElementRef, ctx: &mut WalkCtx, out: &mut Vec<Rende
                         font_size_em: ctx.font_size_em,
                         color: ctx.color,
                         node_index,
+                        href: ctx.href.clone(),
+                        superscript: ctx.superscript,
+                        subscript: ctx.subscript,
+                        background_color: ctx.background_color,
                     });
                 }
             }
@@ -309,8 +466,12 @@ fn walk_inline_children(elem: ElementRef, ctx: &mut WalkCtx, out: &mut Vec<Rende
                 }
 
                 let child_elem = ElementRef::wrap(child).unwrap();
-                let classes = element_classes(child_elem);
-                let style = css::resolve_styles(ctx.css_map, &tag, &classes);
+                let style = resolve_styles_with_inline(ctx, child_elem, &tag);
+
+                // Skip elements with display:none.
+                if style.display.as_deref() == Some("none") {
+                    continue;
+                }
 
                 match tag.as_str() {
                     "br" => out.push(RenderNode::LineBreak),
@@ -328,29 +489,81 @@ fn walk_inline_children(elem: ElementRef, ctx: &mut WalkCtx, out: &mut Vec<Rende
                     "strong" | "b" => {
                         let mut sub = inherit_ctx(ctx, &style);
                         sub.bold = true;
+                        sub.ancestors.push(tag.clone());
                         walk_inline_children(child_elem, &mut sub, out);
                         *ctx.char_offset = *sub.char_offset;
                     }
                     "em" | "i" | "cite" | "dfn" => {
                         let mut sub = inherit_ctx(ctx, &style);
                         sub.italic = true;
+                        sub.ancestors.push(tag.clone());
                         walk_inline_children(child_elem, &mut sub, out);
                         *ctx.char_offset = *sub.char_offset;
                     }
                     "u" | "ins" => {
                         let mut sub = inherit_ctx(ctx, &style);
                         sub.underline = true;
+                        sub.ancestors.push(tag.clone());
                         walk_inline_children(child_elem, &mut sub, out);
                         *ctx.char_offset = *sub.char_offset;
                     }
                     "del" | "s" => {
                         let mut sub = inherit_ctx(ctx, &style);
                         sub.line_through = true;
+                        sub.ancestors.push(tag.clone());
+                        walk_inline_children(child_elem, &mut sub, out);
+                        *ctx.char_offset = *sub.char_offset;
+                    }
+                    "a" => {
+                        let mut sub = inherit_ctx(ctx, &style);
+                        sub.underline = true;
+                        sub.href = child_elem.value().attr("href").map(|s| s.to_string());
+                        sub.ancestors.push(tag.clone());
+                        walk_inline_children(child_elem, &mut sub, out);
+                        *ctx.char_offset = *sub.char_offset;
+                    }
+                    "sup" => {
+                        let mut sub = inherit_ctx(ctx, &style);
+                        sub.font_size_em *= 0.7;
+                        sub.superscript = true;
+                        sub.ancestors.push(tag.clone());
+                        walk_inline_children(child_elem, &mut sub, out);
+                        *ctx.char_offset = *sub.char_offset;
+                    }
+                    "sub" => {
+                        let mut sub = inherit_ctx(ctx, &style);
+                        sub.font_size_em *= 0.7;
+                        sub.subscript = true;
+                        sub.ancestors.push(tag.clone());
+                        walk_inline_children(child_elem, &mut sub, out);
+                        *ctx.char_offset = *sub.char_offset;
+                    }
+                    "small" => {
+                        let mut sub = inherit_ctx(ctx, &style);
+                        sub.font_size_em *= 0.8;
+                        sub.ancestors.push(tag.clone());
+                        walk_inline_children(child_elem, &mut sub, out);
+                        *ctx.char_offset = *sub.char_offset;
+                    }
+                    "mark" => {
+                        let mut sub = inherit_ctx(ctx, &style);
+                        if sub.background_color.is_none() {
+                            sub.background_color = Some(0xFFFFFF00);
+                        }
+                        sub.ancestors.push(tag.clone());
+                        walk_inline_children(child_elem, &mut sub, out);
+                        *ctx.char_offset = *sub.char_offset;
+                    }
+                    "code" => {
+                        let mut sub = inherit_ctx(ctx, &style);
+                        sub.bold = true;
+                        sub.ancestors.push(tag.clone());
                         walk_inline_children(child_elem, &mut sub, out);
                         *ctx.char_offset = *sub.char_offset;
                     }
                     _ => {
                         let mut sub = inherit_ctx(ctx, &style);
+                        sub.ancestors.push(tag.clone());
                         walk_inline_children(child_elem, &mut sub, out);
                         *ctx.char_offset = *sub.char_offset;
                     }
@@ -365,19 +578,93 @@ fn walk_inline_children(elem: ElementRef, ctx: &mut WalkCtx, out: &mut Vec<Rende
 // List items
 // ---------------------------------------------------------------------------
 
-fn collect_list_items(elem: ElementRef, ctx: &mut WalkCtx) -> Vec<ListItem> {
+/// Block-level tags that signal a <li> has block children (not just inline text).
+fn is_block_tag(tag: &str) -> bool {
+    matches!(
+        tag,
+        "p" | "div" | "ul" | "ol" | "blockquote" | "pre" | "table"
+            | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "dl"
+    )
+}
+
+fn collect_list_items(elem: ElementRef, ctx: &mut WalkCtx, list_tag: &str) -> Vec<ListItem> {
     let mut items = Vec::new();
+    ctx.ancestors.push(list_tag.to_string());
+
     for child in elem.children() {
         if let Some(child_elem) = ElementRef::wrap(child) {
             let tag = child_elem.value().name.local.as_ref().to_lowercase();
             if tag == "li" {
-                let classes = element_classes(child_elem);
-                let style = css::resolve_styles(ctx.css_map, &tag, &classes);
-                let children = collect_inline(child_elem, ctx, &style);
-                items.push(ListItem { children });
+                let style = resolve_styles_with_inline(ctx, child_elem, &tag);
+
+                // Check if <li> contains any block-level children.
+                let has_block_children = child_elem.children().any(|c| {
+                    ElementRef::wrap(c).map_or(false, |e| {
+                        is_block_tag(&e.value().name.local.as_ref().to_lowercase())
+                    })
+                });
+
+                if has_block_children {
+                    let mut inline_children = Vec::new();
+                    let mut sub_nodes = Vec::new();
+                    let mut sub = inherit_ctx(ctx, &style);
+                    sub.ancestors.push("li".to_string());
+
+                    for li_child in child_elem.children() {
+                        match li_child.value() {
+                            Node::Text(text) => {
+                                let s = text.text.to_string();
+                                if !s.trim().is_empty() {
+                                    let node_index = *sub.char_offset;
+                                    *sub.char_offset += s.len();
+                                    inline_children.push(RenderNode::Text {
+                                        content: s,
+                                        bold: sub.bold,
+                                        italic: sub.italic,
+                                        underline: sub.underline,
+                                        line_through: sub.line_through,
+                                        font_size_em: sub.font_size_em,
+                                        color: sub.color,
+                                        node_index,
+                                        href: sub.href.clone(),
+                                        superscript: sub.superscript,
+                                        subscript: sub.subscript,
+                                        background_color: sub.background_color,
+                                    });
+                                }
+                            }
+                            Node::Element(_) => {
+                                if let Some(li_child_elem) = ElementRef::wrap(li_child) {
+                                    let t = li_child_elem.value().name.local.as_ref().to_lowercase();
+                                    if is_block_tag(&t) {
+                                        // Block child → walk into sub_nodes.
+                                        walk_children_of_node(li_child_elem, &mut sub, &mut sub_nodes);
+                                    } else {
+                                        // Inline child → walk into inline_children.
+                                        walk_inline_children(li_child_elem, &mut sub, &mut inline_children);
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    *ctx.char_offset = *sub.char_offset;
+                    items.push(ListItem {
+                        children: inline_children,
+                        sub_nodes,
+                    });
+                } else {
+                    let children = collect_inline(child_elem, ctx, &style, &tag);
+                    items.push(ListItem {
+                        children,
+                        sub_nodes: Vec::new(),
+                    });
+                }
             }
         }
     }
+
+    ctx.ancestors.pop();
     items
 }
 
@@ -385,16 +672,23 @@ fn collect_list_items(elem: ElementRef, ctx: &mut WalkCtx) -> Vec<ListItem> {
 // Table rows
 // ---------------------------------------------------------------------------
 
-fn collect_table_rows(elem: ElementRef, ctx: &mut WalkCtx) -> Vec<TableRow> {
+fn collect_table_rows(
+    elem: ElementRef,
+    ctx: &mut WalkCtx,
+) -> (Vec<TableRow>, Option<Vec<RenderNode>>) {
     let mut rows = Vec::new();
-    collect_table_rows_recursive(elem, ctx, &mut rows);
-    rows
+    let mut caption = None;
+    ctx.ancestors.push("table".to_string());
+    collect_table_rows_recursive(elem, ctx, &mut rows, &mut caption);
+    ctx.ancestors.pop();
+    (rows, caption)
 }
 
 fn collect_table_rows_recursive(
     elem: ElementRef,
     ctx: &mut WalkCtx,
     rows: &mut Vec<TableRow>,
+    caption: &mut Option<Vec<RenderNode>>,
 ) {
     for child in elem.children() {
         if let Some(child_elem) = ElementRef::wrap(child) {
@@ -405,7 +699,14 @@ fn collect_table_rows_recursive(
                     rows.push(TableRow { cells, is_header });
                 }
                 "thead" | "tbody" | "tfoot" => {
-                    collect_table_rows_recursive(child_elem, ctx, rows);
+                    collect_table_rows_recursive(child_elem, ctx, rows, caption);
+                }
+                "caption" => {
+                    let style = resolve_styles_with_inline(ctx, child_elem, &tag);
+                    let children = collect_inline(child_elem, ctx, &style, &tag);
+                    if !children.is_empty() {
+                        *caption = Some(children);
+                    }
                 }
                 _ => {}
             }
@@ -423,18 +724,33 @@ fn collect_table_cells(elem: ElementRef, ctx: &mut WalkCtx) -> (Vec<TableCell>, 
                 if tag == "th" {
                     is_header = true;
                 }
-                let classes = element_classes(child_elem);
-                let style = css::resolve_styles(ctx.css_map, &tag, &classes);
+                let style = resolve_styles_with_inline(ctx, child_elem, &tag);
                 let mut children = Vec::new();
                 let mut sub = inherit_ctx(ctx, &style);
+                sub.ancestors.push(tag.clone());
                 walk_children_of_node(child_elem, &mut sub, &mut children);
                 *ctx.char_offset = *sub.char_offset;
+
+                // Read colspan/rowspan HTML attributes.
+                let colspan = child_elem
+                    .value()
+                    .attr("colspan")
+                    .and_then(|v| v.parse::<u32>().ok())
+                    .filter(|&v| v > 1);
+                let rowspan = child_elem
+                    .value()
+                    .attr("rowspan")
+                    .and_then(|v| v.parse::<u32>().ok())
+                    .filter(|&v| v > 1);
+
                 cells.push(TableCell {
                     children,
                     background_color: style.background_color,
                     padding_em: style.padding_em,
                     border: style.border,
                     vertical_align: style.vertical_align,
+                    colspan,
+                    rowspan,
                 });
             }
         }
@@ -445,6 +761,22 @@ fn collect_table_cells(elem: ElementRef, ctx: &mut WalkCtx) -> (Vec<TableCell>, 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// Resolve CSS styles for an element, merging stylesheet rules with inline `style` attribute.
+fn resolve_styles_with_inline(
+    ctx: &WalkCtx,
+    elem: ElementRef,
+    tag: &str,
+) -> StyleProps {
+    let classes = element_classes(elem);
+    let id = elem.value().attr("id");
+    let mut style = css::resolve_styles(ctx.css_map, tag, &classes, id, &ctx.ancestors);
+    if let Some(inline) = elem.value().attr("style") {
+        let inline_props = css::parse_declarations(inline);
+        css::merge_props(&mut style, &inline_props);
+    }
+    style
+}
 
 fn inherit_ctx<'a>(parent: &'a mut WalkCtx, style: &StyleProps) -> WalkCtx<'a> {
     WalkCtx {
@@ -458,6 +790,11 @@ fn inherit_ctx<'a>(parent: &'a mut WalkCtx, style: &StyleProps) -> WalkCtx<'a> {
         line_through: style.line_through.unwrap_or(parent.line_through),
         font_size_em: style.font_size_em.unwrap_or(parent.font_size_em),
         color: style.color.or(parent.color),
+        background_color: style.background_color.or(parent.background_color),
+        href: parent.href.clone(),
+        superscript: parent.superscript,
+        subscript: parent.subscript,
+        ancestors: parent.ancestors.clone(),
     }
 }
 
@@ -469,21 +806,59 @@ struct ResolvedImage {
     height_px: Option<u32>,
 }
 
+/// URL-decode a percent-encoded string (e.g. %20 → space).
+fn url_decode(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            let hi = (bytes[i + 1] as char).to_digit(16);
+            let lo = (bytes[i + 2] as char).to_digit(16);
+            if let (Some(h), Some(l)) = (hi, lo) {
+                result.push(((h * 16 + l) as u8) as char);
+                i += 3;
+                continue;
+            }
+        }
+        result.push(bytes[i] as char);
+        i += 1;
+    }
+    result
+}
+
 /// Resolve an `<img>` element's `src` to base64 data, dimensions, and optional width hint.
 fn resolve_img(elem: ElementRef, ctx: &WalkCtx) -> ResolvedImage {
     let src = match elem.value().attr("src") {
         Some(s) => s,
-        None => return ResolvedImage { data_base64: None, width_hint: None, width_px: None, height_px: None },
+        None => {
+            return ResolvedImage {
+                data_base64: None,
+                width_hint: None,
+                width_px: None,
+                height_px: None,
+            }
+        }
     };
 
-    // Resolve relative src against the chapter's directory.
-    let chapter_dir = ctx.chapter_href.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
-    let resolved = normalize_path(&format!("{}/{}", chapter_dir, src));
+    // URL-decode the src before resolving.
+    let src_decoded = url_decode(src);
 
-    // Try resolved path first, then raw src, then just the filename.
-    let filename = src.rsplit('/').next().unwrap_or(src);
-    let info = ctx.image_map.get(&resolved)
+    // Resolve relative src against the chapter's directory.
+    let chapter_dir = ctx
+        .chapter_href
+        .rsplit_once('/')
+        .map(|(d, _)| d)
+        .unwrap_or("");
+    let resolved = normalize_path(&format!("{}/{}", chapter_dir, &src_decoded));
+
+    // Try resolved path first, then raw src, then decoded src, then just the filename.
+    let filename = src_decoded.rsplit('/').next().unwrap_or(&src_decoded);
+    let info = ctx
+        .image_map
+        .get(&resolved)
         .or_else(|| ctx.image_map.get(src))
+        .or_else(|| ctx.image_map.get(&src_decoded))
         .or_else(|| ctx.image_map.get(filename));
 
     let (data_base64, dims) = match info {
@@ -491,12 +866,22 @@ fn resolve_img(elem: ElementRef, ctx: &WalkCtx) -> ResolvedImage {
         None => (None, None),
     };
 
-    // Parse width attribute for width_hint (e.g. "50%" → 0.5).
+    // Parse width attribute for width_hint.
     let width_hint = elem.value().attr("width").and_then(|w| {
         if w.ends_with('%') {
-            w.trim_end_matches('%').parse::<f32>().ok().map(|v| v / 100.0)
+            w.trim_end_matches('%')
+                .parse::<f32>()
+                .ok()
+                .map(|v| v / 100.0)
+        } else if w.ends_with("px") {
+            // Explicit pixel width with unit — use heuristic ratio.
+            w.trim_end_matches("px")
+                .parse::<f32>()
+                .ok()
+                .map(|px| (px / 600.0).min(1.0))
         } else {
-            None
+            // Bare number (e.g. width="200") — treat as pixels.
+            w.parse::<f32>().ok().map(|px| (px / 600.0).min(1.0))
         }
     });
 
@@ -514,7 +899,9 @@ fn normalize_path(path: &str) -> String {
     for segment in path.split('/') {
         match segment {
             "" | "." => {}
-            ".." => { parts.pop(); }
+            ".." => {
+                parts.pop();
+            }
             s => parts.push(s),
         }
     }

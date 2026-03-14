@@ -15,8 +15,12 @@ Provides an immersive book reading experience using Canvas-based rendering. The 
 - Pagination engine: splits `RenderNode` content into fixed-size pages
 - Rich text: bold, italic, underline, strikethrough, font sizes, colors
 - Block types: paragraphs, headings (h1-h6), lists, tables, blockquotes, code blocks, images (placeholder), horizontal rules
+- Paragraph-first-line alignment normalization (no mixed first-line indent per paragraph)
+- List marker mapping for common list-style types (disc/circle/square/decimal/lower-alpha/upper-alpha/lower-roman/upper-roman)
 - Tap zones: left 30% = previous page, right 30% = next page, center = toggle controls
-- Controls overlay: back button, chapter title, font size +-,  theme toggle (light/sepia/dark)
+- Controls overlay: bottom icon toolbar (TOC, annotation, progress, theme cycle, font settings "A")
+- Font settings panel: font size +/-, margin (small/medium/large), line spacing (tight/medium/loose), font family picker
+- Font family picker: curated system font list (iOS / Android), preview in-font, system default option
 - TOC bottom sheet with chapter list and current chapter highlight
 - Reading preferences: font size, font family, page margins, line height, paragraph spacing, theme
 - Progress persistence via `ReadingProgressEntity` (chapter index + page index)
@@ -46,6 +50,8 @@ EPUB → parse_chapter()           RenderNode[] → paginate()       PageLayout 
 2. **Open book**: `ReaderEntryService` builds `CachedChapterDataSource` pointing to the cache directory, opens `ReaderPage` with `ReaderStore`
 3. **ReaderStore** loads `book.json` for metadata/TOC/chapter count, then loads individual `chapter_N.json` on demand
 4. **Layout Engine** walks `RenderNode` tree, measures text with `TextPainter`, splits into `PageLayout[]`
+   - For oversized table rows that exceed page height, applies continuation-row fallback pagination to avoid visual clipping
+   - Pre-decodes images recursively from nested node trees (list/table/blockquote/code children)
 5. **Canvas Painter** draws each `LayoutElement` (text, backgrounds, borders) onto `Canvas`
 6. **ReaderPage** wraps `CustomPaint` in `GestureDetector` for navigation
 
@@ -75,7 +81,8 @@ lib/
     reader_page.dart                # Main page: CustomPaint + GestureDetector
     widgets/
       reader_canvas_painter.dart    # CustomPainter rendering PageLayout
-      reader_controls_overlay.dart  # Top/bottom control bars
+      reader_controls_overlay.dart  # Bottom icon toolbar + font panel toggle
+      reader_font_panel.dart        # Font size, margin, line spacing, font family picker
       reader_toc_sheet.dart         # TOC bottom sheet
 ```
 
@@ -92,6 +99,7 @@ lib/
    - If overflows → split at line boundary using `computeLineMetrics()` + `getPositionForOffset()`, place first part, start new page, recursively layout remainder
 4. Heading: widow prevention (push to next page if < 2 lines of space would follow)
 5. Table: equal-width columns, per-row height = max cell height, cell backgrounds/borders
+   - Oversized row fallback: split cell text into continuation chunks across pages when a single row is taller than page content height
 6. Output: `ChapterPagination` containing `List<PageLayout>`
 
 ### Fonts (em → px)
@@ -107,6 +115,7 @@ lib/
 - Paragraph margins from CSS em values, with CSS-style margin collapsing
 - First element on page: top margin suppressed
 - Line height: CSS override or user preference (default 1.6)
+- `text-indent`: currently normalized to no indent in Flutter layout to keep first-line alignment consistent across mixed EPUB content
 
 ### Cache Invalidation
 
@@ -125,8 +134,8 @@ Invalidated by: font size/family change, line height change, page margin change,
 
 - Content area avoids system status bar and bottom gesture area (safe area insets)
 - Tap left 30% = previous page, right 30% = next page, center 40% = toggle controls
-- Controls overlay: top bar (back + chapter title + TOC button), bottom bar (font size +/-, theme circles)
-- Progress bar in bottom controls showing page position within chapter
+- Controls overlay: top bar (back + more menu), bottom icon toolbar (5 buttons: TOC, annotation, progress, theme, font)
+- Font settings panel (toggled by "A" button): font size control, margin presets, line spacing presets, font family picker with system fonts
 - TOC sheet: scrollable chapter list with current chapter highlighted
 - Cross-chapter navigation: next page on last page advances to next chapter, previous on first page goes back
 - Error state shows message + "Go Back" button

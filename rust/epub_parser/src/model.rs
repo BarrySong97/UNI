@@ -15,6 +15,18 @@ pub enum RenderNode {
         color: Option<u32>,
         /// Global character index across the entire book (for selection & highlight).
         node_index: usize,
+        /// Link target (e.g. "#footnote1" or "chapter2.xhtml").
+        #[serde(skip_serializing_if = "Option::is_none")]
+        href: Option<String>,
+        /// Superscript text (e.g. footnote markers).
+        #[serde(default, skip_serializing_if = "is_false")]
+        superscript: bool,
+        /// Subscript text (e.g. chemical formulas).
+        #[serde(default, skip_serializing_if = "is_false")]
+        subscript: bool,
+        /// Inline background highlight (e.g. <mark>).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        background_color: Option<u32>,
     },
     Image {
         /// Base64-encoded image bytes (populated only when --with-images is set).
@@ -45,6 +57,8 @@ pub enum RenderNode {
         padding_em: Option<f32>,
         #[serde(skip_serializing_if = "Option::is_none")]
         background_color: Option<u32>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        color: Option<u32>,
     },
     Heading {
         level: u8,
@@ -73,22 +87,40 @@ pub enum RenderNode {
     },
     Table {
         rows: Vec<TableRow>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        caption: Option<Vec<RenderNode>>,
     },
     BlockQuote {
         children: Vec<RenderNode>,
         #[serde(skip_serializing_if = "Option::is_none")]
         background_color: Option<u32>,
+        margin_top_em: f32,
+        margin_bottom_em: f32,
+        margin_left_em: f32,
+        margin_right_em: f32,
     },
     CodeBlock {
-        content: String,
+        children: Vec<RenderNode>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        background_color: Option<u32>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        padding_em: Option<f32>,
     },
     LineBreak,
     HorizontalRule,
 }
 
+/// Helper for `#[serde(skip_serializing_if)]` on bool fields.
+fn is_false(v: &bool) -> bool {
+    !v
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct ListItem {
     pub children: Vec<RenderNode>,
+    /// Block-level nodes found inside this list item (e.g. nested <ul>/<ol>, <p>).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub sub_nodes: Vec<RenderNode>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -152,6 +184,10 @@ pub struct TableCell {
     pub border: Option<Border>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vertical_align: Option<VerticalAlign>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub colspan: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rowspan: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize)]

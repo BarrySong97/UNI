@@ -22,9 +22,11 @@ class ReaderPreferences {
   /// Convert em units to logical pixels.
   double emToPx(double em) => em * baseFontSizePx;
 
+  /// Use [clearFontFamily] = true to reset [fontFamily] to null (system default).
   ReaderPreferences copyWith({
     double? baseFontSizePx,
     String? fontFamily,
+    bool clearFontFamily = false,
     double? pageHorizontalPaddingPx,
     double? pageVerticalPaddingPx,
     double? lineHeightMultiplier,
@@ -33,7 +35,7 @@ class ReaderPreferences {
   }) {
     return ReaderPreferences(
       baseFontSizePx: baseFontSizePx ?? this.baseFontSizePx,
-      fontFamily: fontFamily ?? this.fontFamily,
+      fontFamily: clearFontFamily ? null : (fontFamily ?? this.fontFamily),
       pageHorizontalPaddingPx:
           pageHorizontalPaddingPx ?? this.pageHorizontalPaddingPx,
       pageVerticalPaddingPx:

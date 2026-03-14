@@ -33,6 +33,10 @@ class TextNode extends RenderNode {
     this.fontSizeEm = 1.0,
     this.color,
     this.nodeIndex = 0,
+    this.href,
+    this.superscript = false,
+    this.subscript = false,
+    this.backgroundColor,
   });
 
   final String content;
@@ -43,6 +47,10 @@ class TextNode extends RenderNode {
   final double fontSizeEm;
   final int? color; // ARGB u32
   final int nodeIndex;
+  final String? href;
+  final bool superscript;
+  final bool subscript;
+  final int? backgroundColor; // ARGB u32 (inline highlight, e.g. <mark>)
 
   factory TextNode.fromJson(Map<String, dynamic> json) => TextNode(
     content: json['content'] as String,
@@ -53,6 +61,10 @@ class TextNode extends RenderNode {
     fontSizeEm: (json['font_size_em'] as num?)?.toDouble() ?? 1.0,
     color: json['color'] as int?,
     nodeIndex: json['node_index'] as int? ?? 0,
+    href: json['href'] as String?,
+    superscript: json['superscript'] as bool? ?? false,
+    subscript: json['subscript'] as bool? ?? false,
+    backgroundColor: json['background_color'] as int?,
   );
 }
 
@@ -92,6 +104,7 @@ class ParagraphNode extends RenderNode {
     this.lineHeightEm,
     this.paddingEm,
     this.backgroundColor,
+    this.color,
   });
 
   final List<RenderNode> children;
@@ -104,6 +117,7 @@ class ParagraphNode extends RenderNode {
   final double? lineHeightEm;
   final double? paddingEm;
   final int? backgroundColor; // ARGB u32
+  final int? color; // ARGB u32
 
   factory ParagraphNode.fromJson(Map<String, dynamic> json) => ParagraphNode(
     children: _parseChildren(json['children']),
@@ -116,6 +130,7 @@ class ParagraphNode extends RenderNode {
     lineHeightEm: (json['line_height_em'] as num?)?.toDouble(),
     paddingEm: (json['padding_em'] as num?)?.toDouble(),
     backgroundColor: json['background_color'] as int?,
+    color: json['color'] as int?,
   );
 }
 
@@ -183,18 +198,26 @@ class ListNode extends RenderNode {
 }
 
 class ListItemNode {
-  const ListItemNode({required this.children});
+  const ListItemNode({
+    required this.children,
+    this.subNodes = const [],
+  });
 
   final List<RenderNode> children;
+  /// Block-level nodes found inside this list item (e.g. nested lists).
+  final List<RenderNode> subNodes;
 
-  factory ListItemNode.fromJson(Map<String, dynamic> json) =>
-      ListItemNode(children: _parseChildren(json['children']));
+  factory ListItemNode.fromJson(Map<String, dynamic> json) => ListItemNode(
+    children: _parseChildren(json['children']),
+    subNodes: _parseChildren(json['sub_nodes']),
+  );
 }
 
 class TableNode extends RenderNode {
-  const TableNode({required this.rows});
+  const TableNode({required this.rows, this.caption});
 
   final List<TableRowNode> rows;
+  final List<RenderNode>? caption;
 
   factory TableNode.fromJson(Map<String, dynamic> json) => TableNode(
     rows:
@@ -202,6 +225,8 @@ class TableNode extends RenderNode {
             ?.map((e) => TableRowNode.fromJson(e as Map<String, dynamic>))
             .toList() ??
         [],
+    caption:
+        json['caption'] != null ? _parseChildren(json['caption']) : null,
   );
 }
 
@@ -228,6 +253,8 @@ class TableCellNode {
     this.paddingEm,
     this.border,
     this.verticalAlign,
+    this.colspan,
+    this.rowspan,
   });
 
   final List<RenderNode> children;
@@ -235,6 +262,8 @@ class TableCellNode {
   final double? paddingEm;
   final BorderNode? border;
   final String? verticalAlign;
+  final int? colspan;
+  final int? rowspan;
 
   factory TableCellNode.fromJson(Map<String, dynamic> json) => TableCellNode(
     children: _parseChildren(json['children']),
@@ -244,6 +273,8 @@ class TableCellNode {
         ? BorderNode.fromJson(json['border'] as Map<String, dynamic>)
         : null,
     verticalAlign: json['vertical_align'] as String?,
+    colspan: json['colspan'] as int?,
+    rowspan: json['rowspan'] as int?,
   );
 }
 
@@ -262,24 +293,53 @@ class BorderNode {
 }
 
 class BlockQuoteNode extends RenderNode {
-  const BlockQuoteNode({required this.children, this.backgroundColor});
+  const BlockQuoteNode({
+    required this.children,
+    this.backgroundColor,
+    this.marginTopEm = 0.5,
+    this.marginBottomEm = 0.5,
+    this.marginLeftEm = 2.0,
+    this.marginRightEm = 1.0,
+  });
 
   final List<RenderNode> children;
   final int? backgroundColor;
+  final double marginTopEm;
+  final double marginBottomEm;
+  final double marginLeftEm;
+  final double marginRightEm;
 
   factory BlockQuoteNode.fromJson(Map<String, dynamic> json) => BlockQuoteNode(
     children: _parseChildren(json['children']),
     backgroundColor: json['background_color'] as int?,
+    marginTopEm: (json['margin_top_em'] as num?)?.toDouble() ?? 0.5,
+    marginBottomEm: (json['margin_bottom_em'] as num?)?.toDouble() ?? 0.5,
+    marginLeftEm: (json['margin_left_em'] as num?)?.toDouble() ?? 2.0,
+    marginRightEm: (json['margin_right_em'] as num?)?.toDouble() ?? 1.0,
   );
 }
 
 class CodeBlockNode extends RenderNode {
-  const CodeBlockNode({required this.content});
+  const CodeBlockNode({
+    this.content = '',
+    this.children = const [],
+    this.backgroundColor,
+    this.paddingEm,
+  });
 
+  /// Legacy plain text content (for backward compatibility with old cache).
   final String content;
+  /// Styled inline children (preferred over content when non-empty).
+  final List<RenderNode> children;
+  final int? backgroundColor;
+  final double? paddingEm;
 
-  factory CodeBlockNode.fromJson(Map<String, dynamic> json) =>
-      CodeBlockNode(content: json['content'] as String? ?? '');
+  factory CodeBlockNode.fromJson(Map<String, dynamic> json) => CodeBlockNode(
+    content: json['content'] as String? ?? '',
+    children: _parseChildren(json['children']),
+    backgroundColor: json['background_color'] as int?,
+    paddingEm: (json['padding_em'] as num?)?.toDouble(),
+  );
 }
 
 class LineBreakNode extends RenderNode {
@@ -305,7 +365,7 @@ TextAlign _parseTextAlign(String? value) {
   return switch (value) {
     'Center' => TextAlign.center,
     'Right' => TextAlign.right,
-    'Justify' => TextAlign.justify,
+    'Justify' => TextAlign.left,
     _ => TextAlign.left,
   };
 }

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/painting.dart';
@@ -27,24 +28,28 @@ class ReaderLayoutEngine {
     double devicePixelRatio,
   ) async {
     final images = <String, ui.Image>{};
+    final imageNodes = <ImageNode>[];
+    for (final node in nodes) {
+      _collectImageNodes(node, imageNodes);
+    }
+
     // Decode at physical pixel width to stay sharp on Retina/HiDPI screens.
     final targetPx = (maxWidth * devicePixelRatio).toInt();
-    for (final node in nodes) {
-      if (node is ImageNode && node.dataBase64 != null) {
-        try {
-          final bytes = base64Decode(node.dataBase64!);
-          // Only downscale if the image is wider than the display area.
-          final nativeWidth = node.widthPx;
-          final needsResize = nativeWidth != null && nativeWidth > targetPx;
-          final codec = await ui.instantiateImageCodec(
-            bytes,
-            targetWidth: needsResize ? targetPx : null,
-          );
-          final frame = await codec.getNextFrame();
-          images[node.dataBase64!.hashCode.toString()] = frame.image;
-        } catch (_) {
-          // Skip images that fail to decode.
-        }
+    for (final node in imageNodes) {
+      if (node.dataBase64 == null) continue;
+      try {
+        final bytes = base64Decode(node.dataBase64!);
+        // Only downscale if the image is wider than the display area.
+        final nativeWidth = node.widthPx;
+        final needsResize = nativeWidth != null && nativeWidth > targetPx;
+        final codec = await ui.instantiateImageCodec(
+          bytes,
+          targetWidth: needsResize ? targetPx : null,
+        );
+        final frame = await codec.getNextFrame();
+        images[node.dataBase64!.hashCode.toString()] = frame.image;
+      } catch (_) {
+        // Skip images that fail to decode.
       }
     }
     return images;
@@ -89,29 +94,51 @@ class ReaderLayoutEngine {
     );
   }
 
-  void _layoutNode(RenderNode node, LayoutContext ctx) {
+  void _layoutNode(
+    RenderNode node,
+    LayoutContext ctx, {
+    double nestingIndentEm = 0.0,
+  }) {
     switch (node) {
       case ParagraphNode():
-        ParagraphLayouter.layout(node, ctx);
+        final paragraph = nestingIndentEm > 0
+            ? ParagraphNode(
+                children: node.children,
+                marginTopEm: node.marginTopEm,
+                marginBottomEm: node.marginBottomEm,
+                marginLeftEm: node.marginLeftEm + nestingIndentEm,
+                marginRightEm: node.marginRightEm,
+                align: node.align,
+                textIndentEm: node.textIndentEm,
+                lineHeightEm: node.lineHeightEm,
+                paddingEm: node.paddingEm,
+                backgroundColor: node.backgroundColor,
+                color: node.color,
+              )
+            : node;
+        ParagraphLayouter.layout(paragraph, ctx);
       case HeadingNode():
-        _layoutHeading(node, ctx);
+        _layoutHeading(node, ctx, nestingIndentEm: nestingIndentEm);
       case ImageNode():
-        _layoutImage(node, ctx);
+        _layoutImage(node, ctx, nestingIndentEm: nestingIndentEm);
       case ListNode():
-        _layoutList(node, ctx);
+        _layoutList(node, ctx, nestingIndentEm: nestingIndentEm);
       case TableNode():
-        _layoutTable(node, ctx);
+        _layoutTable(node, ctx, nestingIndentEm: nestingIndentEm);
       case BlockQuoteNode():
-        _layoutBlockQuote(node, ctx);
+        _layoutBlockQuote(node, ctx, nestingIndentEm: nestingIndentEm);
       case CodeBlockNode():
-        _layoutCodeBlock(node, ctx);
+        _layoutCodeBlock(node, ctx, nestingIndentEm: nestingIndentEm);
       case LineBreakNode():
         ctx.cursorY += ctx.preferences.baseFontSizePx * 0.5;
       case HorizontalRuleNode():
         _layoutHorizontalRule(ctx);
       case TextNode():
         // Bare text node outside a paragraph — wrap in a simple paragraph.
-        ParagraphLayouter.layout(ParagraphNode(children: [node]), ctx);
+        ParagraphLayouter.layout(
+          ParagraphNode(children: [node], marginLeftEm: nestingIndentEm),
+          ctx,
+        );
     }
   }
 
@@ -119,7 +146,11 @@ class ReaderLayoutEngine {
   // Heading
   // ---------------------------------------------------------------------------
 
-  void _layoutHeading(HeadingNode node, LayoutContext ctx) {
+  void _layoutHeading(
+    HeadingNode node,
+    LayoutContext ctx, {
+    double nestingIndentEm = 0.0,
+  }) {
     final prefs = ctx.preferences;
 
     // Widow prevention: if heading would be near the bottom of a page with
@@ -141,13 +172,14 @@ class ReaderLayoutEngine {
       children: node.children,
       marginTopEm: node.marginTopEm != 0.0 ? node.marginTopEm : 0.8,
       marginBottomEm: node.marginBottomEm != 0.0 ? node.marginBottomEm : 0.4,
-      marginLeftEm: node.marginLeftEm,
+      marginLeftEm: node.marginLeftEm + nestingIndentEm,
       marginRightEm: node.marginRightEm,
       align: node.align,
       textIndentEm: node.textIndentEm,
       backgroundColor: node.backgroundColor,
       lineHeightEm: node.lineHeightEm,
       paddingEm: node.paddingEm,
+      color: node.color,
     );
     ParagraphLayouter.layout(paragraphProxy, ctx, headingLevel: node.level);
   }
@@ -156,7 +188,11 @@ class ReaderLayoutEngine {
   // Image
   // ---------------------------------------------------------------------------
 
-  void _layoutImage(ImageNode node, LayoutContext ctx) {
+  void _layoutImage(
+    ImageNode node,
+    LayoutContext ctx, {
+    double nestingIndentEm = 0.0,
+  }) {
     // Determine aspect ratio from Rust-provided dimensions or decoded image.
     final key = node.dataBase64?.hashCode.toString();
     final decodedImage = key != null ? ctx.decodedImages[key] : null;
@@ -179,10 +215,12 @@ class ReaderLayoutEngine {
     ctx.applyTopMargin(topMargin);
 
     // Scale image to fit content width, respecting widthHint.
+    final indentPx = ctx.preferences.emToPx(nestingIndentEm);
+    final availableWidth = math.max(0.0, ctx.contentWidth - indentPx);
     final maxW = node.widthHint != null
-        ? ctx.contentWidth * node.widthHint!
-        : ctx.contentWidth;
-    var displayW = maxW.clamp(0.0, ctx.contentWidth);
+        ? availableWidth * node.widthHint!
+        : availableWidth;
+    var displayW = maxW.clamp(0.0, availableWidth);
     var displayH = displayW / aspectRatio;
 
     // Cap height to 80% of page to avoid images taller than a page.
@@ -198,7 +236,7 @@ class ReaderLayoutEngine {
     }
 
     // Center horizontally.
-    final x = (ctx.contentWidth - displayW) / 2;
+    final x = indentPx + (availableWidth - displayW) / 2;
     ctx.addElement(
       LayoutElement(
         rect: Rect.fromLTWH(x, ctx.cursorY, displayW, displayH),
@@ -228,126 +266,236 @@ class ReaderLayoutEngine {
   // List
   // ---------------------------------------------------------------------------
 
-  void _layoutList(ListNode node, LayoutContext ctx) {
+  void _layoutList(
+    ListNode node,
+    LayoutContext ctx, {
+    double nestingIndentEm = 0.0,
+  }) {
+    final prefs = ctx.preferences;
+    final indentEm = nestingIndentEm + 1.5;
+
     for (var i = 0; i < node.items.length; i++) {
       final item = node.items[i];
-      final prefix = node.ordered ? '${i + 1}. ' : '\u2022 '; // bullet
+      final prefix = _listItemPrefix(node, i);
 
-      // Prepend prefix to the first TextNode in the item's children.
-      final children = <RenderNode>[];
-      var prefixAdded = false;
-      for (final child in item.children) {
-        if (!prefixAdded && child is TextNode) {
-          children.add(
-            TextNode(
-              content: prefix + child.content,
-              bold: child.bold,
-              italic: child.italic,
-              underline: child.underline,
-              lineThrough: child.lineThrough,
-              fontSizeEm: child.fontSizeEm,
-              color: child.color,
-              nodeIndex: child.nodeIndex,
-            ),
-          );
-          prefixAdded = true;
-        } else {
-          children.add(child);
+      // Measure marker for hanging-indent placement.
+      final markerSpan = TextSpan(
+        text: prefix,
+        style: TextStyle(
+          fontSize: prefs.baseFontSizePx,
+          fontFamily: prefs.fontFamily,
+          height: prefs.lineHeightMultiplier,
+          color: prefs.theme.textColor,
+        ),
+      );
+      final markerPainter = TextPainter(
+        text: markerSpan,
+        textDirection: ui.TextDirection.ltr,
+      )..layout();
+      final markerWidth = markerPainter.width;
+
+      // Snapshot layout state before placing any content for this item.
+      final preLayoutCursorY = ctx.cursorY;
+      final preLayoutPageCount = ctx.pages.length;
+      final preLayoutElementCount = ctx.currentPage.elements.length;
+
+      // Layout inline children as a paragraph (skip if empty).
+      if (item.children.isNotEmpty) {
+        final listParagraph = ParagraphNode(
+          children: item.children,
+          marginTopEm: 0.0,
+          marginBottomEm: 0.2,
+          marginLeftEm: indentEm,
+        );
+        ParagraphLayouter.layout(listParagraph, ctx);
+      }
+
+      // Layout block-level sub-nodes (nested lists, paragraphs, etc.)
+      for (final subNode in item.subNodes) {
+        _layoutNode(subNode, ctx, nestingIndentEm: indentEm);
+      }
+
+      // Find where the first text element of this item was placed,
+      // then position the marker on the same page and Y.
+      final markerGap = prefs.emToPx(0.3);
+      final markerX = math.max(0.0, prefs.emToPx(indentEm) - markerWidth - markerGap);
+      final (markerPage, markerY) = _findFirstTextPosition(
+        ctx: ctx,
+        preLayoutPageCount: preLayoutPageCount,
+        preLayoutElementCount: preLayoutElementCount,
+        preLayoutCursorY: preLayoutCursorY,
+      );
+      final markerElement = LayoutElement(
+        rect: Rect.fromLTWH(
+          markerX,
+          markerY,
+          markerWidth,
+          markerPainter.height,
+        ),
+        sourceNode: node,
+        textPainter: markerPainter,
+      );
+      if (markerPage != null) {
+        markerPage.elements.add(markerElement);
+      } else {
+        ctx.addElement(markerElement);
+      }
+    }
+  }
+
+  /// Search for the first text element placed after a layout snapshot.
+  ///
+  /// Returns `(page, y)` where page is a completed [PageLayout] (or null
+  /// for the current page) and y is the top of the first text element.
+  (PageLayout?, double) _findFirstTextPosition({
+    required LayoutContext ctx,
+    required int preLayoutPageCount,
+    required int preLayoutElementCount,
+    required double preLayoutCursorY,
+  }) {
+    // 1. Check the page that was current at snapshot time (now possibly completed).
+    if (ctx.pages.length > preLayoutPageCount) {
+      final snapshotPage = ctx.pages[preLayoutPageCount];
+      for (var j = preLayoutElementCount; j < snapshotPage.elements.length; j++) {
+        if (snapshotPage.elements[j].textPainter != null) {
+          return (snapshotPage, snapshotPage.elements[j].rect.top);
         }
       }
-      if (!prefixAdded && children.isEmpty) {
-        children.add(TextNode(content: prefix));
+      // 2. Check pages created after the snapshot page.
+      for (var p = preLayoutPageCount + 1; p < ctx.pages.length; p++) {
+        for (final el in ctx.pages[p].elements) {
+          if (el.textPainter != null) return (ctx.pages[p], el.rect.top);
+        }
       }
-
-      final listParagraph = ParagraphNode(
-        children: children,
-        marginTopEm: 0.0,
-        marginBottomEm: 0.2,
-        marginLeftEm: 1.5,
-      );
-      ParagraphLayouter.layout(listParagraph, ctx);
     }
+    // 3. Check the current page (either no page break happened, or text
+    //    ended up on the still-open current page).
+    final elements = ctx.currentPage.elements;
+    final startIdx = ctx.pages.length > preLayoutPageCount
+        ? 0
+        : preLayoutElementCount;
+    for (var j = startIdx; j < elements.length; j++) {
+      if (elements[j].textPainter != null) {
+        return (null, elements[j].rect.top);
+      }
+    }
+    // Fallback: no text element found, use pre-layout cursor.
+    return (null, preLayoutCursorY);
   }
 
   // ---------------------------------------------------------------------------
   // Table
   // ---------------------------------------------------------------------------
 
-  void _layoutTable(TableNode node, LayoutContext ctx) {
+  void _layoutTable(
+    TableNode node,
+    LayoutContext ctx, {
+    double nestingIndentEm = 0.0,
+  }) {
     final prefs = ctx.preferences;
     if (node.rows.isEmpty) return;
+    final leftIndentPx = prefs.emToPx(nestingIndentEm);
+    final tableWidth = math.max(0.0, ctx.contentWidth - leftIndentPx);
+    if (tableWidth <= 0) return;
 
+    // Render table caption if present.
+    if (node.caption != null && node.caption!.isNotEmpty) {
+      final captionParagraph = ParagraphNode(
+        children: node.caption!,
+        marginTopEm: 0.3,
+        marginBottomEm: 0.3,
+        marginLeftEm: nestingIndentEm,
+        align: ui.TextAlign.center,
+      );
+      ParagraphLayouter.layout(captionParagraph, ctx);
+    }
+
+    // Compute logical column count accounting for colspan.
     final numCols = node.rows
-        .map((r) => r.cells.length)
+        .map(
+          (r) => r.cells.fold<int>(0, (sum, cell) => sum + (cell.colspan ?? 1)),
+        )
         .reduce((a, b) => a > b ? a : b);
     if (numCols == 0) return;
 
-    final colWidth = ctx.contentWidth / numCols;
+    final slotWidth = tableWidth / numCols;
 
     for (final row in node.rows) {
       var maxCellHeight = 0.0;
-      final cellPainters = <(TextPainter, TableCellNode)>[];
+      final cellPaintData = <_TableCellPaintData>[];
 
       for (final cell in row.cells) {
+        final cellColspan = cell.colspan ?? 1;
+        final cellWidth = slotWidth * cellColspan;
         final cellPadding = cell.paddingEm != null
             ? prefs.emToPx(cell.paddingEm!)
             : 4.0;
-        final cellContentWidth = colWidth - 2 * cellPadding;
+        final cellContentWidth = cellWidth - 2 * cellPadding;
 
         final textSpan = TextSpanBuilder.build(
           children: cell.children.expand(_flattenToInline).toList(),
           prefs: prefs,
         );
 
-        final painter = TextPainter(
-          text: textSpan,
-          textDirection: ui.TextDirection.ltr,
-        )..layout(maxWidth: cellContentWidth > 0 ? cellContentWidth : 10);
+        final painter = _newTableCellPainter(textSpan, cellContentWidth);
 
         final cellHeight = painter.height + 2 * cellPadding;
         if (cellHeight > maxCellHeight) maxCellHeight = cellHeight;
 
-        cellPainters.add((painter, cell));
+        cellPaintData.add(
+          _TableCellPaintData(
+            painter: painter,
+            cell: cell,
+            cellWidth: cellWidth,
+            cellPadding: cellPadding,
+            contentWidth: cellContentWidth,
+            remainingText: textSpan,
+          ),
+        );
       }
 
       // Check if row fits on current page.
-      if (maxCellHeight > ctx.remainingHeight && !ctx.isPageEmpty) {
+      if (maxCellHeight > ctx.contentHeight) {
+        _layoutOversizedTableRow(
+          node: node,
+          ctx: ctx,
+          rowData: cellPaintData,
+          leftIndentPx: leftIndentPx,
+        );
+        continue;
+      }
+
+      if (maxCellHeight > ctx.remainingHeight) {
         ctx.startNewPage();
       }
 
       // Place cells.
-      var cellX = 0.0;
-      for (final (painter, cell) in cellPainters) {
-        final cellPadding = cell.paddingEm != null
-            ? prefs.emToPx(cell.paddingEm!)
-            : 4.0;
+      var cellX = leftIndentPx;
+      for (final data in cellPaintData) {
+        final painter = data.painter;
+        final cell = data.cell;
+        final cellWidth = data.cellWidth;
+        final cellPadding = data.cellPadding;
 
         // Cell background.
         if (cell.backgroundColor != null) {
           ctx.addElement(
             LayoutElement(
-              rect: Rect.fromLTWH(cellX, ctx.cursorY, colWidth, maxCellHeight),
+              rect: Rect.fromLTWH(cellX, ctx.cursorY, cellWidth, maxCellHeight),
               sourceNode: node,
               backgroundPaint: Paint()..color = Color(cell.backgroundColor!),
             ),
           );
         }
 
-        // Cell border.
-        if (cell.border != null && cell.border!.widthPx > 0) {
-          ctx.addElement(
-            LayoutElement(
-              rect: Rect.fromLTWH(cellX, ctx.cursorY, colWidth, maxCellHeight),
-              sourceNode: node,
-              backgroundPaint: Paint()
-                ..color = cell.border!.color != null
-                    ? Color(cell.border!.color!)
-                    : prefs.theme.textColor
-                ..style = PaintingStyle.stroke
-                ..strokeWidth = cell.border!.widthPx,
-            ),
-          );
-        }
+        // Cell border (default thin border when CSS doesn't specify one).
+        ctx.addElement(
+          LayoutElement(
+            rect: Rect.fromLTWH(cellX, ctx.cursorY, cellWidth, maxCellHeight),
+            sourceNode: node,
+            backgroundPaint: _tableCellBorderPaint(cell.border, prefs),
+          ),
+        );
 
         // Cell text.
         ctx.addElement(
@@ -363,7 +511,7 @@ class ReaderLayoutEngine {
           ),
         );
 
-        cellX += colWidth;
+        cellX += cellWidth;
       }
 
       ctx.cursorY += maxCellHeight;
@@ -372,6 +520,168 @@ class ReaderLayoutEngine {
     // Table bottom spacing.
     ctx.cursorY += prefs.emToPx(0.5);
     ctx.previousBottomMargin = prefs.emToPx(0.5);
+  }
+
+  void _layoutOversizedTableRow({
+    required TableNode node,
+    required LayoutContext ctx,
+    required List<_TableCellPaintData> rowData,
+    required double leftIndentPx,
+  }) {
+    final remainingSpans = rowData.map((e) => e.remainingText).toList();
+
+    while (true) {
+      if (ctx.remainingHeight <= 0) {
+        ctx.startNewPage();
+      }
+
+      var rowChunkHeight = 0.0;
+      final chunkPainters = <TextPainter?>[];
+      final nextSpans = <TextSpan>[];
+      var hasVisibleContent = false;
+      var hasRemainingContent = false;
+
+      for (var i = 0; i < rowData.length; i++) {
+        final data = rowData[i];
+        final currentSpan = remainingSpans[i];
+        final contentMaxHeight = ctx.remainingHeight - 2 * data.cellPadding;
+
+        if (_isTextSpanEmpty(currentSpan) || contentMaxHeight <= 0) {
+          chunkPainters.add(null);
+          nextSpans.add(currentSpan);
+          continue;
+        }
+
+        final fullPainter = _newTableCellPainter(
+          currentSpan,
+          data.contentWidth,
+        );
+        final metrics = fullPainter.computeLineMetrics();
+
+        var fittingLines = 0;
+        var usedHeight = 0.0;
+        for (final line in metrics) {
+          if (usedHeight + line.height > contentMaxHeight) break;
+          usedHeight += line.height;
+          fittingLines++;
+        }
+
+        if (fittingLines == 0) {
+          chunkPainters.add(null);
+          nextSpans.add(currentSpan);
+          hasRemainingContent = true;
+          continue;
+        }
+
+        if (fittingLines >= metrics.length) {
+          chunkPainters.add(fullPainter);
+          nextSpans.add(const TextSpan(children: []));
+          rowChunkHeight = math.max(
+            rowChunkHeight,
+            fullPainter.height + 2 * data.cellPadding,
+          );
+          hasVisibleContent = true;
+          continue;
+        }
+
+        final splitOffset = ParagraphLayouter.findSplitOffset(
+          fullPainter,
+          metrics,
+          fittingLines,
+        );
+        final firstPart = ParagraphLayouter.truncateTextSpan(
+          currentSpan,
+          splitOffset,
+        );
+        final remainingPart = ParagraphLayouter.skipTextSpan(
+          currentSpan,
+          splitOffset,
+        );
+        final firstPainter = _newTableCellPainter(firstPart, data.contentWidth);
+
+        chunkPainters.add(firstPainter);
+        nextSpans.add(remainingPart);
+        rowChunkHeight = math.max(
+          rowChunkHeight,
+          firstPainter.height + 2 * data.cellPadding,
+        );
+        hasVisibleContent = true;
+        hasRemainingContent = true;
+      }
+
+      if (!hasVisibleContent) {
+        if (!ctx.isPageEmpty) {
+          ctx.startNewPage();
+          continue;
+        }
+        return;
+      }
+
+      var cellX = leftIndentPx;
+      for (var i = 0; i < rowData.length; i++) {
+        final data = rowData[i];
+        final painter = chunkPainters[i];
+
+        if (data.cell.backgroundColor != null) {
+          ctx.addElement(
+            LayoutElement(
+              rect: Rect.fromLTWH(
+                cellX,
+                ctx.cursorY,
+                data.cellWidth,
+                rowChunkHeight,
+              ),
+              sourceNode: node,
+              backgroundPaint: Paint()
+                ..color = Color(data.cell.backgroundColor!),
+            ),
+          );
+        }
+
+        ctx.addElement(
+          LayoutElement(
+            rect: Rect.fromLTWH(
+              cellX,
+              ctx.cursorY,
+              data.cellWidth,
+              rowChunkHeight,
+            ),
+            sourceNode: node,
+            backgroundPaint: _tableCellBorderPaint(
+              data.cell.border,
+              ctx.preferences,
+            ),
+          ),
+        );
+
+        if (painter != null) {
+          ctx.addElement(
+            LayoutElement(
+              rect: Rect.fromLTWH(
+                cellX + data.cellPadding,
+                ctx.cursorY + data.cellPadding,
+                painter.width,
+                painter.height,
+              ),
+              sourceNode: node,
+              textPainter: painter,
+            ),
+          );
+        }
+
+        cellX += data.cellWidth;
+      }
+
+      ctx.cursorY += rowChunkHeight;
+      for (var i = 0; i < nextSpans.length; i++) {
+        remainingSpans[i] = nextSpans[i];
+      }
+
+      if (!hasRemainingContent || nextSpans.every(_isTextSpanEmpty)) {
+        return;
+      }
+      ctx.startNewPage();
+    }
   }
 
   /// Flatten nested block nodes into inline TextNodes for table cell rendering.
@@ -390,13 +700,17 @@ class ReaderLayoutEngine {
   // BlockQuote
   // ---------------------------------------------------------------------------
 
-  void _layoutBlockQuote(BlockQuoteNode node, LayoutContext ctx) {
+  void _layoutBlockQuote(
+    BlockQuoteNode node,
+    LayoutContext ctx, {
+    double nestingIndentEm = 0.0,
+  }) {
     final paragraph = ParagraphNode(
       children: node.children,
-      marginTopEm: 0.5,
-      marginBottomEm: 0.5,
-      marginLeftEm: 2.0,
-      marginRightEm: 1.0,
+      marginTopEm: node.marginTopEm,
+      marginBottomEm: node.marginBottomEm,
+      marginLeftEm: node.marginLeftEm + nestingIndentEm,
+      marginRightEm: node.marginRightEm,
       backgroundColor: node.backgroundColor,
     );
     ParagraphLayouter.layout(paragraph, ctx);
@@ -406,15 +720,27 @@ class ReaderLayoutEngine {
   // CodeBlock
   // ---------------------------------------------------------------------------
 
-  void _layoutCodeBlock(CodeBlockNode node, LayoutContext ctx) {
+  void _layoutCodeBlock(
+    CodeBlockNode node,
+    LayoutContext ctx, {
+    double nestingIndentEm = 0.0,
+  }) {
+    // Prefer styled children (syntax-highlighted spans) over plain content.
+    final children = node.children.isNotEmpty
+        ? node.children
+        : <RenderNode>[TextNode(content: node.content, fontSizeEm: 0.85)];
+
+    final bgColor =
+        node.backgroundColor ??
+        (ctx.preferences.theme == ReaderTheme.dark ? 0xFF2D2D2D : 0xFFF5F5F5);
+
     final paragraph = ParagraphNode(
-      children: [TextNode(content: node.content, fontSizeEm: 0.85)],
+      children: children,
       marginTopEm: 0.5,
       marginBottomEm: 0.5,
-      paddingEm: 0.5,
-      backgroundColor: ctx.preferences.theme == ReaderTheme.dark
-          ? 0xFF2D2D2D
-          : 0xFFF5F5F5,
+      marginLeftEm: nestingIndentEm,
+      paddingEm: node.paddingEm ?? 0.5,
+      backgroundColor: bgColor,
     );
     ParagraphLayouter.layout(paragraph, ctx);
   }
@@ -442,4 +768,152 @@ class ReaderLayoutEngine {
     ctx.cursorY += lineHeight;
     ctx.previousBottomMargin = 0;
   }
+
+  Paint _tableCellBorderPaint(BorderNode? border, ReaderPreferences prefs) {
+    if (border != null && border.widthPx > 0) {
+      return Paint()
+        ..color = border.color != null
+            ? Color(border.color!)
+            : prefs.theme.textColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = border.widthPx;
+    }
+    return Paint()
+      ..color = prefs.theme.textColor.withValues(alpha: 0.2)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.5;
+  }
+
+  TextPainter _newTableCellPainter(TextSpan span, double maxWidth) {
+    return TextPainter(text: span, textDirection: ui.TextDirection.ltr)
+      ..layout(maxWidth: maxWidth > 0 ? maxWidth : 10);
+  }
+
+  bool _isTextSpanEmpty(TextSpan span) {
+    final text = span.toPlainText();
+    return text.trim().isEmpty;
+  }
+
+  String _listItemPrefix(ListNode node, int index) {
+    if (!node.ordered) {
+      return switch (node.listStyle?.toLowerCase()) {
+        'circle' => '○',
+        'square' => '■',
+        _ => '\u2022',
+      };
+    }
+
+    final number = index + 1;
+    return switch (node.listStyle?.toLowerCase()) {
+      'lower-alpha' => '${_toAlpha(number, upper: false)}.',
+      'upper-alpha' => '${_toAlpha(number, upper: true)}.',
+      'lower-roman' => '${_toRoman(number).toLowerCase()}.',
+      'upper-roman' => '${_toRoman(number)}.',
+      _ => '$number.',
+    };
+  }
+
+  String _toAlpha(int value, {required bool upper}) {
+    var n = value;
+    final chars = <int>[];
+    while (n > 0) {
+      n -= 1;
+      chars.add((upper ? 65 : 97) + (n % 26));
+      n = n ~/ 26;
+    }
+    return String.fromCharCodes(chars.reversed);
+  }
+
+  String _toRoman(int value) {
+    if (value <= 0) return '0';
+    final map = <(int, String)>[
+      (1000, 'M'),
+      (900, 'CM'),
+      (500, 'D'),
+      (400, 'CD'),
+      (100, 'C'),
+      (90, 'XC'),
+      (50, 'L'),
+      (40, 'XL'),
+      (10, 'X'),
+      (9, 'IX'),
+      (5, 'V'),
+      (4, 'IV'),
+      (1, 'I'),
+    ];
+    var n = value;
+    final buffer = StringBuffer();
+    for (final (v, symbol) in map) {
+      while (n >= v) {
+        buffer.write(symbol);
+        n -= v;
+      }
+    }
+    return buffer.toString();
+  }
+
+  void _collectImageNodes(RenderNode node, List<ImageNode> out) {
+    switch (node) {
+      case ImageNode():
+        out.add(node);
+      case ParagraphNode():
+        for (final child in node.children) {
+          _collectImageNodes(child, out);
+        }
+      case HeadingNode():
+        for (final child in node.children) {
+          _collectImageNodes(child, out);
+        }
+      case ListNode():
+        for (final item in node.items) {
+          for (final child in item.children) {
+            _collectImageNodes(child, out);
+          }
+          for (final subNode in item.subNodes) {
+            _collectImageNodes(subNode, out);
+          }
+        }
+      case TableNode():
+        if (node.caption != null) {
+          for (final child in node.caption!) {
+            _collectImageNodes(child, out);
+          }
+        }
+        for (final row in node.rows) {
+          for (final cell in row.cells) {
+            for (final child in cell.children) {
+              _collectImageNodes(child, out);
+            }
+          }
+        }
+      case BlockQuoteNode():
+        for (final child in node.children) {
+          _collectImageNodes(child, out);
+        }
+      case CodeBlockNode():
+        for (final child in node.children) {
+          _collectImageNodes(child, out);
+        }
+      case TextNode() || LineBreakNode() || HorizontalRuleNode():
+        break;
+    }
+  }
+}
+
+class _TableCellPaintData {
+  const _TableCellPaintData({
+    required this.painter,
+    required this.cell,
+    required this.cellWidth,
+    required this.cellPadding,
+    required this.contentWidth,
+    required this.remainingText,
+  });
+
+  final TextPainter painter;
+  final TableCellNode cell;
+  final double cellWidth;
+  final double cellPadding;
+  final double contentWidth;
+  final TextSpan remainingText;
 }
