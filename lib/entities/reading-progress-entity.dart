@@ -5,6 +5,7 @@ class ReadingProgressEntity {
     required this.percent,
     required this.updatedAt,
     this.prefsJson,
+    this.pageCountsJson,
   });
 
   final String bookId;
@@ -12,6 +13,7 @@ class ReadingProgressEntity {
   final double percent;
   final DateTime updatedAt;
   final String? prefsJson;
+  final String? pageCountsJson;
 
   ReadingProgressEntity copyWith({
     String? locatorJson,
@@ -19,6 +21,8 @@ class ReadingProgressEntity {
     DateTime? updatedAt,
     String? prefsJson,
     bool clearPrefsJson = false,
+    String? pageCountsJson,
+    bool clearPageCountsJson = false,
   }) {
     return ReadingProgressEntity(
       bookId: bookId,
@@ -26,6 +30,9 @@ class ReadingProgressEntity {
       percent: percent ?? this.percent,
       updatedAt: updatedAt ?? this.updatedAt,
       prefsJson: clearPrefsJson ? null : (prefsJson ?? this.prefsJson),
+      pageCountsJson: clearPageCountsJson
+          ? null
+          : (pageCountsJson ?? this.pageCountsJson),
     );
   }
 }

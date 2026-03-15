@@ -70,13 +70,17 @@ class TextSpanBuilder {
     }
   }
 
-  static TextSpan _textNodeToSpan(
-    TextNode node,
-    ReaderPreferences prefs,
-    int? headingLevel,
-    double? lineHeightOverride,
-    Color? defaultColor,
-  ) {
+  /// Compute the [TextStyle] for a [TextNode].
+  ///
+  /// Shared between [TextSpanBuilder] (greedy path) and [KPItemBuilder]
+  /// (justified path) so styles are computed once in a single location.
+  static TextStyle styleForTextNode({
+    required TextNode node,
+    required ReaderPreferences prefs,
+    required int? headingLevel,
+    required double? lineHeightOverride,
+    required Color? defaultColor,
+  }) {
     var fontSizeEm = node.fontSizeEm;
 
     // Apply heading default scale when CSS didn't set one.
@@ -113,23 +117,39 @@ class TextSpanBuilder {
         ? Color(node.backgroundColor!)
         : null;
 
+    return TextStyle(
+      fontSize: prefs.emToPx(fontSizeEm),
+      fontWeight: (node.bold || headingLevel != null)
+          ? FontWeight.bold
+          : FontWeight.normal,
+      fontStyle: node.italic ? FontStyle.italic : FontStyle.normal,
+      decoration: decorations.isEmpty
+          ? TextDecoration.none
+          : TextDecoration.combine(decorations),
+      decorationColor: isLink ? color : null,
+      color: color,
+      fontFamily: prefs.fontFamily,
+      height: effectiveLineHeight,
+      fontFeatures: fontFeatures.isNotEmpty ? fontFeatures : null,
+      backgroundColor: bgColor,
+    );
+  }
+
+  static TextSpan _textNodeToSpan(
+    TextNode node,
+    ReaderPreferences prefs,
+    int? headingLevel,
+    double? lineHeightOverride,
+    Color? defaultColor,
+  ) {
     return TextSpan(
       text: node.content,
-      style: TextStyle(
-        fontSize: prefs.emToPx(fontSizeEm),
-        fontWeight: (node.bold || headingLevel != null)
-            ? FontWeight.bold
-            : FontWeight.normal,
-        fontStyle: node.italic ? FontStyle.italic : FontStyle.normal,
-        decoration: decorations.isEmpty
-            ? TextDecoration.none
-            : TextDecoration.combine(decorations),
-        decorationColor: isLink ? color : null,
-        color: color,
-        fontFamily: prefs.fontFamily,
-        height: effectiveLineHeight,
-        fontFeatures: fontFeatures.isNotEmpty ? fontFeatures : null,
-        backgroundColor: bgColor,
+      style: styleForTextNode(
+        node: node,
+        prefs: prefs,
+        headingLevel: headingLevel,
+        lineHeightOverride: lineHeightOverride,
+        defaultColor: defaultColor,
       ),
     );
   }

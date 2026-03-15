@@ -16,10 +16,40 @@ class CachedChapterDataSource implements ChapterDataSource {
 
   final String cacheDir;
 
+  /// In-memory cache for book.json content (populated by [warmUp]).
+  String? _bookJsonCache;
+
+  /// In-memory cache for chapter JSON content (populated by [warmUp]).
+  final Map<int, String> _chapterJsonCache = {};
+
+  /// Pre-read book.json and the first chapter into memory.
+  ///
+  /// Intended to be called fire-and-forget before [Navigator.push] so that
+  /// file I/O runs in parallel with the route transition animation (~300ms).
+  Future<void> warmUp({int chapterIndex = 0}) async {
+    try {
+      final bookFile = File('$cacheDir/book.json');
+      final chapterFile = File('$cacheDir/chapter_$chapterIndex.json');
+      // Read both files concurrently.
+      final results = await Future.wait([
+        bookFile.readAsString(),
+        chapterFile.exists().then((exists) =>
+            exists ? chapterFile.readAsString() : Future.value('')),
+      ]);
+      _bookJsonCache = results[0];
+      if (results[1].isNotEmpty) {
+        _chapterJsonCache[chapterIndex] = results[1];
+      }
+    } catch (_) {
+      // Warm-up is best-effort; loadBook/loadChapter will retry from disk.
+    }
+  }
+
   @override
   Future<ParsedBook> loadBook() async {
-    final file = File('$cacheDir/book.json');
-    final jsonStr = await file.readAsString();
+    final jsonStr = _bookJsonCache ??
+        await File('$cacheDir/book.json').readAsString();
+    _bookJsonCache = null; // Free memory after use.
     final json = jsonDecode(jsonStr) as Map<String, dynamic>;
 
     final metadata = BookMetadata.fromJson(
@@ -43,12 +73,18 @@ class CachedChapterDataSource implements ChapterDataSource {
 
   @override
   Future<ParsedChapter> loadChapter(int chapterIndex) async {
+    final cachedStr = _chapterJsonCache.remove(chapterIndex);
+    final jsonStr = cachedStr ??
+        await _readChapterFile(chapterIndex);
+    final json = jsonDecode(jsonStr) as Map<String, dynamic>;
+    return ParsedChapter.fromJson(json);
+  }
+
+  Future<String> _readChapterFile(int chapterIndex) async {
     final file = File('$cacheDir/chapter_$chapterIndex.json');
     if (!await file.exists()) {
       throw Exception('Chapter $chapterIndex not found in cache: ${file.path}');
     }
-    final jsonStr = await file.readAsString();
-    final json = jsonDecode(jsonStr) as Map<String, dynamic>;
-    return ParsedChapter.fromJson(json);
+    return file.readAsString();
   }
 }

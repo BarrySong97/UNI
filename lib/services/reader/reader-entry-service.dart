@@ -80,6 +80,9 @@ class ReaderEntryService {
     if (!context.mounted) return;
 
     final dataSource = CachedChapterDataSource(cacheDir: cacheDir);
+    // Fire-and-forget: pre-read book.json + first chapter into memory while
+    // the route transition animates (~300ms).
+    dataSource.warmUp();
 
     Navigator.of(context).push(
       MaterialPageRoute<void>(

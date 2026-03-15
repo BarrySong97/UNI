@@ -41,12 +41,19 @@ class ReaderStore extends ChangeNotifier {
   double _safeAreaBottom = 0.0;
   double _devicePixelRatio = 1.0;
 
-  /// Cache: chapterIndex → ChapterPagination
+  /// Cache: cacheKey → ChapterPagination (full layout with images).
   final Map<int, ChapterPagination> _cache = {};
+
+  /// Cache: cacheKey → page count (lightweight, survives across page-count runs).
+  final Map<int, int> _pageCountCache = {};
 
   /// Per-chapter page counts for whole-book pagination (null = not yet computed).
   List<int?> _chapterPageCounts = [];
   bool _allPagesComputed = false;
+
+  /// Serialized page count cache for DB persistence. Only set when all page
+  /// counts have been computed; carried through on every [_saveProgress] call.
+  String? _persistedPageCountsJson;
 
   // ---------------------------------------------------------------------------
   // Getters
@@ -124,6 +131,9 @@ class ReaderStore extends ChangeNotifier {
     _safeAreaBottom = safeAreaBottom;
     _devicePixelRatio = devicePixelRatio;
     _cache.clear();
+    _pageCountCache.clear();
+    _persistedPageCountsJson = null;
+    _allPagesComputed = false;
 
     _isLoading = true;
     _error = null;
@@ -134,10 +144,11 @@ class ReaderStore extends ChangeNotifier {
       _bookData = await dataSource.loadBook();
       debugPrint('[ReaderStore] chapters=${_bookData!.chapters.length}');
 
-      // Restore saved progress.
+      // Restore saved progress (position, preferences, and page count cache).
       final progress = await _progressRepository.getProgress(book.id);
       if (progress != null) {
         _restoreProgress(progress);
+        _tryRestorePageCounts(progress.pageCountsJson);
       }
       debugPrint('[ReaderStore] loadChapter($_currentChapterIndex) ...');
 
@@ -173,8 +184,11 @@ class ReaderStore extends ChangeNotifier {
     _isLoading = false;
     notifyListeners();
 
-    // Background: compute page counts for all chapters.
-    _computeAllPageCounts();
+    // Background: compute page counts for all chapters (skip if restored
+    // from persisted cache).
+    if (!_allPagesComputed) {
+      _computeAllPageCounts();
+    }
   }
 
   /// Update viewport size (e.g. after rotation).
@@ -282,9 +296,13 @@ class ReaderStore extends ChangeNotifier {
 
     if (needsRelayout) {
       _cache.clear();
+      _pageCountCache.clear();
+      _persistedPageCountsJson = null;
+      _allPagesComputed = false;
       if (_dataSource != null) {
         await _loadChapter(_currentChapterIndex);
       }
+      _computeAllPageCounts();
     }
 
     notifyListeners();
@@ -311,13 +329,15 @@ class ReaderStore extends ChangeNotifier {
   // Internal
   // ---------------------------------------------------------------------------
 
-  Future<void> _loadChapter(int index) async {
+  Future<void> _loadChapter(int index, {bool prefetchOnly = false}) async {
     if (_dataSource == null) return;
 
     // Check cache.
     final cacheKey = _cacheKey(index);
     if (_cache.containsKey(cacheKey)) {
-      _currentPagination = _cache[cacheKey];
+      if (!prefetchOnly) {
+        _currentPagination = _cache[cacheKey];
+      }
       return;
     }
 
@@ -335,6 +355,10 @@ class ReaderStore extends ChangeNotifier {
       );
       debugPrint('[ReaderStore] decoded ${decodedImages.length} images');
 
+      // Yield a frame so the loading indicator can animate smoothly while
+      // the synchronous paginate() runs.
+      await Future<void>.delayed(Duration.zero);
+
       final pagination = _engine.paginate(
         chapterIndex: index,
         nodes: chapter.nodes,
@@ -346,54 +370,97 @@ class ReaderStore extends ChangeNotifier {
       );
       debugPrint('[ReaderStore] paginated: ${pagination.pages.length} pages');
       _cache[cacheKey] = pagination;
-      _currentPagination = pagination;
-      _error = null;
+
+      if (!prefetchOnly) {
+        _currentPagination = pagination;
+        _error = null;
+
+        // Fire-and-forget: prefetch the next chapter so cross-chapter
+        // navigation is instant.
+        _prefetchAdjacentChapter(index);
+      }
     } catch (e, st) {
       debugPrint('[ReaderStore] _loadChapter error: $e\n$st');
-      _error = e.toString();
-      _currentPagination = null;
+      if (!prefetchOnly) {
+        _error = e.toString();
+        _currentPagination = null;
+      }
     }
   }
 
+  /// Prefetch the chapter after [currentIndex] in the background.
+  void _prefetchAdjacentChapter(int currentIndex) {
+    final next = currentIndex + 1;
+    if (next >= chapterCount) return;
+    if (_cache.containsKey(_cacheKey(next))) return;
+
+    // Fire-and-forget — errors are silently ignored.
+    _loadChapter(next, prefetchOnly: true).catchError((_) {});
+  }
+
   /// Compute page counts for all chapters in the background.
+  ///
+  /// Yields to the event loop between chapters so the UI stays responsive.
+  /// Stores page counts in [_pageCountCache] so they survive across calls.
   Future<void> _computeAllPageCounts() async {
     if (_dataSource == null || _bookData == null) return;
 
     final totalChapters = _bookData!.chapters.length;
+    // Snapshot identity to detect if book/prefs changed mid-computation.
+    final snapshotBook = _bookData;
+    final snapshotHash = _preferences.layoutHash;
+
     _chapterPageCounts = List<int?>.filled(totalChapters, null);
     _allPagesComputed = false;
 
     for (var i = 0; i < totalChapters; i++) {
-      // Use cached pagination if available.
+      // Abort if book or layout preferences changed while computing.
+      if (_bookData != snapshotBook ||
+          _preferences.layoutHash != snapshotHash) {
+        return;
+      }
+
+      // Yield to the event loop to keep the UI responsive.
+      await Future<void>.delayed(Duration.zero);
+
+      // Use full pagination cache if available.
       final cacheKey = _cacheKey(i);
       if (_cache.containsKey(cacheKey)) {
         _chapterPageCounts[i] = _cache[cacheKey]!.pages.length;
-        continue;
+      } else if (_pageCountCache.containsKey(cacheKey)) {
+        _chapterPageCounts[i] = _pageCountCache[cacheKey];
+      } else {
+        try {
+          final chapter = await _dataSource!.loadChapter(i);
+          // Paginate without decoding images (dimensions from Rust suffice).
+          final pagination = _engine.paginate(
+            chapterIndex: i,
+            nodes: chapter.nodes,
+            viewportSize: _viewportSize,
+            prefs: _preferences,
+            safeAreaTop: _safeAreaTop,
+            safeAreaBottom: _safeAreaBottom,
+            pageCountOnly: true,
+          );
+          _chapterPageCounts[i] = pagination.pages.length;
+          // Cache page count only (no full pagination — images not decoded).
+          _pageCountCache[cacheKey] = pagination.pages.length;
+        } catch (e) {
+          debugPrint(
+              '[ReaderStore] _computeAllPageCounts chapter $i error: $e');
+          _chapterPageCounts[i] = 0;
+        }
       }
 
-      try {
-        final chapter = await _dataSource!.loadChapter(i);
-        // Paginate without decoding images (dimensions from Rust suffice).
-        final pagination = _engine.paginate(
-          chapterIndex: i,
-          nodes: chapter.nodes,
-          viewportSize: _viewportSize,
-          prefs: _preferences,
-          safeAreaTop: _safeAreaTop,
-          safeAreaBottom: _safeAreaBottom,
-        );
-        _chapterPageCounts[i] = pagination.pages.length;
-        // Don't cache here — images were not decoded for speed.
-        // _loadChapter() will do a full load with image decoding on demand.
-      } catch (e) {
-        debugPrint('[ReaderStore] _computeAllPageCounts chapter $i error: $e');
-        _chapterPageCounts[i] = 0;
-      }
+      // Notify periodically so progress displays update incrementally.
+      if (i % 5 == 0) notifyListeners();
     }
 
     _allPagesComputed = true;
+    _persistedPageCountsJson = _serializePageCounts();
     debugPrint('[ReaderStore] all page counts computed: total=$totalBookPages');
     notifyListeners();
+    _saveProgress();
   }
 
   int _cacheKey(int chapterIndex) {
@@ -423,6 +490,71 @@ class ReaderStore extends ChangeNotifier {
     }
   }
 
+  /// Try to restore page counts from a persisted JSON blob.
+  ///
+  /// Validates that viewport size and all layout-affecting preferences match
+  /// the current values. On any mismatch the cache is silently discarded and
+  /// [_computeAllPageCounts] will recompute from scratch.
+  void _tryRestorePageCounts(String? json) {
+    if (json == null || _bookData == null) return;
+
+    try {
+      final map = jsonDecode(json) as Map<String, dynamic>;
+      final v = map['v'] as int? ?? 0;
+      if (v != 1) return;
+
+      // Compare raw layout parameters (Object.hash is not stable across VM
+      // restarts, so we store and compare the raw values).
+      final vw = (map['vw'] as num?)?.toDouble();
+      final vh = (map['vh'] as num?)?.toDouble();
+      final fontSize = (map['fontSize'] as num?)?.toDouble();
+      final fontFamily = map['fontFamily'] as String?;
+      final hPad = (map['hPad'] as num?)?.toDouble();
+      final vPad = (map['vPad'] as num?)?.toDouble();
+      final lineHeight = (map['lineHeight'] as num?)?.toDouble();
+      final paraSpacing = (map['paraSpacing'] as num?)?.toDouble();
+
+      if (vw != _viewportSize.width ||
+          vh != _viewportSize.height ||
+          fontSize != _preferences.baseFontSizePx ||
+          fontFamily != _preferences.fontFamily ||
+          hPad != _preferences.pageHorizontalPaddingPx ||
+          vPad != _preferences.pageVerticalPaddingPx ||
+          lineHeight != _preferences.lineHeightMultiplier ||
+          paraSpacing != _preferences.paragraphSpacingMultiplier) {
+        return;
+      }
+
+      final pageCounts = (map['pc'] as List).cast<int>();
+      if (pageCounts.length != _bookData!.chapters.length) return;
+
+      _chapterPageCounts = pageCounts.map<int?>((c) => c).toList();
+      _allPagesComputed = true;
+      _persistedPageCountsJson = json;
+      debugPrint(
+        '[ReaderStore] restored persisted page counts: total=$totalBookPages',
+      );
+    } catch (e) {
+      debugPrint('[ReaderStore] failed to restore page counts: $e');
+    }
+  }
+
+  /// Serialize current page counts + layout parameters to JSON for persistence.
+  String _serializePageCounts() {
+    return jsonEncode({
+      'v': 1,
+      'vw': _viewportSize.width,
+      'vh': _viewportSize.height,
+      'fontSize': _preferences.baseFontSizePx,
+      'fontFamily': _preferences.fontFamily,
+      'hPad': _preferences.pageHorizontalPaddingPx,
+      'vPad': _preferences.pageVerticalPaddingPx,
+      'lineHeight': _preferences.lineHeightMultiplier,
+      'paraSpacing': _preferences.paragraphSpacingMultiplier,
+      'pc': _chapterPageCounts.map((c) => c ?? 0).toList(),
+    });
+  }
+
   Future<void> _saveProgress() async {
     if (_book == null) return;
 
@@ -438,6 +570,7 @@ class ReaderStore extends ChangeNotifier {
         percent: bookPercent,
         updatedAt: DateTime.now(),
         prefsJson: jsonEncode(_preferences.toJson()),
+        pageCountsJson: _persistedPageCountsJson,
       ),
     );
   }

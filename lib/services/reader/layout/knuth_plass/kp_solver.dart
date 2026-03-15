@@ -134,26 +134,29 @@ class KPSolver {
   ]) {
     if (items.isEmpty) return [];
 
-    final hasNegativeValues = items.any((it) {
+    var hasNegativeValues = false;
+    for (var i = 0; i < items.length; i++) {
+      final it = items[i];
       if (it is KPBox) {
-        return it.width < 0;
+        if (it.width < 0) { hasNegativeValues = true; break; }
+      } else if (it is KPGlue) {
+        if (it.width < 0 || it.stretch < 0 || it.shrink < 0) {
+          hasNegativeValues = true;
+          break;
+        }
+      } else if (it is KPPenalty) {
+        if (it.width < 0) { hasNegativeValues = true; break; }
       }
-      if (it is KPPenalty) {
-        return it.width < 0;
-      }
-      if (it is KPGlue) {
-        return it.width < 0 || it.stretch < 0 || it.shrink < 0;
-      }
-      return false;
-    });
+    }
 
     final currentMaxAdjustmentRatio = math.min(
       options.initialMaxAdjustmentRatio,
       options.maxAdjustmentRatio ?? double.infinity,
     );
 
-    // Active node set.
-    final active = <_Node>{
+    // Active node list (List is faster than Set for small collections of
+    // 5-15 nodes — avoids iterator/hashCode overhead).
+    final active = <_Node>[
       _Node(
         index: 0,
         line: 0,
@@ -163,7 +166,7 @@ class KPSolver {
         totalShrink: 0.0,
         totalDemerits: 0.0,
       ),
-    };
+    ];
 
     // Running sums.
     var sumWidth = 0.0;
@@ -193,12 +196,35 @@ class KPSolver {
       }
       if (!canBreak) continue;
 
-      // Update the set of active nodes.
-      _Node? lastActive;
-      final feasible = <_Node>[];
-      final toRemove = <_Node>[];
+      // Pre-compute look-ahead to next box ONCE per breakpoint b.
+      // This only depends on items[b..], not on the active node, so it can
+      // be hoisted out of the active-node loop. (tex-linebreak lines 354-370)
+      var widthToNextBox = 0.0;
+      var shrinkToNextBox = 0.0;
+      var stretchToNextBox = 0.0;
+      for (var bp = b; bp < items.length; bp++) {
+        final it = items[bp];
+        if (it is KPBox) break;
+        if (it is KPPenalty && it.cost >= KPPenalty.maxCost) break;
+        widthToNextBox += it is KPGlue
+            ? it.width
+            : it is KPPenalty
+                ? it.width
+                : 0.0;
+        if (it is KPGlue) {
+          shrinkToNextBox += it.shrink;
+          stretchToNextBox += it.stretch;
+        }
+      }
 
-      for (final a in active) {
+      // Update the active node list.
+      _Node? lastActive;
+      _Node? bestFeasible;
+      final forcedBreak = _isForcedBreak(item);
+
+      for (var ai = active.length - 1; ai >= 0; ai--) {
+        final a = active[ai];
+
         // Compute adjustment ratio from `a` to `b`.
         final lineShrink = sumShrink - a.totalShrink;
         final lineStretch = sumStretch - a.totalStretch;
@@ -228,9 +254,9 @@ class KPSolver {
         // TeX's `r < -1` pruning is only safe when all widths/stretch/shrink
         // are non-negative (Restriction 1). Forced breaks always prune.
         if ((!hasNegativeValues && adjustmentRatio < _minAdjustmentRatio) ||
-            _isForcedBreak(item)) {
-          toRemove.add(a);
+            forcedBreak) {
           lastActive = a;
+          active.removeAt(ai);
         }
 
         if (adjustmentRatio >= _minAdjustmentRatio &&
@@ -274,56 +300,27 @@ class KPSolver {
             demerits += options.adjacentLooseTightPenalty;
           }
 
-          // Look-ahead to next box: add intervening glue widths to the
-          // node's totals so that subtraction-based line width calculation
-          // is correct even when consecutive breakpoints are separated
-          // only by glue. (tex-linebreak lines 354-370)
-          var widthToNextBox = 0.0;
-          var shrinkToNextBox = 0.0;
-          var stretchToNextBox = 0.0;
-          for (var bp = b; bp < items.length; bp++) {
-            final it = items[bp];
-            if (it is KPBox) break;
-            if (it is KPPenalty && it.cost >= KPPenalty.maxCost) break;
-            widthToNextBox += it is KPGlue
-                ? it.width
-                : it is KPPenalty
-                ? it.width
-                : 0.0;
-            if (it is KPGlue) {
-              shrinkToNextBox += it.shrink;
-              stretchToNextBox += it.stretch;
-            }
+          // Use pre-computed look-ahead values (hoisted above active loop).
+          final totalDemerits = a.totalDemerits + demerits;
+          if (bestFeasible == null ||
+              totalDemerits < bestFeasible.totalDemerits) {
+            bestFeasible = _Node(
+              index: b,
+              line: a.line + 1,
+              fitness: fitness,
+              totalWidth: sumWidth + widthToNextBox,
+              totalShrink: sumShrink + shrinkToNextBox,
+              totalStretch: sumStretch + stretchToNextBox,
+              totalDemerits: totalDemerits,
+              prev: a,
+            );
           }
-
-          final node = _Node(
-            index: b,
-            line: a.line + 1,
-            fitness: fitness,
-            totalWidth: sumWidth + widthToNextBox,
-            totalShrink: sumShrink + shrinkToNextBox,
-            totalStretch: sumStretch + stretchToNextBox,
-            totalDemerits: a.totalDemerits + demerits,
-            prev: a,
-          );
-          feasible.add(node);
         }
-      }
-
-      // Remove deactivated nodes.
-      for (final node in toRemove) {
-        active.remove(node);
       }
 
       // Add the single best feasible node (lowest totalDemerits).
-      if (feasible.isNotEmpty) {
-        var bestNode = feasible[0];
-        for (final f in feasible) {
-          if (f.totalDemerits < bestNode.totalDemerits) {
-            bestNode = f;
-          }
-        }
-        active.add(bestNode);
+      if (bestFeasible != null) {
+        active.add(bestFeasible);
       }
 
       // Handle empty active set.

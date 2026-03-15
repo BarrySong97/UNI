@@ -2,7 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/painting.dart';
 
-/// Caches measured space-character widths per [TextStyle].
+/// Caches measured character and word widths per [TextStyle].
 ///
 /// Uses a structural key (fontSize + fontWeight + fontStyle + fontFamily)
 /// instead of [TextStyle.hashCode] for consistent cache hits across
@@ -12,6 +12,7 @@ import 'package:flutter/painting.dart';
 /// since font parameters may change between paginations.
 class WidthCache {
   final Map<String, double> _spaceWidths = {};
+  final Map<String, double> _wordWidths = {};
 
   /// Return the width of a single space character rendered in [style].
   double spaceWidth(TextStyle style) {
@@ -19,6 +20,23 @@ class WidthCache {
     return _spaceWidths.putIfAbsent(key, () {
       final painter = TextPainter(
         text: TextSpan(text: ' ', style: style),
+        textDirection: ui.TextDirection.ltr,
+      )..layout();
+      final w = painter.width;
+      painter.dispose();
+      return w;
+    });
+  }
+
+  /// Return the width of [word] rendered in [style].
+  ///
+  /// Caches the result so repeated words (e.g. "the", "and") across
+  /// paragraphs in the same chapter are measured only once.
+  double wordWidth(String word, TextStyle style) {
+    final key = '${_styleKey(style)}|$word';
+    return _wordWidths.putIfAbsent(key, () {
+      final painter = TextPainter(
+        text: TextSpan(text: word, style: style),
         textDirection: ui.TextDirection.ltr,
       )..layout();
       final w = painter.width;

@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:flutter/painting.dart';
 
@@ -101,18 +100,24 @@ class KPItemBuilder {
           items.add(KPGlue(width: sw, stretch: stretch, shrink: shrink));
         }
       } else {
-        _emitNonWhitespaceToken(token: token, style: style, items: items);
+        _emitNonWhitespaceToken(
+          token: token,
+          style: style,
+          items: items,
+          widthCache: widthCache,
+        );
       }
     }
   }
+
+  static final _wordSplitRe = RegExp(r'\S+|\s+');
 
   /// Split text into alternating word and whitespace tokens.
   ///
   /// Example: "Hello  world" → ["Hello", "  ", "world"]
   static List<String> _splitIntoWords(String text) {
     final tokens = <String>[];
-    final re = RegExp(r'\S+|\s+');
-    for (final match in re.allMatches(text)) {
+    for (final match in _wordSplitRe.allMatches(text)) {
       tokens.add(match.group(0)!);
     }
     return tokens;
@@ -122,6 +127,7 @@ class KPItemBuilder {
     required String token,
     required TextStyle style,
     required List<KPItem> items,
+    required WidthCache widthCache,
   }) {
     final runs = _splitByScriptRuns(token);
     if (runs.isEmpty) return;
@@ -137,23 +143,23 @@ class KPItemBuilder {
       firstRun = false;
 
       if (!run.isCjk) {
-        final result = _measureWordWithPainter(run.text, style);
+        final w = widthCache.wordWidth(run.text, style);
         items.add(KPBox(
           text: run.text,
           style: style,
-          width: result.width,
-          painter: result.painter,
+          width: w,
         ));
         prevWasCjk = false;
         continue;
       }
 
       final graphemes = _splitToSimpleChars(run.text);
-      final charResults = _batchMeasureWordsWithPainters(graphemes, style);
-      final avgWidth = charResults.isEmpty
+      final charWidths = graphemes
+          .map((ch) => widthCache.wordWidth(ch, style))
+          .toList(growable: false);
+      final avgWidth = charWidths.isEmpty
           ? 0.0
-          : charResults.map((r) => r.width).reduce((a, b) => a + b) /
-              charResults.length;
+          : charWidths.reduce((a, b) => a + b) / charWidths.length;
       final cjkStretch = avgWidth * 0.5;
 
       for (var i = 0; i < graphemes.length; i++) {
@@ -161,8 +167,7 @@ class KPItemBuilder {
           KPBox(
             text: graphemes[i],
             style: style,
-            width: charResults[i].width,
-            painter: charResults[i].painter,
+            width: charWidths[i],
           ),
         );
         if (i < graphemes.length - 1) {
@@ -212,29 +217,9 @@ class KPItemBuilder {
         (cp >= 0xAC00 && cp <= 0xD7AF);
   }
 
-  /// Measure word widths, returning both width and painter for each word.
-  static List<_MeasureResult> _batchMeasureWordsWithPainters(
-    List<String> words,
-    TextStyle style,
-  ) {
-    if (words.isEmpty) return [];
-    return words
-        .map((w) => _measureWordWithPainter(w, style))
-        .toList(growable: false);
-  }
-
-  /// Measure the width of a single word and return both width and painter.
-  /// The painter is kept alive for reuse at render time.
-  static _MeasureResult _measureWordWithPainter(String word, TextStyle style) {
-    final painter = TextPainter(
-      text: TextSpan(text: word, style: style),
-      textDirection: ui.TextDirection.ltr,
-    )..layout();
-    return _MeasureResult(width: painter.width, painter: painter);
-  }
-
-  /// Compute the [TextStyle] for a [TextNode], mirroring
-  /// [TextSpanBuilder._textNodeToSpan].
+  /// Compute the [TextStyle] for a [TextNode].
+  ///
+  /// Delegates to [TextSpanBuilder.styleForTextNode] to avoid duplication.
   static TextStyle _styleForNode({
     required TextNode node,
     required ReaderPreferences prefs,
@@ -242,52 +227,12 @@ class KPItemBuilder {
     required double? lineHeightOverride,
     required Color? defaultColor,
   }) {
-    var fontSizeEm = node.fontSizeEm;
-
-    if (headingLevel != null && fontSizeEm == 1.0) {
-      fontSizeEm = TextSpanBuilder.headingScaleEm[headingLevel] ?? 1.0;
-    }
-
-    final effectiveLineHeight =
-        lineHeightOverride ?? prefs.lineHeightMultiplier;
-
-    final baseColor = node.color != null
-        ? Color(node.color!)
-        : defaultColor ?? prefs.theme.textColor;
-
-    final isLink = node.href != null && node.href!.isNotEmpty;
-    final color = (isLink && node.color == null)
-        ? const Color(0xFF1A73E8)
-        : baseColor;
-
-    final decorations = <TextDecoration>[];
-    if (node.underline) decorations.add(TextDecoration.underline);
-    if (node.lineThrough) decorations.add(TextDecoration.lineThrough);
-    if (isLink) decorations.add(TextDecoration.underline);
-
-    final fontFeatures = <FontFeature>[];
-    if (node.superscript) fontFeatures.add(const FontFeature('sups'));
-    if (node.subscript) fontFeatures.add(const FontFeature('subs'));
-
-    final bgColor = node.backgroundColor != null
-        ? Color(node.backgroundColor!)
-        : null;
-
-    return TextStyle(
-      fontSize: prefs.emToPx(fontSizeEm),
-      fontWeight: (node.bold || headingLevel != null)
-          ? FontWeight.bold
-          : FontWeight.normal,
-      fontStyle: node.italic ? FontStyle.italic : FontStyle.normal,
-      decoration: decorations.isEmpty
-          ? TextDecoration.none
-          : TextDecoration.combine(decorations),
-      decorationColor: isLink ? color : null,
-      color: color,
-      fontFamily: prefs.fontFamily,
-      height: effectiveLineHeight,
-      fontFeatures: fontFeatures.isNotEmpty ? fontFeatures : null,
-      backgroundColor: bgColor,
+    return TextSpanBuilder.styleForTextNode(
+      node: node,
+      prefs: prefs,
+      headingLevel: headingLevel,
+      lineHeightOverride: lineHeightOverride,
+      defaultColor: defaultColor,
     );
   }
 }
@@ -299,9 +244,3 @@ class _ScriptRun {
   final bool isCjk;
 }
 
-class _MeasureResult {
-  const _MeasureResult({required this.width, required this.painter});
-
-  final double width;
-  final TextPainter painter;
-}

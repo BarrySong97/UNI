@@ -94,8 +94,7 @@ class _ReaderPageState extends State<ReaderPage> {
   Widget build(BuildContext context) {
     final prefs = _store.preferences;
 
-    // Full-screen loading only before the first chapter is loaded.
-    final initialLoading = _store.book == null;
+    final initialLoading = _store.book == null || _store.isLoading;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: prefs.theme == ReaderTheme.dark

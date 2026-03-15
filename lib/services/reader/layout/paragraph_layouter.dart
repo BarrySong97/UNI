@@ -8,7 +8,6 @@ import '../models/render_node.dart';
 import 'knuth_plass/kp_item_builder.dart';
 import 'knuth_plass/kp_items.dart';
 import 'knuth_plass/kp_solver.dart';
-import 'knuth_plass/width_cache.dart';
 import 'layout_context.dart';
 import 'text_span_builder.dart';
 
@@ -85,32 +84,18 @@ class ParagraphLayouter {
         ctx.contentWidth - marginLeftPx - marginRightPx - 2 * paddingPx;
     if (availableWidth <= 0) return;
 
-    // 4. Build TextSpan from children.
+    // 4. Common parameters for both K-P and greedy paths.
     final effectiveLineHeight = node.lineHeightEm ?? prefs.lineHeightMultiplier;
     final defaultColor = node.color != null ? Color(node.color!) : null;
-    final textSpan = TextSpanBuilder.build(
-      children: node.children,
-      prefs: prefs,
-      headingLevel: headingLevel,
-      lineHeightOverride: effectiveLineHeight,
-      defaultColor: defaultColor,
-    );
 
-    // 5. Measure with TextPainter.
-    final painter = TextPainter(
-      text: textSpan,
-      textDirection: ui.TextDirection.ltr,
-      textAlign: node.align,
-    )..layout(maxWidth: availableWidth);
-
-    // 6. Background paint.
     Paint? bgPaint;
     if (node.backgroundColor != null) {
       bgPaint = Paint()..color = Color(node.backgroundColor!);
     }
 
-    // 7. Knuth-Plass justified layout path.
-    if (node.align == TextAlign.justify) {
+    // 5. Knuth-Plass justified layout path (attempted FIRST to avoid
+    //    building a greedy TextSpan + TextPainter that would be discarded).
+    if (node.align == TextAlign.justify && !ctx.pageCountOnly) {
       final kpDone = _tryKnuthPlassLayout(
         ctx: ctx,
         node: node,
@@ -127,7 +112,22 @@ class ParagraphLayouter {
       // K-P failed — fall through to greedy layout.
     }
 
-    // 8. Split paragraph across pages (greedy fallback).
+    // 6. Build TextSpan + greedy TextPainter (only reached for non-justified
+    //    paragraphs, or when K-P falls back to greedy).
+    final textSpan = TextSpanBuilder.build(
+      children: node.children,
+      prefs: prefs,
+      headingLevel: headingLevel,
+      lineHeightOverride: effectiveLineHeight,
+      defaultColor: defaultColor,
+    );
+    final painter = TextPainter(
+      text: textSpan,
+      textDirection: ui.TextDirection.ltr,
+      textAlign: node.align,
+    )..layout(maxWidth: availableWidth);
+
+    // 7. Split paragraph across pages (greedy fallback).
     final textHeight = painter.height;
     final totalHeight = textHeight + 2 * paddingPx;
     if (totalHeight <= ctx.remainingHeight) {
@@ -230,7 +230,7 @@ class ParagraphLayouter {
     required Color? defaultColor,
   }) {
     final prefs = ctx.preferences;
-    final widthCache = WidthCache();
+    final widthCache = ctx.widthCache;
 
     // 1. Build K-P items from paragraph children.
     final items = KPItemBuilder.build(
@@ -320,9 +320,9 @@ class ParagraphLayouter {
   /// Uses [KPSolver.positionItems] output instead of uniform word spacing so
   /// each glue stretch/shrink value is applied exactly.
   ///
-  /// Reuses [KPBox.painter] from the item builder to eliminate measurement
-  /// drift. For non-last lines, distributes any residual right-edge gap
-  /// across all glue intervals.
+  /// Creates [TextPainter]s on demand only for positioned items (the subset
+  /// that actually appears in the chosen breakpoint layout). For non-last
+  /// lines, distributes any residual right-edge gap across all glue intervals.
   static List<_KPLineLayout> _buildJustifiedLines({
     required List<KPItem> items,
     required List<int> breakpoints,
@@ -347,8 +347,7 @@ class ParagraphLayouter {
         final item = items[pos.item];
         TextPainter? painter;
         if (item is KPBox) {
-          // Reuse the painter from item building to avoid measurement drift.
-          painter = item.painter ?? _singleRunPainter(item.text, item.style);
+          painter = _singleRunPainter(item.text, item.style);
         } else if (item is KPPenalty && item.width > 0) {
           painter = _singleRunPainter('-', _lastBoxStyle(items, pos.item));
         }

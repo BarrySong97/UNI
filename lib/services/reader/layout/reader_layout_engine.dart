@@ -64,6 +64,7 @@ class ReaderLayoutEngine {
     Map<String, ui.Image>? decodedImages,
     double safeAreaTop = 0.0,
     double safeAreaBottom = 0.0,
+    bool pageCountOnly = false,
   }) {
     final contentWidth = viewportSize.width - 2 * prefs.pageHorizontalPaddingPx;
     final contentHeight =
@@ -77,6 +78,7 @@ class ReaderLayoutEngine {
       contentHeight: contentHeight,
       preferences: prefs,
       chapterIndex: chapterIndex,
+      pageCountOnly: pageCountOnly,
       decodedImages: decodedImages ?? const {},
     );
 
@@ -312,6 +314,24 @@ class ReaderLayoutEngine {
 
     for (var i = 0; i < node.items.length; i++) {
       final item = node.items[i];
+
+      if (ctx.pageCountOnly) {
+        // In pageCountOnly mode, skip marker measurement and placement.
+        if (item.children.isNotEmpty) {
+          final listParagraph = ParagraphNode(
+            children: item.children,
+            marginTopEm: 0.0,
+            marginBottomEm: 0.2,
+            marginLeftEm: indentEm,
+          );
+          ParagraphLayouter.layout(listParagraph, ctx);
+        }
+        for (final subNode in item.subNodes) {
+          _layoutNode(subNode, ctx, nestingIndentEm: indentEm);
+        }
+        continue;
+      }
+
       final prefix = _listItemPrefix(node, i);
 
       // Measure marker for hanging-indent placement.

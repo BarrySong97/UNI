@@ -75,8 +75,8 @@ lib/
       knuth_plass/
         kp_items.dart               # Box/Glue/Penalty sealed classes for K-P algorithm
         kp_solver.dart              # K-P solver (ported from tex-linebreak) + adjustmentRatios()/positionItems()
-        kp_item_builder.dart        # RenderNode children → K-P item sequence (TextPainter reuse)
-        width_cache.dart            # Structural-key space width cache per TextStyle
+        kp_item_builder.dart        # RenderNode children → K-P item sequence (uses WidthCache)
+        width_cache.dart            # Chapter-scoped cache for space and word widths per TextStyle
     data/
       chapter_data_source.dart      # Abstract interface for chapter loading
       cached_chapter_data_source.dart # Reads pre-parsed JSON from cache dir
@@ -102,7 +102,7 @@ lib/
 3. For each paragraph:
    - Apply CSS margin collapsing (max of adjacent top/bottom margins)
    - **Smart justify override**: paragraphs with `TextAlign.left` (the default when EPUB CSS omits `text-align`) are automatically overridden to `TextAlign.justify` only when `_shouldJustify()` returns true — i.e. the paragraph has no `LineBreakNode` children (ruling out ISBN metadata, addresses, poetry) and its text fills at least ~1.5 lines (ruling out short TOC entries and titles). This matches the behaviour of mainstream reader apps (Apple Books, Kindle) for body text while preserving natural spacing for structured content. Headings and explicitly-centered/right-aligned text are never overridden.
-   - **Justified text (Knuth-Plass path)**: convert children to Box/Glue/Penalty items (word measurement via reused `TextPainter` stored on each `KPBox`) using a mixed tokenizer: space-delimited Latin text stays word-based, while no-space CJK runs are split into per-character boxes with breakable zero-width glue/soft penalties. Run K-P solver (ported from tex-linebreak) to find optimal breakpoints minimising total demerits. The solver now follows tex-linebreak's two-pass helper strategy: first pass uses `maxAdjustmentRatio=1` to avoid loose lines (especially for English), and only when that fails does it retry with relaxed limits. Solver includes Restriction-1 guarded pruning, look-ahead to next box, and emergency breaks. Then run `positionItems()` and render each box/hyphen fragment at exact x offsets (no uniform `wordSpacing` approximation). Non-last lines get a per-line right-edge gap correction to compensate for sub-pixel measurement drift. Falls back to greedy if both solver passes fail or the result is a single line (nothing to justify). Additionally, `positionItems()` caps the stretch ratio for non-last lines at 2.0 (`_maxVisualRatio`) — lines with few words won't get excessively wide word spacing; they simply won't fill the full width, which looks far better than huge gaps.
+   - **Justified text (Knuth-Plass path)**: attempted first (greedy TextPainter is only created on K-P fallback). Convert children to Box/Glue/Penalty items (word measurement via chapter-scoped `WidthCache`) using a mixed tokenizer: space-delimited Latin text stays word-based, while no-space CJK runs are split into per-character boxes with breakable zero-width glue/soft penalties. Run K-P solver (ported from tex-linebreak) to find optimal breakpoints minimising total demerits. The solver now follows tex-linebreak's two-pass helper strategy: first pass uses `maxAdjustmentRatio=1` to avoid loose lines (especially for English), and only when that fails does it retry with relaxed limits. Solver includes Restriction-1 guarded pruning, look-ahead to next box, and emergency breaks. Then run `positionItems()` and render each box/hyphen fragment at exact x offsets (no uniform `wordSpacing` approximation). Non-last lines get a per-line right-edge gap correction to compensate for sub-pixel measurement drift. Falls back to greedy if both solver passes fail or the result is a single line (nothing to justify). Additionally, `positionItems()` caps the stretch ratio for non-last lines at 2.0 (`_maxVisualRatio`) — lines with few words won't get excessively wide word spacing; they simply won't fill the full width, which looks far better than huge gaps.
    - **Non-justified text (greedy path)**: Build `TextSpan` from children, measure with `TextPainter`
    - If fits on current page → place as single `LayoutElement`
    - If overflows → split at line boundary using `computeLineMetrics()` + `getPositionForOffset()`, place first part, start new page, recursively layout remainder
@@ -126,6 +126,20 @@ lib/
 - Line height: CSS override or user preference (default 1.6)
 - `text-indent`: currently normalized to no indent in Flutter layout to keep first-line alignment consistent across mixed EPUB content
 
+### Performance Optimizations
+
+- **Chapter-scoped `WidthCache`**: A single `WidthCache` instance is shared across all paragraphs in a chapter via `LayoutContext`. Caches both space widths and word widths keyed by `(style, word)`. Repeated words like "the", "and" are measured only once per chapter, eliminating the TextPainter-per-word explosion.
+- **K-P solver look-ahead hoisting**: The look-ahead loop (computing `widthToNextBox/shrinkToNextBox/stretchToNextBox`) depends only on breakpoint position `b`, not on active node `a`. Hoisted above the active-node loop to avoid redundant O(active × scan) work per breakpoint.
+- **Deferred greedy TextPainter**: For justified paragraphs, the K-P path is attempted first. The greedy `TextSpan` + `TextPainter` are only created if K-P fails, avoiding wasted native layout calls on the happy path.
+- **Shared style computation**: `TextSpanBuilder.styleForTextNode()` is the single source of truth for `TextNode → TextStyle` conversion, used by both the greedy path and K-P item builder.
+- **Async page-count computation**: `_computeAllPageCounts()` yields to the event loop between chapters (`await Future.delayed(Duration.zero)`), has an abort guard (stops if book/preferences change mid-computation), and uses a lightweight `_pageCountCache` that survives across calls without storing full pagination data.
+- **Adjacent chapter prefetching**: After loading a chapter, the next chapter is prefetched fire-and-forget in the background. Uses `prefetchOnly` flag to avoid mutating current pagination state.
+- **Persistent page count cache**: After `_computeAllPageCounts()` completes, the per-chapter page counts are serialized to a JSON blob (`pageCountsJson` column on `reading_progress` table, migration v11) alongside the raw layout parameters (viewport size + 6 preference values). On subsequent `openBook()`, if the stored parameters match the current viewport and preferences, page counts are restored instantly from DB — skipping the expensive full-book pagination entirely. Uses raw parameter comparison instead of `Object.hash` because hash seeds are randomized per Dart VM invocation.
+- **`pageCountOnly` fast pagination mode**: When computing page counts for progress display, `paginate(pageCountOnly: true)` skips the K-P justified layout path (all paragraphs use a single greedy `TextPainter.layout()` instead of per-word measurement + solver + per-fragment painters), skips `LayoutElement` allocation (only tracks a page counter), and skips list marker measurement + positioning. Greedy and K-P produce the same line count ±0-1 per paragraph, so page count accuracy is preserved. Reduces page-count computation time by ~60-75%.
+- **K-P solver data structure optimizations**: The active node collection uses `List<_Node>` instead of `Set<_Node>` (avoids iterator/hashCode overhead for the typical 5-15 node set). The `feasible` intermediate list is eliminated — the best feasible node is tracked inline during the active-node loop. The `toRemove` list is eliminated — nodes are removed in-place via `removeAt` during reverse iteration. `hasNegativeValues` is computed once with an early-exit loop instead of `items.any()` with closures.
+- **Data source warm-up**: `CachedChapterDataSource.warmUp()` pre-reads `book.json` and the first chapter JSON into memory. Called fire-and-forget in `ReaderEntryService` before `Navigator.push()`, so file I/O overlaps with the route transition animation (~300ms). When `ReaderStore.openBook()` calls `loadBook()`/`loadChapter()`, data is already in memory.
+- **Paginate yield**: `_loadChapter()` yields one frame (`await Future.delayed(Duration.zero)`) before calling `paginate()`, preventing the synchronous layout computation from freezing the loading spinner animation.
+
 ### Cache Invalidation
 
 Cache key = `(chapterIndex, viewportSize, preferencesLayoutHash)`
@@ -136,7 +150,7 @@ Invalidated by: font size/family change, line height change, page margin change,
 
 - `ReaderStore` (ChangeNotifier): manages book, chapters, pagination cache, current position, preferences
 - `ReaderPreferences`: baseFontSizePx, fontFamily, pageHorizontalPaddingPx, pageVerticalPaddingPx, lineHeightMultiplier, paragraphSpacingMultiplier, theme
-- `ReadingProgressEntity(bookId, locatorJson, percent, updatedAt, prefsJson)`: locatorJson stores `{"chapterIndex": N, "pageIndex": M}`, prefsJson stores per-book ReaderPreferences as JSON
+- `ReadingProgressEntity(bookId, locatorJson, percent, updatedAt, prefsJson, pageCountsJson)`: locatorJson stores `{"chapterIndex": N, "pageIndex": M}`, prefsJson stores per-book ReaderPreferences as JSON, pageCountsJson stores persisted page count cache with layout parameter validation
 - `ChapterPagination`: cached per chapter, invalidated on layout parameter changes
 
 ## Interaction & Error Handling
