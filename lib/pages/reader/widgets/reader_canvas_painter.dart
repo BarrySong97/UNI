@@ -16,12 +16,16 @@ class ReaderCanvasPainter extends CustomPainter {
     required this.preferences,
     this.safeAreaTop = 0.0,
     this.safeAreaBottom = 0.0,
+    this.selectionRects,
   });
 
   final PageLayout page;
   final ReaderPreferences preferences;
   final double safeAreaTop;
   final double safeAreaBottom;
+
+  /// Selection highlight rectangles in content-area coordinates.
+  final List<Rect>? selectionRects;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -36,7 +40,16 @@ class ReaderCanvasPainter extends CustomPainter {
       preferences.pageVerticalPaddingPx + safeAreaTop,
     );
 
-    // 3. Paint each element.
+    // 3. Paint selection highlights (behind text).
+    if (selectionRects != null && selectionRects!.isNotEmpty) {
+      final selPaint = Paint()
+        ..color = const Color(0x4D3B82F6); // semi-transparent blue
+      for (final rect in selectionRects!) {
+        canvas.drawRect(rect, selPaint);
+      }
+    }
+
+    // 4. Paint each element.
     for (final element in page.elements) {
       _paintElement(canvas, element);
     }
@@ -87,6 +100,7 @@ class ReaderCanvasPainter extends CustomPainter {
     return oldDelegate.page != page ||
         oldDelegate.preferences != preferences ||
         oldDelegate.safeAreaTop != safeAreaTop ||
-        oldDelegate.safeAreaBottom != safeAreaBottom;
+        oldDelegate.safeAreaBottom != safeAreaBottom ||
+        oldDelegate.selectionRects != selectionRects;
   }
 }

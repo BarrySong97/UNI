@@ -77,6 +77,9 @@ lib/
         kp_solver.dart              # K-P solver (ported from tex-linebreak) + adjustmentRatios()/positionItems()
         kp_item_builder.dart        # RenderNode children → K-P item sequence (uses WidthCache)
         width_cache.dart            # Chapter-scoped cache for space and word widths per TextStyle
+    selection/
+      page_hit_test.dart              # Hit-testing, selection rects, text extraction
+      cross_page_selection.dart       # BookPosition, CrossPageSelection (multi-page model)
     data/
       chapter_data_source.dart      # Abstract interface for chapter loading
       cached_chapter_data_source.dart # Reads pre-parsed JSON from cache dir
@@ -90,6 +93,7 @@ lib/
       reader_canvas_painter.dart    # CustomPainter rendering PageLayout
       reader_controls_overlay.dart  # Bottom icon toolbar + font panel toggle
       reader_font_panel.dart        # Font size, margin, line spacing, font family picker
+      reader_selection_handle.dart  # Draggable teardrop selection handle widget
       reader_toc_sheet.dart         # TOC bottom sheet
 ```
 
@@ -156,7 +160,10 @@ Invalidated by: font size/family change, line height change, page margin change,
 ## Interaction & Error Handling
 
 - Content area avoids system status bar and bottom gesture area (safe area insets)
-- Tap left 30% = previous page, right 30% = next page, center 40% = toggle controls
+- Horizontal swipe page turning: drag left/right to preview next/previous page with follow-the-finger animation; on release, completes page turn (>25% screen width or velocity >500px/s) or snaps back. Rubber-band effect at first/last page of book. Adjacent chapters prefetched for smooth cross-chapter swipe.
+- Tap left 30% = previous page, right 30% = next page, center 40% = toggle controls (tap and swipe coexist)
+- Text selection via long-press: long-press to select a word, drag to extend. After release, two draggable handles appear for fine adjustment. Tap anywhere to clear selection. Selection is cleared on non-selection page navigation.
+- Cross-page selection: dragging a handle to the screen edge (40px zone) for 300ms triggers an animated page turn. The selection extends onto the new page with the anchor end preserved. A thin edge indicator shows when selection continues beyond the visible page. Supports multi-page and cross-chapter selection. Text extraction concatenates across all pages in the selection range.
 - Controls overlay with slide animation: top bar slides down (back + more menu), bottom icon toolbar slides up (5 buttons: TOC, annotation, progress, theme, font)
 - Font settings panel (toggled by "A" button): A-/A+ font size control, margin presets (SM/Margin/LG), line spacing presets (Tight/Spacing/Loose), font family picker with curated system fonts
 - Preference changes keep controls overlay visible (no close on setting change)
@@ -173,6 +180,9 @@ Invalidated by: font size/family change, line height change, page margin change,
 - Rich text (bold, italic, underline, headings, lists, tables) renders correctly
 - Pagination correctly splits long paragraphs at line boundaries
 - Tap navigation (left/center/right zones) works
+- Horizontal swipe page turning works with smooth animation and cross-chapter support
+- Text selection works: long-press selects word, drag extends, handles adjust range
+- Cross-page selection works: handle drag to screen edge triggers page turn, selection spans multiple pages
 - Font size adjustment causes repagination with correct results
 - Theme switching (light/sepia/dark) applies immediately
 - Reading progress persists across app restarts

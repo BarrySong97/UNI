@@ -80,6 +80,56 @@ class ReaderStore extends ChangeNotifier {
   int get chapterCount => _bookData?.chapters.length ?? 0;
   List<TocEntry> get toc => _bookData?.toc ?? const [];
 
+  /// Whether the current page is the absolute first page of the book.
+  bool get isFirstPageOfBook =>
+      _currentChapterIndex == 0 && _currentPageIndex == 0;
+
+  /// Whether the current page is the absolute last page of the book.
+  bool get isLastPageOfBook {
+    if (_currentPagination == null) return true;
+    return _currentChapterIndex >= chapterCount - 1 &&
+        _currentPageIndex >= _currentPagination!.pages.length - 1;
+  }
+
+  /// The page layout for the page after the current one (same or next chapter).
+  /// Returns null if at the last page of the book or adjacent chapter not cached.
+  PageLayout? get nextPageLayout {
+    if (_currentPagination == null) return null;
+    final nextIdx = _currentPageIndex + 1;
+    if (nextIdx < _currentPagination!.pages.length) {
+      return _currentPagination!.pages[nextIdx];
+    }
+    return _firstPageOfCachedChapter(_currentChapterIndex + 1);
+  }
+
+  /// The page layout for the page before the current one (same or prev chapter).
+  /// Returns null if at the first page of the book or adjacent chapter not cached.
+  PageLayout? get previousPageLayout {
+    if (_currentPagination == null) return null;
+    if (_currentPageIndex > 0) {
+      return _currentPagination!.pages[_currentPageIndex - 1];
+    }
+    return _lastPageOfCachedChapter(_currentChapterIndex - 1);
+  }
+
+  /// Retrieve a cached [PageLayout] by chapter and page index.
+  ///
+  /// Returns null if the chapter is not in the pagination cache.
+  PageLayout? getPageLayout(int chapterIndex, int pageIndexInChapter) {
+    final pagination = _cache[_cacheKey(chapterIndex)];
+    if (pagination == null) return null;
+    if (pageIndexInChapter < 0 ||
+        pageIndexInChapter >= pagination.pages.length) {
+      return null;
+    }
+    return pagination.pages[pageIndexInChapter];
+  }
+
+  /// Number of pages in a cached chapter, or null if not cached.
+  int? pagesInChapter(int chapterIndex) {
+    return _cache[_cacheKey(chapterIndex)]?.pages.length;
+  }
+
   /// Total pages across the entire book (0 while still computing).
   int get totalBookPages {
     if (!_allPagesComputed) return 0;
@@ -377,7 +427,7 @@ class ReaderStore extends ChangeNotifier {
 
         // Fire-and-forget: prefetch the next chapter so cross-chapter
         // navigation is instant.
-        _prefetchAdjacentChapter(index);
+        _prefetchAdjacentChapters(index);
       }
     } catch (e, st) {
       debugPrint('[ReaderStore] _loadChapter error: $e\n$st');
@@ -388,14 +438,32 @@ class ReaderStore extends ChangeNotifier {
     }
   }
 
-  /// Prefetch the chapter after [currentIndex] in the background.
-  void _prefetchAdjacentChapter(int currentIndex) {
+  /// Prefetch the chapters adjacent to [currentIndex] in the background.
+  void _prefetchAdjacentChapters(int currentIndex) {
     final next = currentIndex + 1;
-    if (next >= chapterCount) return;
-    if (_cache.containsKey(_cacheKey(next))) return;
+    if (next < chapterCount && !_cache.containsKey(_cacheKey(next))) {
+      _loadChapter(next, prefetchOnly: true).catchError((_) {});
+    }
+    final prev = currentIndex - 1;
+    if (prev >= 0 && !_cache.containsKey(_cacheKey(prev))) {
+      _loadChapter(prev, prefetchOnly: true).catchError((_) {});
+    }
+  }
 
-    // Fire-and-forget — errors are silently ignored.
-    _loadChapter(next, prefetchOnly: true).catchError((_) {});
+  /// First page of a chapter from the full-layout cache, or null.
+  PageLayout? _firstPageOfCachedChapter(int chapterIndex) {
+    if (chapterIndex < 0 || chapterIndex >= chapterCount) return null;
+    final pagination = _cache[_cacheKey(chapterIndex)];
+    if (pagination == null || pagination.pages.isEmpty) return null;
+    return pagination.pages.first;
+  }
+
+  /// Last page of a chapter from the full-layout cache, or null.
+  PageLayout? _lastPageOfCachedChapter(int chapterIndex) {
+    if (chapterIndex < 0 || chapterIndex >= chapterCount) return null;
+    final pagination = _cache[_cacheKey(chapterIndex)];
+    if (pagination == null || pagination.pages.isEmpty) return null;
+    return pagination.pages.last;
   }
 
   /// Compute page counts for all chapters in the background.

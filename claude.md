@@ -2,6 +2,9 @@
 
 本文件定义本仓库中 AI Agent 与开发者协作时的默认约定。
 
+## 语言要求
+- **所有回答必须使用中文**。
+
 ## 项目类型
 - Flutter 应用（多端：`android`/`ios`/`web`/`macos`/`linux`/`windows`）。
 - 核心业务代码在 `lib/`，测试在 `test/`。
