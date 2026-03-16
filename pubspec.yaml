@@ -45,6 +45,8 @@ dependencies:
   rust_lib_uni:
     path: rust_builder
   flutter_rust_bridge: 2.11.1
+  genkit: ^0.11.1
+  genkit_openai: ^0.2.2
 
 dev_dependencies:
   flutter_test:

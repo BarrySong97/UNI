@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../app/providers/app-providers.dart';
+import '../../components/settings/ai_settings_dialog.dart';
 import '../../shared/constants/common-design-tokens.dart';
 import '../../components/library/library-header.dart';
 import '../../components/settings/settings-account-card.dart';
@@ -10,6 +12,8 @@ class SettingsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final aiSettings = AppProvidersScope.of(context).aiSettingsService;
+
     return Container(
       color: CommonDesignTokens.pageBackground,
       child: SafeArea(
@@ -45,10 +49,10 @@ class SettingsPage extends StatelessWidget {
               ),
               const SizedBox(height: 28),
 
-              // AI
+              // AI SETTINGS
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 16),
-                child: SettingsSectionLabel(label: 'AI'),
+                child: SettingsSectionLabel(label: 'AI SETTINGS'),
               ),
               const SizedBox(height: 12),
               Padding(
@@ -61,23 +65,30 @@ class SettingsPage extends StatelessWidget {
                       CommonDesignTokens.cardRadius,
                     ),
                   ),
-                  child: const Column(
+                  child: Column(
                     children: <Widget>[
-                      SettingsRow(
+                      const SettingsRow(
                         icon: Icons.tune_outlined,
                         label: 'Explanation Detail',
                         value: 'Balanced',
                       ),
-                      SettingsRow(
+                      const SettingsRow(
                         icon: Icons.language_outlined,
                         label: 'Explanation Language',
                         value: 'English',
                       ),
-                      SettingsRow(
-                        icon: Icons.key_outlined,
-                        label: 'API Key',
-                        value: 'Not Set',
-                        showDivider: false,
+                      ListenableBuilder(
+                        listenable: aiSettings,
+                        builder: (context, _) => SettingsRow(
+                          icon: Icons.key_outlined,
+                          label: 'API Key',
+                          value: aiSettings.isConfigured
+                              ? 'Configured'
+                              : 'Not Set',
+                          showDivider: false,
+                          onTap: () =>
+                              AiSettingsDialog.show(context, aiSettings),
+                        ),
                       ),
                     ],
                   ),

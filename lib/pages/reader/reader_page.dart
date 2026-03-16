@@ -1,8 +1,7 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../app/providers/app-providers.dart';
 import '../../entities/book-entity.dart';
 import '../../repositories/progress/progress-repository.dart';
 import '../../services/reader/data/chapter_data_source.dart';
@@ -13,6 +12,7 @@ import '../../services/reader/selection/page_hit_test.dart';
 import '../../stores/reader/reader_store.dart';
 import 'widgets/reader_canvas_painter.dart';
 import 'widgets/reader_controls_overlay.dart';
+import 'widgets/reader_explain_sheet.dart';
 import 'widgets/reader_selection_handle.dart';
 import 'widgets/reader_toc_sheet.dart';
 
@@ -58,11 +58,6 @@ class _ReaderPageState extends State<ReaderPage>
 
   // Prevent clearing selection during selection-triggered page turns.
   bool _preserveSelectionOnPageChange = false;
-
-  // Edge dwell timer for auto page turn during handle drag.
-  Timer? _edgeDwellTimer;
-  static const double _edgeZoneWidth = 40.0;
-  static const Duration _edgeDwellDuration = Duration(milliseconds: 300);
 
   // Cached page identity to detect page changes.
   int _lastChapterIndex = -1;
@@ -119,7 +114,6 @@ class _ReaderPageState extends State<ReaderPage>
 
   @override
   void dispose() {
-    _edgeDwellTimer?.cancel();
     _pageAnimController.dispose();
     _store.removeListener(_onStoreChanged);
     _store.dispose();
@@ -188,8 +182,6 @@ class _ReaderPageState extends State<ReaderPage>
     _isLongPressing = false;
     _selectionAnchor = null;
     _selectionMoving = null;
-    _edgeDwellTimer?.cancel();
-    _edgeDwellTimer = null;
     _preserveSelectionOnPageChange = false;
   }
 
@@ -276,12 +268,9 @@ class _ReaderPageState extends State<ReaderPage>
   void _onHandleDrag(DragUpdateDetails details, {required bool isStart}) {
     final page = _store.currentPageLayout;
     if (page == null || _crossSelection == null) return;
-
-    // Determine which end is anchor vs moving based on handle identity.
-    // When dragging the start handle, the end is the anchor, and vice versa.
     if (_selectionAnchor == null || _selectionMoving == null) return;
 
-    // Update anchor/moving based on which handle is being dragged.
+    // The anchor is the handle NOT being dragged.
     final BookPosition anchor;
     if (isStart) {
       anchor = _crossSelection!.end;
@@ -290,28 +279,24 @@ class _ReaderPageState extends State<ReaderPage>
     }
     _selectionAnchor = anchor;
 
-    final screenWidth = MediaQuery.of(context).size.width;
-    final globalX = details.globalPosition.dx;
-
-    // --- Edge detection for cross-page selection ---
-    final inLeftEdge = globalX < _edgeZoneWidth;
-    final inRightEdge = globalX > screenWidth - _edgeZoneWidth;
-
-    if (inLeftEdge && !_store.isFirstPageOfBook) {
-      _startEdgeDwell(direction: -1);
-      return;
-    } else if (inRightEdge && !_store.isLastPageOfBook) {
-      _startEdgeDwell(direction: 1);
-      return;
-    } else {
-      _cancelEdgeDwell();
-    }
-
-    // --- Normal hit-test on current page ---
     final contentOffset = _toContentOffset(details.globalPosition);
     final hit = hitTestPage(page, contentOffset);
     if (hit == null) return;
 
+    // --- Content boundary detection for cross-page selection ---
+    // Turn the page only when the handle reaches the very first/last text
+    // position AND the touch is past the content area (dragging beyond text).
+    if (_isAtPageEnd(page, hit, contentOffset) && !_store.isLastPageOfBook) {
+      _triggerSelectionPageTurn(1);
+      return;
+    }
+    if (_isAtPageStart(page, hit, contentOffset) &&
+        !_store.isFirstPageOfBook) {
+      _triggerSelectionPageTurn(-1);
+      return;
+    }
+
+    // --- Normal update ---
     final movingPos = BookPosition.fromPagePosition(
       hit,
       chapterIndex: page.chapterIndex,
@@ -327,25 +312,50 @@ class _ReaderPageState extends State<ReaderPage>
   }
 
   void _onHandleDragEnd(DragEndDetails details) {
-    _cancelEdgeDwell();
+    // Nothing to cancel — no timers used.
   }
 
-  // ---------------------------------------------------------------------------
-  // Edge dwell & selection page turn
-  // ---------------------------------------------------------------------------
+  /// Whether [hit] is at the last text position on [page] and the touch is
+  /// past the content (below or to the right of the last element).
+  bool _isAtPageEnd(
+      PageLayout page, PagePosition hit, Offset contentOffset) {
+    // Find last text element.
+    int lastTextIdx = -1;
+    for (var i = page.elements.length - 1; i >= 0; i--) {
+      if (page.elements[i].textPainter != null) {
+        lastTextIdx = i;
+        break;
+      }
+    }
+    if (lastTextIdx == -1) return false;
+    if (hit.elementIndex != lastTextIdx) return false;
 
-  void _startEdgeDwell({required int direction}) {
-    if (_edgeDwellTimer != null) return;
+    final lastEl = page.elements[lastTextIdx];
+    final textLen = extractPainterTextLength(lastEl.textPainter!);
+    if (hit.charOffset < textLen) return false;
 
-    _edgeDwellTimer = Timer(_edgeDwellDuration, () {
-      _edgeDwellTimer = null;
-      _triggerSelectionPageTurn(direction);
-    });
+    // Touch must be past the last element's bottom edge.
+    return contentOffset.dy > lastEl.rect.bottom;
   }
 
-  void _cancelEdgeDwell() {
-    _edgeDwellTimer?.cancel();
-    _edgeDwellTimer = null;
+  /// Whether [hit] is at the first text position on [page] and the touch is
+  /// before the content (above or to the left of the first element).
+  bool _isAtPageStart(
+      PageLayout page, PagePosition hit, Offset contentOffset) {
+    // Find first text element.
+    int firstTextIdx = -1;
+    for (var i = 0; i < page.elements.length; i++) {
+      if (page.elements[i].textPainter != null) {
+        firstTextIdx = i;
+        break;
+      }
+    }
+    if (firstTextIdx == -1) return false;
+    if (hit.elementIndex != firstTextIdx) return false;
+    if (hit.charOffset > 0) return false;
+
+    // Touch must be above the first element's top edge.
+    return contentOffset.dy < page.elements[firstTextIdx].rect.top;
   }
 
   /// End of the first visual line on [page].
@@ -843,11 +853,13 @@ class _ReaderPageState extends State<ReaderPage>
           ),
         ),
 
-        // Selection handles.
+        // Selection handles + tooltip.
         if (_crossSelection != null &&
             _selectionRects.isNotEmpty &&
-            !_isLongPressing)
+            !_isLongPressing) ...[
           ..._buildSelectionHandles(handleColor),
+          _buildSelectionTooltip(),
+        ],
 
         // Page indicator at bottom.
         Positioned(
@@ -968,6 +980,98 @@ class _ReaderPageState extends State<ReaderPage>
       child: Container(
         width: 3,
         color: color.withValues(alpha: 0.5),
+      ),
+    );
+  }
+
+  /// Floating tooltip above the selection with placeholder action buttons.
+  Widget _buildSelectionTooltip() {
+    if (_selectionRects.isEmpty) return const SizedBox.shrink();
+
+    final firstRect = _selectionRects.first;
+    final lastRect = _selectionRects.last;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final safeTop = MediaQuery.of(context).padding.top;
+
+    // Horizontal center of the selection.
+    final selCenterX =
+        (firstRect.left + lastRect.right) / 2;
+    final screenCenterX = _toScreenOffset(Offset(selCenterX, 0)).dx;
+
+    // Vertical: prefer above the first rect; fall back to below last rect.
+    const tooltipHeight = 40.0;
+    const gap = 8.0;
+    final aboveY = _toScreenOffset(firstRect.topLeft).dy - gap - tooltipHeight;
+    final belowY = _toScreenOffset(lastRect.bottomLeft).dy + gap;
+    final tooltipY = aboveY >= safeTop ? aboveY : belowY;
+
+    // Estimate tooltip width to clamp horizontal position.
+    const estimatedWidth = 160.0;
+    final tooltipLeft =
+        (screenCenterX - estimatedWidth / 2).clamp(8.0, screenWidth - estimatedWidth - 8.0);
+
+    return Positioned(
+      left: tooltipLeft,
+      top: tooltipY,
+      child: Container(
+        height: tooltipHeight,
+        decoration: BoxDecoration(
+          color: Colors.black87,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _tooltipButton('Explain', onPressed: () {
+              final selectedText = extractCrossPageText();
+              if (selectedText.isEmpty) return;
+
+              final aiSettings =
+                  AppProvidersScope.of(context).aiSettingsService;
+
+              if (!aiSettings.isConfigured) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Please configure your AI API key in Settings.',
+                    ),
+                  ),
+                );
+                return;
+              }
+
+              ReaderExplainSheet.show(
+                context: context,
+                selectedText: selectedText,
+                aiSettings: aiSettings,
+                bookTitle: widget.book.title,
+              );
+            }),
+            Container(width: 1, height: 20, color: Colors.white24),
+            _tooltipButton('Mark', onPressed: () {
+              // TODO: implement mark
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _tooltipButton(String label, {required VoidCallback onPressed}) {
+    return GestureDetector(
+      onTap: onPressed,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            decoration: TextDecoration.none,
+          ),
+        ),
       ),
     );
   }
