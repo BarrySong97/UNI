@@ -18,7 +18,8 @@ class ExplainAiService {
   ExplainAiService({
     required AiSettingsService settings,
     required String systemPrompt,
-  }) : _settings = settings,
+    required String model,
+  }) : _model = model,
        _systemPrompt = systemPrompt {
     _ai = Genkit(
       plugins: [
@@ -30,7 +31,7 @@ class ExplainAiService {
     );
   }
 
-  final AiSettingsService _settings;
+  final String _model;
   final String _systemPrompt;
   late final Genkit _ai;
   final List<Message> _history = [];
@@ -55,7 +56,7 @@ class ExplainAiService {
     final responseBuffer = StringBuffer();
 
     final stream = _ai.generateStream(
-      model: openAI.model(_settings.model),
+      model: openAI.model(_model),
       messages: allMessages,
     );
 

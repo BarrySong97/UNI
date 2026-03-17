@@ -10,12 +10,14 @@ class ReaderExplainSheet extends StatefulWidget {
     required this.selectedText,
     required this.pageContext,
     required this.aiSettings,
+    required this.languageConfig,
     required this.bookTitle,
   });
 
   final String selectedText;
   final String pageContext;
   final AiSettingsService aiSettings;
+  final AiLanguageConfig languageConfig;
   final String bookTitle;
 
   static Future<void> show({
@@ -23,6 +25,7 @@ class ReaderExplainSheet extends StatefulWidget {
     required String selectedText,
     required String pageContext,
     required AiSettingsService aiSettings,
+    required AiLanguageConfig languageConfig,
     required String bookTitle,
   }) {
     return showModalBottomSheet<void>(
@@ -36,6 +39,7 @@ class ReaderExplainSheet extends StatefulWidget {
         selectedText: selectedText,
         pageContext: pageContext,
         aiSettings: aiSettings,
+        languageConfig: languageConfig,
         bookTitle: bookTitle,
       ),
     );
@@ -71,17 +75,26 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet> {
         ? _extractContainingSentence(widget.pageContext, selectedText)
         : widget.pageContext;
 
-    final promptTemplate = widget.aiSettings.prompt.isNotEmpty
-        ? widget.aiSettings.prompt
+    final config = widget.languageConfig;
+    final promptTemplate = config.customPrompt.isNotEmpty
+        ? config.customPrompt
         : AiSettingsService.defaultPrompt;
-    final systemPrompt = promptTemplate
+    final basePrompt = promptTemplate
         .replaceAll('{bookTitle}', widget.bookTitle)
         .replaceAll('{selectedText}', text)
         .replaceAll('{context}', surroundingContext);
 
+    final detailLine = AiSettingsService.detailInstruction(config.detail);
+    final langLine = AiSettingsService.languageInstruction(
+      config.explanationLanguage,
+    );
+    final systemPrompt = '$basePrompt\n\n$detailLine'
+        '${langLine.isNotEmpty ? '\n$langLine' : ''}';
+
     _aiService = ExplainAiService(
       settings: widget.aiSettings,
       systemPrompt: systemPrompt,
+      model: config.model,
     );
 
     // Auto-send the first explanation request.

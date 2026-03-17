@@ -67,31 +67,24 @@ class SettingsPage extends StatelessWidget {
                       CommonDesignTokens.cardRadius,
                     ),
                   ),
-                  child: Column(
-                    children: <Widget>[
-                      const SettingsRow(
-                        icon: Icons.tune_outlined,
-                        label: 'Explanation Detail',
-                        value: 'Balanced',
-                      ),
-                      const SettingsRow(
-                        icon: Icons.language_outlined,
-                        label: 'Explanation Language',
-                        value: 'English',
-                      ),
-                      ListenableBuilder(
-                        listenable: aiSettings,
-                        builder: (context, _) => SettingsRow(
-                          icon: Icons.key_outlined,
-                          label: 'API Key',
-                          value: aiSettings.isConfigured
-                              ? 'Configured'
-                              : 'Not Set',
-                          showDivider: false,
-                          onTap: () => AiSettingsPage.push(context, aiSettings),
+                  child: ListenableBuilder(
+                    listenable: aiSettings,
+                    builder: (context, _) {
+                      final summary = aiSettings.isConfigured
+                          ? 'Configured'
+                          : 'Not Set';
+                      return SettingsRow(
+                        icon: Icons.smart_toy_outlined,
+                        label: 'AI Explain',
+                        value: summary,
+                        showDivider: false,
+                        onTap: () => AiSettingsPage.push(
+                          context,
+                          aiSettings,
+                          ttsService,
                         ),
-                      ),
-                    ],
+                      );
+                    },
                   ),
                 ),
               ),

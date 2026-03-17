@@ -1069,11 +1069,16 @@ class _ReaderPageState extends State<ReaderPage>
                   ? extractFullPageText(pageLayout)
                   : '';
 
+              final languageConfig = aiSettings.resolveConfig(
+                widget.book.language,
+              );
+
               ReaderExplainSheet.show(
                 context: context,
                 selectedText: selectedText,
                 pageContext: pageContext,
                 aiSettings: aiSettings,
+                languageConfig: languageConfig,
                 bookTitle: widget.book.title,
               );
             }),
