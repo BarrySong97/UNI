@@ -9,10 +9,12 @@ import '../../services/reader/models/page_layout.dart';
 import '../../services/reader/models/reader_preferences.dart';
 import '../../services/reader/selection/cross_page_selection.dart';
 import '../../services/reader/selection/page_hit_test.dart';
+import '../../services/tts/tts_model_config.dart';
 import '../../stores/reader/reader_store.dart';
 import 'widgets/reader_canvas_painter.dart';
 import 'widgets/reader_controls_overlay.dart';
 import 'widgets/reader_explain_sheet.dart';
+import 'widgets/reader_phonetics_sheet.dart';
 import 'widgets/reader_selection_handle.dart';
 import 'widgets/reader_toc_sheet.dart';
 
@@ -1006,7 +1008,7 @@ class _ReaderPageState extends State<ReaderPage>
     final tooltipY = aboveY >= safeTop ? aboveY : belowY;
 
     // Estimate tooltip width to clamp horizontal position.
-    const estimatedWidth = 280.0;
+    const estimatedWidth = 370.0;
     final tooltipLeft =
         (screenCenterX - estimatedWidth / 2).clamp(8.0, screenWidth - estimatedWidth - 8.0);
 
@@ -1022,6 +1024,19 @@ class _ReaderPageState extends State<ReaderPage>
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            _tooltipButton('Phonetics', onPressed: () {
+              final selectedText = extractCrossPageText();
+              if (selectedText.isEmpty) return;
+
+              final providers = AppProvidersScope.of(context);
+              ReaderPhoneticsSheet.show(
+                context: context,
+                selectedText: selectedText,
+                phoneticsService: providers.phoneticsService,
+                ttsService: providers.ttsService,
+              );
+            }),
+            Container(width: 1, height: 20, color: Colors.white24),
             _tooltipButton('Explain', onPressed: () {
               final selectedText = extractCrossPageText();
               if (selectedText.isEmpty) return;
@@ -1060,6 +1075,20 @@ class _ReaderPageState extends State<ReaderPage>
 
               final ttsService =
                   AppProvidersScope.of(context).ttsService;
+
+              final model =
+                  TtsModels.forAccent(ttsService.readAloudAccent);
+              if (!ttsService.modelManager.isReady(model)) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'TTS model not downloaded. Please download it in Settings.',
+                    ),
+                  ),
+                );
+                return;
+              }
+
               if (ttsService.isSpeaking) {
                 ttsService.stop();
               } else {

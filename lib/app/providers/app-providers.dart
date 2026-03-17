@@ -7,6 +7,7 @@ import '../../repositories/progress/progress-repository.dart';
 import '../../services/library/book-profile-entry-service.dart';
 import '../../services/reader/epub_preparse_service.dart';
 import '../../services/ai/ai_settings_service.dart';
+import '../../services/phonetics/phonetics_service.dart';
 import '../../services/tts/tts_service.dart';
 import '../../services/reader/reader-entry-service.dart';
 import '../../stores/highlight/highlight-store.dart';
@@ -25,6 +26,7 @@ class AppProviders {
     required this.epubPreparseService,
     required this.aiSettingsService,
     required this.ttsService,
+    required this.phoneticsService,
     ReaderEntryService? readerEntryService,
   }) : readerEntryService = readerEntryService ?? ReaderEntryService();
 
@@ -38,6 +40,7 @@ class AppProviders {
   final EpubPreparseService epubPreparseService;
   final AiSettingsService aiSettingsService;
   final TtsService ttsService;
+  final PhoneticsService phoneticsService;
   final ReaderEntryService readerEntryService;
 
   late final LibraryStore libraryStore;

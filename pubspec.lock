@@ -41,6 +41,62 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.13.0"
+  audioplayers:
+    dependency: "direct main"
+    description:
+      name: audioplayers
+      sha256: a72dd459d1a48f61a6fb9c0134dba26597c9236af40639ff0eb70eb4e0baab70
+      url: "https://pub.dev"
+    source: hosted
+    version: "6.6.0"
+  audioplayers_android:
+    dependency: transitive
+    description:
+      name: audioplayers_android
+      sha256: "60a6728277228413a85755bd3ffd6fab98f6555608923813ce383b190a360605"
+      url: "https://pub.dev"
+    source: hosted
+    version: "5.2.1"
+  audioplayers_darwin:
+    dependency: transitive
+    description:
+      name: audioplayers_darwin
+      sha256: c994b3bb3a921e4904ac40e013fbc94488e824fd7c1de6326f549943b0b44a91
+      url: "https://pub.dev"
+    source: hosted
+    version: "6.4.0"
+  audioplayers_linux:
+    dependency: transitive
+    description:
+      name: audioplayers_linux
+      sha256: f75bce1ce864170ef5e6a2c6a61cd3339e1a17ce11e99a25bae4474ea491d001
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.2.1"
+  audioplayers_platform_interface:
+    dependency: transitive
+    description:
+      name: audioplayers_platform_interface
+      sha256: "0e2f6a919ab56d0fec272e801abc07b26ae7f31980f912f24af4748763e5a656"
+      url: "https://pub.dev"
+    source: hosted
+    version: "7.1.1"
+  audioplayers_web:
+    dependency: transitive
+    description:
+      name: audioplayers_web
+      sha256: faa8fa6587f996a6f604433b53af44c57a1407d4fe8dff5766cf63d6875e8de9
+      url: "https://pub.dev"
+    source: hosted
+    version: "5.2.0"
+  audioplayers_windows:
+    dependency: transitive
+    description:
+      name: audioplayers_windows
+      sha256: bafff2b38b6f6d331887558ba6e0a01c9c208d9dbb3ad0005234db065122a734
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.3.0"
   boolean_selector:
     dependency: transitive
     description:
@@ -277,14 +333,6 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
-  flutter_tts:
-    dependency: "direct main"
-    description:
-      name: flutter_tts
-      sha256: ce5eb209b40e95f2f4a1397116c87ab2fcdff32257d04ed7a764e75894c03775
-      url: "https://pub.dev"
-    source: hosted
-    version: "4.2.5"
   flutter_web_plugins:
     dependency: transitive
     description: flutter
@@ -412,6 +460,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.3.0"
+  malsami:
+    dependency: "direct main"
+    description:
+      name: malsami
+      sha256: cba7deba23c2b1b6a5dfcb68309f9f1e55575dd4989158ec1f6767eaadede150
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.0.3"
   markdown:
     dependency: transitive
     description:
@@ -683,6 +739,54 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.4.1"
+  sherpa_onnx:
+    dependency: "direct main"
+    description:
+      name: sherpa_onnx
+      sha256: "3ac66fd2ded0c198f16bba6aadf3b1ccbe599f90c89827473a2e53cc2c4d5bbb"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.12.29"
+  sherpa_onnx_android:
+    dependency: transitive
+    description:
+      name: sherpa_onnx_android
+      sha256: ef4c155f05cfa2934a028fbab73567cc873690ff2e08e6d84df80789734cda9d
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.12.29"
+  sherpa_onnx_ios:
+    dependency: transitive
+    description:
+      name: sherpa_onnx_ios
+      sha256: cf158df4ab0953da6873a879b3f1ce230ac58d2bf50bcee198d8b4f33a928886
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.12.29"
+  sherpa_onnx_linux:
+    dependency: transitive
+    description:
+      name: sherpa_onnx_linux
+      sha256: f241519d56b39735079a15661b42892d7b47017a1beb029af47328f299e4c3f3
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.12.29"
+  sherpa_onnx_macos:
+    dependency: transitive
+    description:
+      name: sherpa_onnx_macos
+      sha256: e4a356fcdee0dee572e123a287de982d4bc0333a7ad2505e1c51767ff8e0ceae
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.12.29"
+  sherpa_onnx_windows:
+    dependency: transitive
+    description:
+      name: sherpa_onnx_windows
+      sha256: "9283347fcb93a4c76f995568f83bda39fc4ef243c05a12f499b09e37eec63fa4"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.12.29"
   sky_engine:
     dependency: transitive
     description: flutter
@@ -808,6 +912,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.4.0"
+  uuid:
+    dependency: transitive
+    description:
+      name: uuid
+      sha256: "1fef9e8e11e2991bb773070d4656b7bd5d850967a2456cfc83cf47925ba79489"
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.5.3"
   vector_math:
     dependency: transitive
     description:

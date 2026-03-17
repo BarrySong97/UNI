@@ -1,18 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../../services/tts/tts_model_config.dart';
+import '../../services/tts/tts_model_manager.dart';
 import '../../services/tts/tts_service.dart';
 import '../../shared/constants/common-design-tokens.dart';
 import '../../shared/constants/form-design-tokens.dart';
 import '../../shared/constants/settings-design-tokens.dart';
-
-/// Unique key for a voice: "locale|name".
-String _voiceKey(Map<String, String> voice) =>
-    '${voice['locale']}|${voice['name']}';
-
-String _voiceKeyFrom(String? locale, String? name) {
-  if (locale == null || name == null) return '';
-  return '$locale|$name';
-}
 
 class TtsSettingsPage extends StatefulWidget {
   const TtsSettingsPage({super.key, required this.ttsService});
@@ -32,35 +25,34 @@ class TtsSettingsPage extends StatefulWidget {
 }
 
 class _TtsSettingsPageState extends State<TtsSettingsPage> {
-  late double _speechRate;
-  late double _pitch;
+  late double _speed;
   late double _volume;
-  String? _voiceName;
-  String? _voiceLocale;
-
-  List<Map<String, String>> _voices = [];
-  bool _loadingVoices = true;
+  late int _usSpeakerId;
+  late int _ukSpeakerId;
+  late String _readAloudAccent;
 
   @override
   void initState() {
     super.initState();
-    _speechRate = widget.ttsService.speechRate;
-    _pitch = widget.ttsService.pitch;
+    _speed = widget.ttsService.speed;
     _volume = widget.ttsService.volume;
-    _voiceName = widget.ttsService.voiceName;
-    _voiceLocale = widget.ttsService.voiceLocale;
-    _loadVoices();
+    _usSpeakerId = widget.ttsService.usSpeakerId;
+    _ukSpeakerId = widget.ttsService.ukSpeakerId;
+    _readAloudAccent = widget.ttsService.readAloudAccent;
+    widget.ttsService.modelManager.addListener(_onModelChange);
   }
 
-  Future<void> _loadVoices() async {
-    final voices = await widget.ttsService.getVoices();
-    if (mounted) {
-      setState(() {
-        _voices = voices;
-        _loadingVoices = false;
-      });
-    }
+  @override
+  void dispose() {
+    widget.ttsService.modelManager.removeListener(_onModelChange);
+    super.dispose();
   }
+
+  void _onModelChange() {
+    if (mounted) setState(() {});
+  }
+
+  TtsModelManager get _mm => widget.ttsService.modelManager;
 
   @override
   Widget build(BuildContext context) {
@@ -92,12 +84,36 @@ class _TtsSettingsPageState extends State<TtsSettingsPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // VOICE section
-            const _SectionLabel(label: 'VOICE'),
+            // VOICE MODEL section
+            const _SectionLabel(label: 'VOICE MODEL'),
             const SizedBox(height: 12),
             _buildCard(
               children: [
-                _buildVoiceRow(),
+                _buildModelRow(TtsModels.usModel),
+                _buildDivider(),
+                _buildModelRow(TtsModels.ukModel),
+                // US Speaker ID (only if US model has multiple speakers).
+                if (_mm.isReady(TtsModels.usModel) &&
+                    TtsModels.usModel.speakerCount > 1) ...[
+                  _buildDivider(),
+                  _buildSpeakerIdRow(
+                    label: 'US Speaker',
+                    value: _usSpeakerId,
+                    max: TtsModels.usModel.speakerCount - 1,
+                    onChanged: (v) => setState(() => _usSpeakerId = v),
+                  ),
+                ],
+                // UK Speaker ID (only if UK model has multiple speakers).
+                if (_mm.isReady(TtsModels.ukModel) &&
+                    TtsModels.ukModel.speakerCount > 1) ...[
+                  _buildDivider(),
+                  _buildSpeakerIdRow(
+                    label: 'UK Speaker',
+                    value: _ukSpeakerId,
+                    max: TtsModels.ukModel.speakerCount - 1,
+                    onChanged: (v) => setState(() => _ukSpeakerId = v),
+                  ),
+                ],
               ],
             ),
             const SizedBox(height: 28),
@@ -107,24 +123,15 @@ class _TtsSettingsPageState extends State<TtsSettingsPage> {
             const SizedBox(height: 12),
             _buildCard(
               children: [
+                const SizedBox(height: 8),
                 _buildSliderRow(
                   icon: Icons.speed_outlined,
                   label: 'Speed',
-                  value: _speechRate,
-                  min: 0.0,
-                  max: 1.0,
-                  displayValue: '${(_speechRate * 2).toStringAsFixed(1)}x',
-                  onChanged: (v) => setState(() => _speechRate = v),
-                ),
-                _buildDivider(),
-                _buildSliderRow(
-                  icon: Icons.tune_outlined,
-                  label: 'Pitch',
-                  value: _pitch,
+                  value: _speed,
                   min: 0.5,
-                  max: 2.0,
-                  displayValue: _pitch.toStringAsFixed(1),
-                  onChanged: (v) => setState(() => _pitch = v),
+                  max: 3.0,
+                  displayValue: '${_speed.toStringAsFixed(1)}x',
+                  onChanged: (v) => setState(() => _speed = v),
                 ),
                 _buildDivider(),
                 _buildSliderRow(
@@ -136,6 +143,8 @@ class _TtsSettingsPageState extends State<TtsSettingsPage> {
                   displayValue: '${(_volume * 100).round()}%',
                   onChanged: (v) => setState(() => _volume = v),
                 ),
+                _buildDivider(),
+                _buildAccentPickerRow(),
               ],
             ),
             const SizedBox(height: 32),
@@ -199,6 +208,10 @@ class _TtsSettingsPageState extends State<TtsSettingsPage> {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Card & Divider
+  // ---------------------------------------------------------------------------
+
   Widget _buildCard({required List<Widget> children}) {
     return Container(
       decoration: BoxDecoration(
@@ -209,73 +222,299 @@ class _TtsSettingsPageState extends State<TtsSettingsPage> {
     );
   }
 
-  Widget _buildVoiceRow() {
-    return GestureDetector(
-      onTap: _loadingVoices ? null : _showVoicePicker,
-      behavior: HitTestBehavior.opaque,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: SizedBox(
-          height: FormDesignTokens.fieldRowHeight,
-          child: Row(
-            children: [
-              Container(
-                width: SettingsDesignTokens.settingsRowIconContainerSize,
-                height: SettingsDesignTokens.settingsRowIconContainerSize,
-                decoration: BoxDecoration(
-                  color: SettingsDesignTokens.settingsRowIconContainerBg,
-                  borderRadius: BorderRadius.circular(
-                    SettingsDesignTokens.settingsRowIconContainerRadius,
-                  ),
-                ),
-                alignment: Alignment.center,
-                child: const Icon(
-                  Icons.record_voice_over_outlined,
-                  size: 20,
-                  color: CommonDesignTokens.headerLabelColor,
+  Widget _buildDivider() {
+    return Padding(
+      padding: const EdgeInsets.only(left: FormDesignTokens.dividerIndent),
+      child: Container(
+        height: FormDesignTokens.dividerThickness,
+        color: FormDesignTokens.dividerColor,
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Model row
+  // ---------------------------------------------------------------------------
+
+  Widget _buildModelRow(TtsModelInfo model) {
+    final state = _mm.stateOf(model);
+    final accentLabel = model.accent == 'uk' ? 'UK' : 'US';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: SizedBox(
+        height: FormDesignTokens.fieldRowHeight,
+        child: Row(
+          children: [
+            Container(
+              width: SettingsDesignTokens.settingsRowIconContainerSize,
+              height: SettingsDesignTokens.settingsRowIconContainerSize,
+              decoration: BoxDecoration(
+                color: SettingsDesignTokens.settingsRowIconContainerBg,
+                borderRadius: BorderRadius.circular(
+                  SettingsDesignTokens.settingsRowIconContainerRadius,
                 ),
               ),
-              const SizedBox(width: FormDesignTokens.fieldIconGap),
-              const Text(
-                'Voice',
+              alignment: Alignment.center,
+              child: const Icon(
+                Icons.record_voice_over_outlined,
+                size: 20,
+                color: CommonDesignTokens.headerLabelColor,
+              ),
+            ),
+            const SizedBox(width: FormDesignTokens.fieldIconGap),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '$accentLabel Model',
+                    style: const TextStyle(
+                      fontSize: FormDesignTokens.fieldLabelSize,
+                      fontWeight: FontWeight.w500,
+                      color: CommonDesignTokens.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    model.displayName,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: CommonDesignTokens.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            _buildModelStatusWidget(model, state),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModelStatusWidget(TtsModelInfo model, TtsModelState state) {
+    switch (state.status) {
+      case TtsModelStatus.ready:
+        return const Icon(
+          Icons.check_circle,
+          size: 22,
+          color: Color(0xFF22C55E),
+        );
+      case TtsModelStatus.downloading:
+        return SizedBox(
+          width: 80,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(3),
+                  child: LinearProgressIndicator(
+                    value: state.progress,
+                    minHeight: 6,
+                    backgroundColor: FormDesignTokens.dividerColor,
+                    valueColor: const AlwaysStoppedAnimation<Color>(
+                      CommonDesignTokens.textPrimary,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                '${(state.progress * 100).round()}%',
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: CommonDesignTokens.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        );
+      case TtsModelStatus.extracting:
+        return const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            SizedBox(width: 6),
+            Text(
+              'Extracting...',
+              style: TextStyle(
+                fontSize: 12,
+                color: CommonDesignTokens.textSecondary,
+              ),
+            ),
+          ],
+        );
+      case TtsModelStatus.error:
+        return GestureDetector(
+          onTap: () => _mm.downloadModel(model),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.error_outline, size: 18, color: Colors.red),
+              SizedBox(width: 4),
+              Text(
+                'Retry',
                 style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.red,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        );
+      case TtsModelStatus.notDownloaded:
+        return GestureDetector(
+          onTap: () => _mm.downloadModel(model),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: CommonDesignTokens.textPrimary,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.download_outlined,
+                  size: 16,
+                  color: CommonDesignTokens.cardBg,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '${model.estimatedSizeMB} MB',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: CommonDesignTokens.cardBg,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Speaker ID row
+  // ---------------------------------------------------------------------------
+
+  Widget _buildSpeakerIdRow({
+    required String label,
+    required int value,
+    required int max,
+    required ValueChanged<int> onChanged,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: SizedBox(
+        height: FormDesignTokens.fieldRowHeight,
+        child: Row(
+          children: [
+            Container(
+              width: SettingsDesignTokens.settingsRowIconContainerSize,
+              height: SettingsDesignTokens.settingsRowIconContainerSize,
+              decoration: BoxDecoration(
+                color: SettingsDesignTokens.settingsRowIconContainerBg,
+                borderRadius: BorderRadius.circular(
+                  SettingsDesignTokens.settingsRowIconContainerRadius,
+                ),
+              ),
+              alignment: Alignment.center,
+              child: const Icon(
+                Icons.person_outlined,
+                size: 20,
+                color: CommonDesignTokens.headerLabelColor,
+              ),
+            ),
+            const SizedBox(width: FormDesignTokens.fieldIconGap),
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(
                   fontSize: FormDesignTokens.fieldLabelSize,
                   fontWeight: FontWeight.w500,
                   color: CommonDesignTokens.textSecondary,
                 ),
               ),
-              const Spacer(),
-              if (_loadingVoices)
-                const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              else
-                Flexible(
-                  child: Text(
-                    _voiceName != null
-                        ? TtsService.parseDisplayName(_voiceName!)
-                        : 'Default',
+            ),
+            GestureDetector(
+              onTap: () => _showSpeakerIdPicker(label, value, max, onChanged),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '#$value',
                     style: const TextStyle(
                       fontSize: FormDesignTokens.fieldValueSize,
                       color: CommonDesignTokens.textPrimary,
+                      fontWeight: FontWeight.w500,
                     ),
-                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-              const SizedBox(width: 4),
-              const Icon(
-                Icons.chevron_right,
-                size: 22,
-                color: CommonDesignTokens.textSecondary,
+                  const SizedBox(width: 4),
+                  const Icon(
+                    Icons.chevron_right,
+                    size: 22,
+                    color: CommonDesignTokens.textSecondary,
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
+
+  void _showSpeakerIdPicker(
+    String label,
+    int current,
+    int max,
+    ValueChanged<int> onChanged,
+  ) {
+    final controller = TextEditingController(text: current.toString());
+    showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(label),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+            hintText: '0 – $max',
+            border: const OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              final v = int.tryParse(controller.text.trim()) ?? 0;
+              Navigator.of(ctx).pop(v.clamp(0, max));
+            },
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    ).then((v) {
+      if (v != null && mounted) onChanged(v);
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Slider row
+  // ---------------------------------------------------------------------------
 
   Widget _buildSliderRow({
     required IconData icon,
@@ -336,8 +575,9 @@ class _TtsSettingsPageState extends State<TtsSettingsPage> {
               activeTrackColor: CommonDesignTokens.textPrimary,
               inactiveTrackColor: FormDesignTokens.dividerColor,
               thumbColor: CommonDesignTokens.textPrimary,
-              overlayColor:
-                  CommonDesignTokens.textPrimary.withValues(alpha: 0.1),
+              overlayColor: CommonDesignTokens.textPrimary.withValues(
+                alpha: 0.1,
+              ),
               trackHeight: 3,
             ),
             child: Slider(
@@ -352,49 +592,153 @@ class _TtsSettingsPageState extends State<TtsSettingsPage> {
     );
   }
 
-  Widget _buildDivider() {
-    return Padding(
-      padding: const EdgeInsets.only(left: FormDesignTokens.dividerIndent),
-      child: Container(
-        height: FormDesignTokens.dividerThickness,
-        color: FormDesignTokens.dividerColor,
+  // ---------------------------------------------------------------------------
+  // Accent picker row
+  // ---------------------------------------------------------------------------
+
+  Widget _buildAccentPickerRow() {
+    return GestureDetector(
+      onTap: _showAccentPicker,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: SizedBox(
+          height: FormDesignTokens.fieldRowHeight,
+          child: Row(
+            children: [
+              Container(
+                width: SettingsDesignTokens.settingsRowIconContainerSize,
+                height: SettingsDesignTokens.settingsRowIconContainerSize,
+                decoration: BoxDecoration(
+                  color: SettingsDesignTokens.settingsRowIconContainerBg,
+                  borderRadius: BorderRadius.circular(
+                    SettingsDesignTokens.settingsRowIconContainerRadius,
+                  ),
+                ),
+                alignment: Alignment.center,
+                child: const Icon(
+                  Icons.language_outlined,
+                  size: 20,
+                  color: CommonDesignTokens.headerLabelColor,
+                ),
+              ),
+              const SizedBox(width: FormDesignTokens.fieldIconGap),
+              const Text(
+                'Read Aloud Accent',
+                style: TextStyle(
+                  fontSize: FormDesignTokens.fieldLabelSize,
+                  fontWeight: FontWeight.w500,
+                  color: CommonDesignTokens.textSecondary,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                _readAloudAccent == 'uk' ? 'UK' : 'US',
+                style: const TextStyle(
+                  fontSize: FormDesignTokens.fieldValueSize,
+                  color: CommonDesignTokens.textPrimary,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(width: 4),
+              const Icon(
+                Icons.chevron_right,
+                size: 22,
+                color: CommonDesignTokens.textSecondary,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  void _showVoicePicker() {
-    showModalBottomSheet<Map<String, String>>(
+  void _showAccentPicker() {
+    showModalBottomSheet<String>(
       context: context,
-      isScrollControlled: true,
       backgroundColor: CommonDesignTokens.cardBg,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      builder: (_) => _VoicePickerSheet(
-        voices: _voices,
-        selectedKey: _voiceKeyFrom(_voiceLocale, _voiceName),
-        ttsService: widget.ttsService,
-        speechRate: _speechRate,
-        pitch: _pitch,
-        volume: _volume,
-      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: FormDesignTokens.dividerColor,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.only(bottom: 8),
+                child: Text(
+                  'Read Aloud Accent',
+                  style: TextStyle(
+                    fontSize: CommonDesignTokens.bookTitleSize,
+                    fontWeight: FontWeight.w700,
+                    color: CommonDesignTokens.textPrimary,
+                  ),
+                ),
+              ),
+              ListTile(
+                title: const Text('US (American English)'),
+                trailing: _readAloudAccent == 'us'
+                    ? const Icon(
+                        Icons.check,
+                        color: CommonDesignTokens.headerLabelColor,
+                      )
+                    : null,
+                onTap: () => Navigator.of(ctx).pop('us'),
+              ),
+              ListTile(
+                title: const Text('UK (British English)'),
+                trailing: _readAloudAccent == 'uk'
+                    ? const Icon(
+                        Icons.check,
+                        color: CommonDesignTokens.headerLabelColor,
+                      )
+                    : null,
+                onTap: () => Navigator.of(ctx).pop('uk'),
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+      },
     ).then((selected) {
       if (selected != null && mounted) {
-        setState(() {
-          _voiceName = selected['name'];
-          _voiceLocale = selected['locale'];
-        });
+        setState(() => _readAloudAccent = selected);
       }
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // Actions
+  // ---------------------------------------------------------------------------
+
   Future<void> _test() async {
+    final model = TtsModels.forAccent(_readAloudAccent);
+    if (!_mm.isReady(model)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please download the model first.')),
+        );
+      }
+      return;
+    }
     await widget.ttsService.update(
-      speechRate: _speechRate,
-      pitch: _pitch,
+      speed: _speed,
       volume: _volume,
-      voiceName: _voiceName,
-      voiceLocale: _voiceLocale,
+      usSpeakerId: _usSpeakerId,
+      ukSpeakerId: _ukSpeakerId,
+      readAloudAccent: _readAloudAccent,
     );
     await widget.ttsService.speak(
       'This is a test of the text-to-speech settings.',
@@ -403,359 +747,13 @@ class _TtsSettingsPageState extends State<TtsSettingsPage> {
 
   Future<void> _save() async {
     await widget.ttsService.update(
-      speechRate: _speechRate,
-      pitch: _pitch,
+      speed: _speed,
       volume: _volume,
-      voiceName: _voiceName,
-      voiceLocale: _voiceLocale,
+      usSpeakerId: _usSpeakerId,
+      ukSpeakerId: _ukSpeakerId,
+      readAloudAccent: _readAloudAccent,
     );
     if (mounted) Navigator.of(context).pop();
-  }
-}
-
-/// Voice picker bottom sheet with preview playback and icon state.
-class _VoicePickerSheet extends StatefulWidget {
-  const _VoicePickerSheet({
-    required this.voices,
-    required this.selectedKey,
-    required this.ttsService,
-    required this.speechRate,
-    required this.pitch,
-    required this.volume,
-  });
-
-  final List<Map<String, String>> voices;
-  final String selectedKey;
-  final TtsService ttsService;
-  final double speechRate;
-  final double pitch;
-  final double volume;
-
-  @override
-  State<_VoicePickerSheet> createState() => _VoicePickerSheetState();
-}
-
-class _VoicePickerSheetState extends State<_VoicePickerSheet> {
-  String? _previewingKey;
-  String? _selectedLanguage; // null means "All"
-  late final List<String> _languages;
-  String _searchQuery = '';
-
-  @override
-  void initState() {
-    super.initState();
-    widget.ttsService.addListener(_onTtsStateChanged);
-
-    // Extract unique language codes (e.g. "en", "zh", "ja") from locales,
-    // sorted alphabetically, with the selected voice's language first.
-    final langSet = <String>{};
-    for (final v in widget.voices) {
-      final locale = v['locale'] ?? '';
-      final lang = locale.split('-').first.split('_').first;
-      if (lang.isNotEmpty) langSet.add(lang);
-    }
-    _languages = langSet.toList()..sort();
-
-    // Auto-select the language of the currently chosen voice.
-    if (widget.selectedKey.isNotEmpty) {
-      final selectedVoice = widget.voices.where(
-        (v) => _voiceKey(v) == widget.selectedKey,
-      );
-      if (selectedVoice.isNotEmpty) {
-        final locale = selectedVoice.first['locale'] ?? '';
-        final lang = locale.split('-').first.split('_').first;
-        if (lang.isNotEmpty) _selectedLanguage = lang;
-      }
-    }
-  }
-
-  List<Map<String, String>> get _filteredVoices {
-    final query = _searchQuery.toLowerCase();
-    return widget.voices.where((v) {
-      // Language filter.
-      if (_selectedLanguage != null) {
-        final locale = v['locale'] ?? '';
-        final lang = locale.split('-').first.split('_').first;
-        if (lang != _selectedLanguage) return false;
-      }
-      // Search filter.
-      if (query.isNotEmpty) {
-        final name = (v['displayName'] ?? v['name'] ?? '').toLowerCase();
-        final locale = (v['locale'] ?? '').toLowerCase();
-        if (!name.contains(query) && !locale.contains(query)) return false;
-      }
-      return true;
-    }).toList();
-  }
-
-  @override
-  void dispose() {
-    widget.ttsService.removeListener(_onTtsStateChanged);
-    super.dispose();
-  }
-
-  void _onTtsStateChanged() {
-    if (!widget.ttsService.isSpeaking && _previewingKey != null) {
-      if (mounted) setState(() => _previewingKey = null);
-    }
-  }
-
-  Widget _buildLanguageChip(String? language, String label) {
-    final isActive = _selectedLanguage == language;
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: GestureDetector(
-        onTap: () => setState(() => _selectedLanguage = language),
-        child: Container(
-          height: 32,
-          alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          decoration: BoxDecoration(
-            color: isActive
-                ? CommonDesignTokens.textPrimary
-                : CommonDesignTokens.textPrimary.withValues(alpha: 0.06),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              height: 1.0,
-              fontWeight: FontWeight.w500,
-              color: isActive
-                  ? CommonDesignTokens.cardBg
-                  : CommonDesignTokens.textSecondary,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _preview(Map<String, String> voice) async {
-    final key = _voiceKey(voice);
-
-    // Tap again to stop.
-    if (_previewingKey == key && widget.ttsService.isSpeaking) {
-      await widget.ttsService.stop();
-      return;
-    }
-
-    await widget.ttsService.stop();
-    setState(() => _previewingKey = key);
-
-    await widget.ttsService.update(
-      speechRate: widget.speechRate,
-      pitch: widget.pitch,
-      volume: widget.volume,
-      voiceName: voice['name'],
-      voiceLocale: voice['locale'],
-    );
-    await widget.ttsService.speak('Hello, this is a preview of this voice.');
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return DraggableScrollableSheet(
-      initialChildSize: 0.5,
-      minChildSize: 0.3,
-      maxChildSize: 0.8,
-      expand: false,
-      builder: (context, scrollController) {
-        return Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: FormDesignTokens.dividerColor,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.only(bottom: 8),
-              child: Text(
-                'Select Voice',
-                style: TextStyle(
-                  fontSize: CommonDesignTokens.bookTitleSize,
-                  fontWeight: FontWeight.w700,
-                  color: CommonDesignTokens.textPrimary,
-                ),
-              ),
-            ),
-            // Language filter chips.
-            SizedBox(
-              height: 38,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                children: [
-                  _buildLanguageChip(null, 'All'),
-                  for (final lang in _languages)
-                    _buildLanguageChip(lang, lang.toUpperCase()),
-                ],
-              ),
-            ),
-            const SizedBox(height: 10),
-            // Search bar.
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: SizedBox(
-                height: 38,
-                child: TextField(
-                  onChanged: (v) => setState(() => _searchQuery = v),
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: CommonDesignTokens.textPrimary,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: 'Search voice...',
-                    hintStyle: TextStyle(
-                      fontSize: 14,
-                      color: CommonDesignTokens.textSecondary
-                          .withValues(alpha: 0.6),
-                    ),
-                    prefixIcon: const Icon(
-                      Icons.search,
-                      size: 20,
-                      color: CommonDesignTokens.textSecondary,
-                    ),
-                    prefixIconConstraints: const BoxConstraints(
-                      minWidth: 40,
-                    ),
-                    filled: true,
-                    fillColor:
-                        CommonDesignTokens.textPrimary.withValues(alpha: 0.04),
-                    contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: ListView.builder(
-                controller: scrollController,
-                itemCount: _filteredVoices.length,
-                itemBuilder: (context, index) {
-                  final voice = _filteredVoices[index];
-                  final key = _voiceKey(voice);
-                  final isSelected = key == widget.selectedKey;
-                  final isPreviewing = key == _previewingKey &&
-                      widget.ttsService.isSpeaking;
-
-                  final displayName = voice['displayName'] ?? voice['name']!;
-                  final quality = voice['quality'] ?? 'default';
-
-                  return ListTile(
-                    title: Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            displayName,
-                            style: TextStyle(
-                              fontSize: FormDesignTokens.fieldValueSize,
-                              color: CommonDesignTokens.textPrimary,
-                              fontWeight: isSelected
-                                  ? FontWeight.w600
-                                  : FontWeight.normal,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (quality == 'enhanced' || quality == 'premium') ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 1,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF22C55E).withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              quality == 'premium' ? 'Premium' : 'Enhanced',
-                              style: const TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF22C55E),
-                              ),
-                            ),
-                          ),
-                        ] else if (quality == 'compact') ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 1,
-                            ),
-                            decoration: BoxDecoration(
-                              color: CommonDesignTokens.textSecondary
-                                  .withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: const Text(
-                              'Compact',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                                color: CommonDesignTokens.textSecondary,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    subtitle: Text(
-                      voice['locale']!,
-                      style: const TextStyle(
-                        fontSize: FormDesignTokens.helperSize,
-                        color: CommonDesignTokens.textSecondary,
-                      ),
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        GestureDetector(
-                          onTap: () => _preview(voice),
-                          child: Icon(
-                            isPreviewing
-                                ? Icons.stop_circle_outlined
-                                : Icons.play_circle_outline,
-                            size: 24,
-                            color: isPreviewing
-                                ? CommonDesignTokens.textPrimary
-                                : CommonDesignTokens.headerLabelColor,
-                          ),
-                        ),
-                        if (isSelected) ...[
-                          const SizedBox(width: 12),
-                          const Icon(
-                            Icons.check,
-                            color: CommonDesignTokens.headerLabelColor,
-                          ),
-                        ],
-                      ],
-                    ),
-                    onTap: () {
-                      widget.ttsService.stop();
-                      Navigator.of(context).pop(voice);
-                    },
-                  );
-                },
-              ),
-            ),
-          ],
-        );
-      },
-    );
   }
 }
 

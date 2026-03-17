@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../../app/providers/app-providers.dart';
 import '../../components/settings/ai_settings_dialog.dart' show AiSettingsPage;
 import '../../components/settings/tts_settings_page.dart' show TtsSettingsPage;
-import '../../services/tts/tts_service.dart' show TtsService;
 import '../../shared/constants/common-design-tokens.dart';
 import '../../components/library/library-header.dart';
 import '../../components/settings/settings-account-card.dart';
@@ -118,13 +117,10 @@ class SettingsPage extends StatelessWidget {
                     listenable: ttsService,
                     builder: (context, _) => SettingsRow(
                       icon: Icons.record_voice_over_outlined,
-                      label: 'Text-to-Speech',
-                      value: ttsService.voiceName != null
-                          ? TtsService.parseDisplayName(ttsService.voiceName!)
-                          : 'Default',
+                      label: 'TTS',
+                      value: ttsService.currentModelDisplayName,
                       showDivider: false,
-                      onTap: () =>
-                          TtsSettingsPage.push(context, ttsService),
+                      onTap: () => TtsSettingsPage.push(context, ttsService),
                     ),
                   ),
                 ),
