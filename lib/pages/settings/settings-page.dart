@@ -115,13 +115,21 @@ class SettingsPage extends StatelessWidget {
                   ),
                   child: ListenableBuilder(
                     listenable: ttsService,
-                    builder: (context, _) => SettingsRow(
-                      icon: Icons.record_voice_over_outlined,
-                      label: 'TTS',
-                      value: ttsService.currentModelDisplayName,
-                      showDivider: false,
-                      onTap: () => TtsSettingsPage.push(context, ttsService),
-                    ),
+                    builder: (context, _) {
+                      final langCount =
+                          ttsService.configuredLanguages.length;
+                      final summary = langCount == 0
+                          ? 'Not configured'
+                          : '$langCount language${langCount > 1 ? 's' : ''}';
+                      return SettingsRow(
+                        icon: Icons.record_voice_over_outlined,
+                        label: 'TTS',
+                        value: summary,
+                        showDivider: false,
+                        onTap: () =>
+                            TtsSettingsPage.push(context, ttsService),
+                      );
+                    },
                   ),
                 ),
               ),

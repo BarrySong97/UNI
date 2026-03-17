@@ -148,6 +148,7 @@ class LibraryStore extends ChangeNotifier {
         sourceType: imported.sourceType,
         sourcePath: imported.sourcePath,
         epubFilePath: epubFilePath,
+        language: imported.language,
         createdAt: now,
         updatedAt: now,
       );
@@ -213,6 +214,7 @@ class LibraryStore extends ChangeNotifier {
         sourceType: book.sourceType,
         sourcePath: book.sourcePath,
         epubFilePath: relativePath,
+        language: book.language,
         createdAt: book.createdAt,
         updatedAt: book.updatedAt,
       );
@@ -266,6 +268,22 @@ class LibraryStore extends ChangeNotifier {
     _state = _state.copyWith(
       activeCategory: category,
       filteredBooks: _filterByCategory(_state.books, category),
+    );
+    notifyListeners();
+  }
+
+  /// Update the language of an existing book.
+  Future<void> updateBookLanguage(String bookId, String? language) async {
+    final book = await _bookRepository.getBookById(bookId);
+    if (book == null) return;
+
+    final updated = book.copyWithLanguage(language);
+    await _bookRepository.upsertBook(updated);
+
+    final books = await _bookRepository.getShelfBooks();
+    _state = _state.copyWith(
+      books: books,
+      filteredBooks: _filterByCategory(books, _state.activeCategory),
     );
     notifyListeners();
   }

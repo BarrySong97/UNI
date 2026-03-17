@@ -22,7 +22,7 @@ class AppDatabase {
     final path = p.join(root, 'uni_reader.db');
     final database = await openDatabase(
       path,
-      version: 11,
+      version: 12,
       onCreate: (db, _) async {
         await db.execute('''
 CREATE TABLE ${BooksTable.tableName} (
@@ -35,6 +35,7 @@ CREATE TABLE ${BooksTable.tableName} (
   ${BooksTable.sourceType} TEXT NOT NULL,
   ${BooksTable.sourcePath} TEXT,
   ${BooksTable.epubFilePath} TEXT,
+  ${BooksTable.language} TEXT,
   ${BooksTable.createdAt} INTEGER NOT NULL,
   ${BooksTable.updatedAt} INTEGER NOT NULL
 )
@@ -94,6 +95,9 @@ CREATE TABLE ${HighlightsTable.tableName} (
         if (oldVersion < 11) {
           await _migrateToV11(db);
         }
+        if (oldVersion < 12) {
+          await _migrateToV12(db);
+        }
       },
     );
     return AppDatabase._(_SqfliteBackend(database));
@@ -147,6 +151,12 @@ CREATE TABLE ${HighlightsTable.tableName} (
   static Future<void> _migrateToV11(DatabaseExecutor db) async {
     await db.execute(
       'ALTER TABLE ${ReadingProgressTable.tableName} ADD COLUMN ${ReadingProgressTable.pageCountsJson} TEXT',
+    );
+  }
+
+  static Future<void> _migrateToV12(DatabaseExecutor db) async {
+    await db.execute(
+      'ALTER TABLE ${BooksTable.tableName} ADD COLUMN ${BooksTable.language} TEXT',
     );
   }
 
@@ -330,6 +340,7 @@ class _SqfliteBackend implements _DatabaseBackend {
       BooksTable.sourceType: book.sourceType,
       BooksTable.sourcePath: book.sourcePath,
       BooksTable.epubFilePath: book.epubFilePath,
+      BooksTable.language: book.language,
       BooksTable.createdAt: book.createdAtMillis,
       BooksTable.updatedAt: book.updatedAtMillis,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
@@ -475,6 +486,7 @@ class _SqfliteBackend implements _DatabaseBackend {
       sourceType: row[BooksTable.sourceType]! as String,
       sourcePath: row[BooksTable.sourcePath] as String?,
       epubFilePath: row[BooksTable.epubFilePath] as String?,
+      language: row[BooksTable.language] as String?,
       createdAtMillis: row[BooksTable.createdAt]! as int,
       updatedAtMillis: row[BooksTable.updatedAt]! as int,
     );

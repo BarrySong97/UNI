@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../../services/phonetics/phonetics_service.dart';
-import '../../../services/tts/tts_model_config.dart';
 import '../../../services/tts/tts_service.dart';
 import '../../../shared/constants/common-design-tokens.dart';
 
@@ -77,8 +76,10 @@ class _ReaderPhoneticsSheetState extends State<ReaderPhoneticsSheet> {
   }
 
   Future<void> _play(String accent) async {
-    final model = TtsModels.forAccent(accent);
-    if (!widget.ttsService.modelManager.isReady(model)) {
+    // Map phonetics accent labels to TTS language codes.
+    final languageCode = accent == 'uk' ? 'en_GB' : 'en_US';
+    final model = widget.ttsService.modelInfoForLanguage(languageCode);
+    if (model == null || !widget.ttsService.modelManager.isReady(model)) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -95,7 +96,7 @@ class _ReaderPhoneticsSheetState extends State<ReaderPhoneticsSheet> {
       return;
     }
     setState(() => _playingAccent = accent);
-    await widget.ttsService.speakWithAccent(widget.selectedText, accent);
+    await widget.ttsService.speakWithLanguage(widget.selectedText, languageCode);
   }
 
   @override

@@ -13,6 +13,7 @@ class ImportedBookDraft {
     required this.sourcePath,
     required this.format,
     this.coverUrl,
+    this.language,
   });
 
   final String title;
@@ -21,6 +22,7 @@ class ImportedBookDraft {
   final String sourcePath;
   final String format;
   final String? coverUrl;
+  final String? language;
 }
 
 class BookImportService {
@@ -55,6 +57,8 @@ class BookImportService {
         p.basenameWithoutExtension(file.path);
     final author = _sanitizeMetadataText(metadata.author) ?? 'Unknown';
 
+    final language = _sanitizeMetadataText(metadata.language);
+
     return ImportedBookDraft(
       title: title,
       author: author,
@@ -62,6 +66,7 @@ class BookImportService {
       sourcePath: file.path,
       format: 'epub',
       coverUrl: coverUrl,
+      language: language,
     );
   }
 
@@ -180,22 +185,23 @@ class BookImportService {
     return 'data:$mime;base64,${base64Encode(bytes)}';
   }
 
-  ({String? title, String? author}) _extractEpubMetadata(
+  ({String? title, String? author, String? language}) _extractEpubMetadata(
     Archive archive,
     String? opfPath,
   ) {
     if (opfPath == null) {
-      return (title: null, author: null);
+      return (title: null, author: null, language: null);
     }
     final opfEntry = _findArchiveFile(archive, opfPath);
     if (opfEntry == null) {
-      return (title: null, author: null);
+      return (title: null, author: null, language: null);
     }
 
     final opf = utf8.decode(_readEntryBytes(opfEntry), allowMalformed: true);
     final title = _extractXmlText(opf, <String>['dc:title', 'title']);
     final author = _extractXmlText(opf, <String>['dc:creator', 'creator']);
-    return (title: title, author: author);
+    final language = _extractXmlText(opf, <String>['dc:language', 'language']);
+    return (title: title, author: author, language: language);
   }
 
   ArchiveFile? _findArchiveFile(Archive archive, String path) {

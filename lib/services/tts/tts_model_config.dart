@@ -1,20 +1,23 @@
+import 'tts_voice_catalog.dart';
+
 class TtsModelInfo {
   const TtsModelInfo({
     required this.id,
     required this.displayName,
-    required this.accent,
+    required this.languageCode,
     required this.downloadUrl,
     required this.dirName,
     required this.modelFileName,
     required this.speakerCount,
     required this.estimatedSizeMB,
+    this.gender = VoiceGender.unknown,
   });
 
   final String id;
   final String displayName;
 
-  /// 'us' or 'uk'.
-  final String accent;
+  /// Language locale code, e.g. "en_US", "fr_FR".
+  final String languageCode;
 
   final String downloadUrl;
 
@@ -26,16 +29,33 @@ class TtsModelInfo {
 
   final int speakerCount;
   final int estimatedSizeMB;
+  final VoiceGender gender;
 
   String get tokensRelative => 'tokens.txt';
   String get dataDirRelative => 'espeak-ng-data';
+
+  /// Construct from a catalog voice entry.
+  factory TtsModelInfo.fromVoiceInfo(TtsVoiceInfo voice) {
+    return TtsModelInfo(
+      id: voice.key,
+      displayName: voice.displayName,
+      languageCode: voice.languageCode,
+      downloadUrl: voice.downloadUrl,
+      dirName: voice.dirName,
+      modelFileName: voice.modelFileName,
+      speakerCount: voice.numSpeakers,
+      estimatedSizeMB: voice.estimatedSizeMB,
+      gender: voice.gender,
+    );
+  }
 }
 
-abstract final class TtsModels {
+/// Built-in fallback models when the catalog is not yet loaded.
+abstract final class TtsBuiltinModels {
   static const usModel = TtsModelInfo(
     id: 'en_US-libritts_r-medium',
     displayName: 'LibriTTS-R Medium',
-    accent: 'us',
+    languageCode: 'en_US',
     downloadUrl:
         'https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-libritts_r-medium.tar.bz2',
     dirName: 'vits-piper-en_US-libritts_r-medium',
@@ -47,7 +67,7 @@ abstract final class TtsModels {
   static const ukModel = TtsModelInfo(
     id: 'en_GB-alba-medium',
     displayName: 'Alba Medium',
-    accent: 'uk',
+    languageCode: 'en_GB',
     downloadUrl:
         'https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_GB-alba-medium.tar.bz2',
     dirName: 'vits-piper-en_GB-alba-medium',
@@ -57,8 +77,4 @@ abstract final class TtsModels {
   );
 
   static const List<TtsModelInfo> all = [usModel, ukModel];
-
-  static TtsModelInfo forAccent(String accent) {
-    return accent == 'uk' ? ukModel : usModel;
-  }
 }

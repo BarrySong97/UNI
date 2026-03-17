@@ -33,23 +33,40 @@ class TtsModelManager extends ChangeNotifier {
   final Map<String, TtsModelState> _states = {};
   late String _modelsRoot;
 
+  /// Set of model IDs found on disk during initialization.
+  final Set<String> _downloadedModelIds = {};
+
   Future<void> initialize() async {
     final docsDir = await getApplicationDocumentsDirectory();
     _modelsRoot = p.join(docsDir.path, 'tts-models');
     await Directory(_modelsRoot).create(recursive: true);
 
-    // Check existing models.
-    for (final model in TtsModels.all) {
-      final dir = Directory(p.join(_modelsRoot, model.dirName));
-      final modelFile = File(p.join(dir.path, model.modelFileName));
-      if (dir.existsSync() && modelFile.existsSync()) {
-        _states[model.id] = const TtsModelState(status: TtsModelStatus.ready);
-      } else {
-        _states[model.id] =
-            const TtsModelState(status: TtsModelStatus.notDownloaded);
+    // Scan existing downloaded models on disk.
+    await _scanDownloadedModels();
+    notifyListeners();
+  }
+
+  /// Scan tts-models/ for vits-piper-* directories containing .onnx files.
+  Future<void> _scanDownloadedModels() async {
+    _downloadedModelIds.clear();
+    final dir = Directory(_modelsRoot);
+    if (!dir.existsSync()) return;
+
+    await for (final entity in dir.list()) {
+      if (entity is Directory) {
+        final dirName = p.basename(entity.path);
+        if (!dirName.startsWith('vits-piper-')) continue;
+
+        // Extract model ID from dirName: "vits-piper-{key}" -> "{key}"
+        final modelId = dirName.substring('vits-piper-'.length);
+        final onnxFile = File(p.join(entity.path, '$modelId.onnx'));
+        if (onnxFile.existsSync()) {
+          _downloadedModelIds.add(modelId);
+          _states[modelId] =
+              const TtsModelState(status: TtsModelStatus.ready);
+        }
       }
     }
-    notifyListeners();
   }
 
   TtsModelState stateOf(TtsModelInfo model) {
@@ -59,6 +76,14 @@ class TtsModelManager extends ChangeNotifier {
   bool isReady(TtsModelInfo model) {
     return stateOf(model).status == TtsModelStatus.ready;
   }
+
+  /// Check if a model ID is downloaded (without needing a full TtsModelInfo).
+  bool isModelIdReady(String modelId) {
+    return _downloadedModelIds.contains(modelId);
+  }
+
+  /// List all downloaded model IDs.
+  Set<String> get downloadedModelIds => Set.unmodifiable(_downloadedModelIds);
 
   String getModelPath(TtsModelInfo model) {
     return p.join(_modelsRoot, model.dirName, model.modelFileName);
@@ -156,6 +181,7 @@ class TtsModelManager extends ChangeNotifier {
       await tempFile.delete();
     }
 
+    _downloadedModelIds.add(model.id);
     _updateState(model, const TtsModelState(status: TtsModelStatus.ready));
   }
 
@@ -169,6 +195,7 @@ class TtsModelManager extends ChangeNotifier {
     if (dir.existsSync()) {
       await dir.delete(recursive: true);
     }
+    _downloadedModelIds.remove(model.id);
     _updateState(
         model, const TtsModelState(status: TtsModelStatus.notDownloaded));
   }

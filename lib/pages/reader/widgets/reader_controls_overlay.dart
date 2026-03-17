@@ -19,6 +19,7 @@ class ReaderControlsOverlay extends StatefulWidget {
     required this.onBack,
     required this.onPreferencesChanged,
     required this.onTocPressed,
+    this.onMorePressed,
   });
 
   final ReaderPreferences preferences;
@@ -30,6 +31,7 @@ class ReaderControlsOverlay extends StatefulWidget {
   final VoidCallback onBack;
   final ValueChanged<ReaderPreferences> onPreferencesChanged;
   final VoidCallback onTocPressed;
+  final VoidCallback? onMorePressed;
 
   @override
   State<ReaderControlsOverlay> createState() => _ReaderControlsOverlayState();
@@ -121,7 +123,7 @@ class _ReaderControlsOverlayState extends State<ReaderControlsOverlay>
                   IconButton(
                     icon:
                         Icon(Icons.more_horiz, color: _textColor, size: 22),
-                    onPressed: () {},
+                    onPressed: widget.onMorePressed,
                   ),
                 ],
               ),

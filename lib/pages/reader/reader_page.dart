@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../app/providers/app-providers.dart';
+import '../../app/routes/route-names.dart';
 import '../../entities/book-entity.dart';
 import '../../repositories/progress/progress-repository.dart';
 import '../../services/reader/data/chapter_data_source.dart';
@@ -9,7 +10,6 @@ import '../../services/reader/models/page_layout.dart';
 import '../../services/reader/models/reader_preferences.dart';
 import '../../services/reader/selection/cross_page_selection.dart';
 import '../../services/reader/selection/page_hit_test.dart';
-import '../../services/tts/tts_model_config.dart';
 import '../../stores/reader/reader_store.dart';
 import 'widgets/reader_canvas_painter.dart';
 import 'widgets/reader_controls_overlay.dart';
@@ -674,6 +674,14 @@ class _ReaderPageState extends State<ReaderPage>
     );
   }
 
+  void _onMorePressed() {
+    _store.hideControls();
+    Navigator.of(context).pushNamed(
+      RouteNames.bookDetail,
+      arguments: widget.book.id,
+    );
+  }
+
   // ---------------------------------------------------------------------------
   // Build
   // ---------------------------------------------------------------------------
@@ -905,6 +913,7 @@ class _ReaderPageState extends State<ReaderPage>
               _store.updatePreferences(newPrefs);
             },
             onTocPressed: _onTocPressed,
+            onMorePressed: _onMorePressed,
           ),
       ],
     );
@@ -1076,23 +1085,28 @@ class _ReaderPageState extends State<ReaderPage>
               final ttsService =
                   AppProvidersScope.of(context).ttsService;
 
-              final model =
-                  TtsModels.forAccent(ttsService.readAloudAccent);
-              if (!ttsService.modelManager.isReady(model)) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'TTS model not downloaded. Please download it in Settings.',
-                    ),
-                  ),
-                );
-                return;
-              }
-
               if (ttsService.isSpeaking) {
                 ttsService.stop();
               } else {
-                ttsService.speak(selectedText);
+                final langCode = ttsService.resolveBookLanguage(
+                  widget.book.language,
+                );
+                final model = ttsService.modelInfoForLanguage(langCode);
+                if (model == null ||
+                    !ttsService.modelManager.isReady(model)) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'TTS model not downloaded. Please download it in Settings.',
+                      ),
+                    ),
+                  );
+                  return;
+                }
+                ttsService.speakForBookLanguage(
+                  selectedText,
+                  widget.book.language,
+                );
               }
             }),
             Container(width: 1, height: 20, color: Colors.white24),

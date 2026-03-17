@@ -9,6 +9,7 @@ abstract final class BooksTable {
   static const String sourceType = 'source_type';
   static const String sourcePath = 'source_path';
   static const String epubFilePath = 'epub_file_path';
+  static const String language = 'language';
   static const String createdAt = 'created_at';
   static const String updatedAt = 'updated_at';
 }

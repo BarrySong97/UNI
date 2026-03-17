@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../services/tts/tts_model_config.dart';
 import '../../services/tts/tts_model_manager.dart';
 import '../../services/tts/tts_service.dart';
+import '../../services/tts/tts_voice_catalog.dart';
 import '../../shared/constants/common-design-tokens.dart';
 import '../../shared/constants/form-design-tokens.dart';
 import '../../shared/constants/settings-design-tokens.dart';
@@ -27,24 +28,60 @@ class TtsSettingsPage extends StatefulWidget {
 class _TtsSettingsPageState extends State<TtsSettingsPage> {
   late double _speed;
   late double _volume;
-  late int _usSpeakerId;
-  late int _ukSpeakerId;
-  late String _readAloudAccent;
+  String? _isPlayingLang;
+  bool _isStartingPreview = false;
+
+  static const _sampleTexts = <String, String>{
+    'en_US': 'This is a test of the text-to-speech settings.',
+    'en_GB': 'This is a test of the text-to-speech settings.',
+    'zh_CN': '这是一段语音合成测试文本，用于测试中文朗读效果。',
+    'fr_FR': 'Ceci est un test de la synthèse vocale.',
+    'de_DE': 'Dies ist ein Test der Sprachsynthese-Einstellungen.',
+    'es_ES': 'Esta es una prueba de la síntesis de voz.',
+    'es_MX': 'Esta es una prueba de la síntesis de voz.',
+    'ru_RU': 'Это тест настроек синтеза речи.',
+    'pt_BR': 'Este é um teste das configurações de síntese de voz.',
+    'it_IT': 'Questo è un test delle impostazioni di sintesi vocale.',
+    'nl_NL': 'Dit is een test van de spraaksynthese-instellingen.',
+    'pl_PL': 'To jest test ustawień syntezy mowy.',
+    'uk_UA': 'Це тест налаштувань синтезу мовлення.',
+    'cs_CZ': 'Toto je test nastavení syntézy řeči.',
+    'da_DK': 'Dette er en test af talesyntese-indstillingerne.',
+    'fi_FI': 'Tämä on puhesynteesiasetusten testi.',
+    'el_GR': 'Αυτή είναι μια δοκιμή των ρυθμίσεων σύνθεσης ομιλίας.',
+    'hu_HU': 'Ez a beszédszintézis beállítások tesztje.',
+    'is_IS': 'Þetta er prufa á raddtækni stillingunum.',
+    'ka_GE': 'ეს არის ტექსტიდან მეტყველების ტესტი.',
+    'lb_LU': 'Dëst ass en Test vun de Sproochsynthese-Astellungen.',
+    'no_NO': 'Dette er en test av talesyntese-innstillingene.',
+    'ro_RO': 'Acesta este un test al setărilor de sinteză vocală.',
+    'sk_SK': 'Toto je test nastavení syntézy reči.',
+    'sl_SI': 'To je test nastavitev govorne sinteze.',
+    'sr_RS': 'Ово је тест подешавања синтезе говора.',
+    'sv_SE': 'Detta är ett test av talsyntsinställningarna.',
+    'sw_CD': 'Hii ni jaribio la mipangilio ya usanisi wa hotuba.',
+    'tr_TR': 'Bu, konuşma sentezi ayarlarının bir testidir.',
+    'vi_VN': 'Đây là bài kiểm tra cài đặt tổng hợp giọng nói.',
+    'ar_JO': 'هذا اختبار لإعدادات تحويل النص إلى كلام.',
+    'bn_BD': 'এটি টেক্সট-টু-স্পিচ সেটিংসের একটি পরীক্ষা।',
+    'ne_NP': 'यो पाठ-वाचन सेटिङ्सको परीक्षण हो।',
+  };
 
   @override
   void initState() {
     super.initState();
     _speed = widget.ttsService.speed;
     _volume = widget.ttsService.volume;
-    _usSpeakerId = widget.ttsService.usSpeakerId;
-    _ukSpeakerId = widget.ttsService.ukSpeakerId;
-    _readAloudAccent = widget.ttsService.readAloudAccent;
     widget.ttsService.modelManager.addListener(_onModelChange);
+    widget.ttsService.catalog.addListener(_onCatalogChange);
+    widget.ttsService.addListener(_onServiceChange);
   }
 
   @override
   void dispose() {
     widget.ttsService.modelManager.removeListener(_onModelChange);
+    widget.ttsService.catalog.removeListener(_onCatalogChange);
+    widget.ttsService.removeListener(_onServiceChange);
     super.dispose();
   }
 
@@ -52,10 +89,27 @@ class _TtsSettingsPageState extends State<TtsSettingsPage> {
     if (mounted) setState(() {});
   }
 
+  void _onCatalogChange() {
+    if (mounted) setState(() {});
+  }
+
+  void _onServiceChange() {
+    // Don't clear playing state during the stop-then-speak transition.
+    if (!_isStartingPreview &&
+        !widget.ttsService.isSpeaking &&
+        _isPlayingLang != null) {
+      _isPlayingLang = null;
+    }
+    if (mounted) setState(() {});
+  }
+
   TtsModelManager get _mm => widget.ttsService.modelManager;
+  TtsVoiceCatalog get _catalog => widget.ttsService.catalog;
 
   @override
   Widget build(BuildContext context) {
+    final configuredLanguages = widget.ttsService.configuredLanguages;
+
     return Scaffold(
       backgroundColor: CommonDesignTokens.pageBackground,
       appBar: AppBar(
@@ -84,36 +138,17 @@ class _TtsSettingsPageState extends State<TtsSettingsPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // VOICE MODEL section
-            const _SectionLabel(label: 'VOICE MODEL'),
+            // LANGUAGES section
+            const _SectionLabel(label: 'LANGUAGES'),
             const SizedBox(height: 12),
             _buildCard(
               children: [
-                _buildModelRow(TtsModels.usModel),
-                _buildDivider(),
-                _buildModelRow(TtsModels.ukModel),
-                // US Speaker ID (only if US model has multiple speakers).
-                if (_mm.isReady(TtsModels.usModel) &&
-                    TtsModels.usModel.speakerCount > 1) ...[
-                  _buildDivider(),
-                  _buildSpeakerIdRow(
-                    label: 'US Speaker',
-                    value: _usSpeakerId,
-                    max: TtsModels.usModel.speakerCount - 1,
-                    onChanged: (v) => setState(() => _usSpeakerId = v),
-                  ),
+                for (int i = 0; i < configuredLanguages.length; i++) ...[
+                  if (i > 0) _buildDivider(),
+                  _buildLanguageRow(configuredLanguages[i]),
                 ],
-                // UK Speaker ID (only if UK model has multiple speakers).
-                if (_mm.isReady(TtsModels.ukModel) &&
-                    TtsModels.ukModel.speakerCount > 1) ...[
-                  _buildDivider(),
-                  _buildSpeakerIdRow(
-                    label: 'UK Speaker',
-                    value: _ukSpeakerId,
-                    max: TtsModels.ukModel.speakerCount - 1,
-                    onChanged: (v) => setState(() => _ukSpeakerId = v),
-                  ),
-                ],
+                if (configuredLanguages.isNotEmpty) _buildDivider(),
+                _buildAddLanguageRow(),
               ],
             ),
             const SizedBox(height: 28),
@@ -143,63 +178,31 @@ class _TtsSettingsPageState extends State<TtsSettingsPage> {
                   displayValue: '${(_volume * 100).round()}%',
                   onChanged: (v) => setState(() => _volume = v),
                 ),
-                _buildDivider(),
-                _buildAccentPickerRow(),
               ],
             ),
             const SizedBox(height: 32),
 
-            // Buttons
-            Row(
-              children: [
-                Expanded(
-                  child: SizedBox(
-                    height: FormDesignTokens.buttonHeight,
-                    child: OutlinedButton(
-                      onPressed: _test,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: CommonDesignTokens.textPrimary,
-                        side: const BorderSide(
-                          color: CommonDesignTokens.textPrimary,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(
-                            CommonDesignTokens.cardRadius,
-                          ),
-                        ),
-                        textStyle: const TextStyle(
-                          fontSize: FormDesignTokens.buttonFontSize,
-                          fontWeight: FormDesignTokens.buttonFontWeight,
-                        ),
-                      ),
-                      child: const Text('Test'),
+            // Save button
+            SizedBox(
+              width: double.infinity,
+              height: FormDesignTokens.buttonHeight,
+              child: FilledButton(
+                onPressed: _save,
+                style: FilledButton.styleFrom(
+                  backgroundColor: FormDesignTokens.buttonBg,
+                  foregroundColor: FormDesignTokens.buttonText,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(
+                      CommonDesignTokens.cardRadius,
                     ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: SizedBox(
-                    height: FormDesignTokens.buttonHeight,
-                    child: FilledButton(
-                      onPressed: _save,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: FormDesignTokens.buttonBg,
-                        foregroundColor: FormDesignTokens.buttonText,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(
-                            CommonDesignTokens.cardRadius,
-                          ),
-                        ),
-                        textStyle: const TextStyle(
-                          fontSize: FormDesignTokens.buttonFontSize,
-                          fontWeight: FormDesignTokens.buttonFontWeight,
-                        ),
-                      ),
-                      child: const Text('Save'),
-                    ),
+                  textStyle: const TextStyle(
+                    fontSize: FormDesignTokens.buttonFontSize,
+                    fontWeight: FormDesignTokens.buttonFontWeight,
                   ),
                 ),
-              ],
+                child: const Text('Save'),
+              ),
             ),
             const SizedBox(height: 24),
           ],
@@ -233,78 +236,128 @@ class _TtsSettingsPageState extends State<TtsSettingsPage> {
   }
 
   // ---------------------------------------------------------------------------
-  // Model row
+  // Language row
   // ---------------------------------------------------------------------------
 
-  Widget _buildModelRow(TtsModelInfo model) {
-    final state = _mm.stateOf(model);
-    final accentLabel = model.accent == 'uk' ? 'UK' : 'US';
+  Widget _buildLanguageRow(String languageCode) {
+    final voiceMap = widget.ttsService.voiceMap;
+    final selection = voiceMap[languageCode];
+    final modelInfo = widget.ttsService.modelInfoForLanguage(languageCode);
+    final displayName = widget.ttsService.voiceDisplayName(languageCode);
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: SizedBox(
-        height: FormDesignTokens.fieldRowHeight,
-        child: Row(
-          children: [
-            Container(
-              width: SettingsDesignTokens.settingsRowIconContainerSize,
-              height: SettingsDesignTokens.settingsRowIconContainerSize,
-              decoration: BoxDecoration(
-                color: SettingsDesignTokens.settingsRowIconContainerBg,
-                borderRadius: BorderRadius.circular(
-                  SettingsDesignTokens.settingsRowIconContainerRadius,
+    // Get language display name from catalog.
+    final group = _catalog.languageGroups[languageCode];
+    final langLabel = group?.displayLabel ?? languageCode;
+
+    // Model status.
+    final isReady = modelInfo != null && _mm.isReady(modelInfo);
+    final state = modelInfo != null ? _mm.stateOf(modelInfo) : null;
+
+    return GestureDetector(
+      onTap: () => _showVoicePicker(languageCode),
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: SizedBox(
+          height: FormDesignTokens.fieldRowHeight,
+          child: Row(
+            children: [
+              Container(
+                width: SettingsDesignTokens.settingsRowIconContainerSize,
+                height: SettingsDesignTokens.settingsRowIconContainerSize,
+                decoration: BoxDecoration(
+                  color: SettingsDesignTokens.settingsRowIconContainerBg,
+                  borderRadius: BorderRadius.circular(
+                    SettingsDesignTokens.settingsRowIconContainerRadius,
+                  ),
+                ),
+                alignment: Alignment.center,
+                child: const Icon(
+                  Icons.record_voice_over_outlined,
+                  size: 20,
+                  color: CommonDesignTokens.headerLabelColor,
                 ),
               ),
-              alignment: Alignment.center,
-              child: const Icon(
-                Icons.record_voice_over_outlined,
-                size: 20,
-                color: CommonDesignTokens.headerLabelColor,
+              const SizedBox(width: FormDesignTokens.fieldIconGap),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      langLabel,
+                      style: const TextStyle(
+                        fontSize: FormDesignTokens.fieldLabelSize,
+                        fontWeight: FontWeight.w500,
+                        color: CommonDesignTokens.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      isReady
+                          ? displayName
+                          : selection != null
+                              ? '$displayName — tap to download'
+                              : 'Not selected — tap to configure',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isReady
+                            ? CommonDesignTokens.textSecondary
+                            : CommonDesignTokens.textSecondary
+                                .withValues(alpha: 0.6),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(width: FormDesignTokens.fieldIconGap),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '$accentLabel Model',
-                    style: const TextStyle(
-                      fontSize: FormDesignTokens.fieldLabelSize,
-                      fontWeight: FontWeight.w500,
-                      color: CommonDesignTokens.textSecondary,
+              if (selection != null) ...[
+                _buildLanguageStatusWidget(modelInfo, state, isReady),
+                const SizedBox(width: 4),
+              ],
+              if (isReady)
+                GestureDetector(
+                  onTap: () => _playLanguagePreview(languageCode),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Icon(
+                      _isPlayingLang == languageCode &&
+                              widget.ttsService.isSpeaking
+                          ? Icons.stop_circle_outlined
+                          : Icons.play_circle_outline,
+                      size: 24,
+                      color: _isPlayingLang == languageCode &&
+                              widget.ttsService.isSpeaking
+                          ? CommonDesignTokens.textPrimary
+                          : CommonDesignTokens.headerLabelColor,
                     ),
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    model.displayName,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: CommonDesignTokens.textSecondary,
-                    ),
-                  ),
-                ],
+                ),
+              const Icon(
+                Icons.chevron_right,
+                size: 22,
+                color: CommonDesignTokens.textSecondary,
               ),
-            ),
-            _buildModelStatusWidget(model, state),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildModelStatusWidget(TtsModelInfo model, TtsModelState state) {
+  Widget _buildLanguageStatusWidget(
+    TtsModelInfo? modelInfo,
+    TtsModelState? state,
+    bool isReady,
+  ) {
+    if (state == null || modelInfo == null) {
+      return const SizedBox.shrink();
+    }
     switch (state.status) {
       case TtsModelStatus.ready:
-        return const Icon(
-          Icons.check_circle,
-          size: 22,
-          color: Color(0xFF22C55E),
-        );
+        return const SizedBox.shrink();
       case TtsModelStatus.downloading:
         return SizedBox(
-          width: 80,
+          width: 60,
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -313,7 +366,7 @@ class _TtsSettingsPageState extends State<TtsSettingsPage> {
                   borderRadius: BorderRadius.circular(3),
                   child: LinearProgressIndicator(
                     value: state.progress,
-                    minHeight: 6,
+                    minHeight: 4,
                     backgroundColor: FormDesignTokens.dividerColor,
                     valueColor: const AlwaysStoppedAnimation<Color>(
                       CommonDesignTokens.textPrimary,
@@ -321,11 +374,11 @@ class _TtsSettingsPageState extends State<TtsSettingsPage> {
                   ),
                 ),
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: 4),
               Text(
                 '${(state.progress * 100).round()}%',
                 style: const TextStyle(
-                  fontSize: 11,
+                  fontSize: 10,
                   color: CommonDesignTokens.textSecondary,
                 ),
               ),
@@ -333,65 +386,38 @@ class _TtsSettingsPageState extends State<TtsSettingsPage> {
           ),
         );
       case TtsModelStatus.extracting:
-        return const Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-            SizedBox(width: 6),
-            Text(
-              'Extracting...',
-              style: TextStyle(
-                fontSize: 12,
-                color: CommonDesignTokens.textSecondary,
-              ),
-            ),
-          ],
+        return const SizedBox(
+          width: 14,
+          height: 14,
+          child: CircularProgressIndicator(strokeWidth: 2),
         );
       case TtsModelStatus.error:
         return GestureDetector(
-          onTap: () => _mm.downloadModel(model),
-          child: const Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.error_outline, size: 18, color: Colors.red),
-              SizedBox(width: 4),
-              Text(
-                'Retry',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.red,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
+          onTap: () => _mm.downloadModel(modelInfo),
+          child: const Icon(Icons.error_outline, size: 18, color: Colors.red),
         );
       case TtsModelStatus.notDownloaded:
         return GestureDetector(
-          onTap: () => _mm.downloadModel(model),
+          onTap: () => _mm.downloadModel(modelInfo),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
               color: CommonDesignTokens.textPrimary,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 const Icon(
                   Icons.download_outlined,
-                  size: 16,
+                  size: 14,
                   color: CommonDesignTokens.cardBg,
                 ),
-                const SizedBox(width: 4),
+                const SizedBox(width: 3),
                 Text(
-                  '${model.estimatedSizeMB} MB',
+                  '${modelInfo.estimatedSizeMB} MB',
                   style: const TextStyle(
-                    fontSize: 12,
+                    fontSize: 11,
                     fontWeight: FontWeight.w600,
                     color: CommonDesignTokens.cardBg,
                   ),
@@ -404,112 +430,39 @@ class _TtsSettingsPageState extends State<TtsSettingsPage> {
   }
 
   // ---------------------------------------------------------------------------
-  // Speaker ID row
+  // Add language row
   // ---------------------------------------------------------------------------
 
-  Widget _buildSpeakerIdRow({
-    required String label,
-    required int value,
-    required int max,
-    required ValueChanged<int> onChanged,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: SizedBox(
-        height: FormDesignTokens.fieldRowHeight,
-        child: Row(
-          children: [
-            Container(
-              width: SettingsDesignTokens.settingsRowIconContainerSize,
-              height: SettingsDesignTokens.settingsRowIconContainerSize,
-              decoration: BoxDecoration(
-                color: SettingsDesignTokens.settingsRowIconContainerBg,
-                borderRadius: BorderRadius.circular(
-                  SettingsDesignTokens.settingsRowIconContainerRadius,
-                ),
-              ),
-              alignment: Alignment.center,
-              child: const Icon(
-                Icons.person_outlined,
+  Widget _buildAddLanguageRow() {
+    return GestureDetector(
+      onTap: _showAddLanguagePicker,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: SizedBox(
+          height: FormDesignTokens.fieldRowHeight,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.add_circle_outline,
                 size: 20,
                 color: CommonDesignTokens.headerLabelColor,
               ),
-            ),
-            const SizedBox(width: FormDesignTokens.fieldIconGap),
-            Expanded(
-              child: Text(
-                label,
-                style: const TextStyle(
+              const SizedBox(width: 8),
+              Text(
+                'Add Language',
+                style: TextStyle(
                   fontSize: FormDesignTokens.fieldLabelSize,
                   fontWeight: FontWeight.w500,
-                  color: CommonDesignTokens.textSecondary,
+                  color: CommonDesignTokens.headerLabelColor,
                 ),
               ),
-            ),
-            GestureDetector(
-              onTap: () => _showSpeakerIdPicker(label, value, max, onChanged),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '#$value',
-                    style: const TextStyle(
-                      fontSize: FormDesignTokens.fieldValueSize,
-                      color: CommonDesignTokens.textPrimary,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  const Icon(
-                    Icons.chevron_right,
-                    size: 22,
-                    color: CommonDesignTokens.textSecondary,
-                  ),
-                ],
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
-  }
-
-  void _showSpeakerIdPicker(
-    String label,
-    int current,
-    int max,
-    ValueChanged<int> onChanged,
-  ) {
-    final controller = TextEditingController(text: current.toString());
-    showDialog<int>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(label),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          decoration: InputDecoration(
-            hintText: '0 – $max',
-            border: const OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              final v = int.tryParse(controller.text.trim()) ?? 0;
-              Navigator.of(ctx).pop(v.clamp(0, max));
-            },
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    ).then((v) {
-      if (v != null && mounted) onChanged(v);
-    });
   }
 
   // ---------------------------------------------------------------------------
@@ -593,169 +546,732 @@ class _TtsSettingsPageState extends State<TtsSettingsPage> {
   }
 
   // ---------------------------------------------------------------------------
-  // Accent picker row
+  // Add Language picker
   // ---------------------------------------------------------------------------
 
-  Widget _buildAccentPickerRow() {
-    return GestureDetector(
-      onTap: _showAccentPicker,
-      behavior: HitTestBehavior.opaque,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: SizedBox(
-          height: FormDesignTokens.fieldRowHeight,
-          child: Row(
-            children: [
-              Container(
-                width: SettingsDesignTokens.settingsRowIconContainerSize,
-                height: SettingsDesignTokens.settingsRowIconContainerSize,
-                decoration: BoxDecoration(
-                  color: SettingsDesignTokens.settingsRowIconContainerBg,
-                  borderRadius: BorderRadius.circular(
-                    SettingsDesignTokens.settingsRowIconContainerRadius,
-                  ),
-                ),
-                alignment: Alignment.center,
-                child: const Icon(
-                  Icons.language_outlined,
-                  size: 20,
-                  color: CommonDesignTokens.headerLabelColor,
-                ),
-              ),
-              const SizedBox(width: FormDesignTokens.fieldIconGap),
-              const Text(
-                'Read Aloud Accent',
-                style: TextStyle(
-                  fontSize: FormDesignTokens.fieldLabelSize,
-                  fontWeight: FontWeight.w500,
-                  color: CommonDesignTokens.textSecondary,
-                ),
-              ),
-              const Spacer(),
-              Text(
-                _readAloudAccent == 'uk' ? 'UK' : 'US',
-                style: const TextStyle(
-                  fontSize: FormDesignTokens.fieldValueSize,
-                  color: CommonDesignTokens.textPrimary,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(width: 4),
-              const Icon(
-                Icons.chevron_right,
-                size: 22,
-                color: CommonDesignTokens.textSecondary,
-              ),
-            ],
+  void _showAddLanguagePicker() {
+    final groups = _catalog.languageGroups;
+    if (groups.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _catalog.isLoading
+                ? 'Loading voice catalog...'
+                : 'Voice catalog unavailable. Check your connection.',
           ),
         ),
-      ),
-    );
-  }
+      );
+      if (!_catalog.isLoading) {
+        _catalog.refresh();
+      }
+      return;
+    }
 
-  void _showAccentPicker() {
+    final configured = widget.ttsService.configuredLanguages.toSet();
+    final available = groups.values
+        .where((g) => !configured.contains(g.languageCode))
+        .toList()
+      ..sort((a, b) => a.displayLabel.compareTo(b.displayLabel));
+
     showModalBottomSheet<String>(
       context: context,
       backgroundColor: CommonDesignTokens.cardBg,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      builder: (ctx) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: FormDesignTokens.dividerColor,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const Padding(
-                padding: EdgeInsets.only(bottom: 8),
-                child: Text(
-                  'Read Aloud Accent',
-                  style: TextStyle(
-                    fontSize: CommonDesignTokens.bookTitleSize,
-                    fontWeight: FontWeight.w700,
-                    color: CommonDesignTokens.textPrimary,
-                  ),
-                ),
-              ),
-              ListTile(
-                title: const Text('US (American English)'),
-                trailing: _readAloudAccent == 'us'
-                    ? const Icon(
-                        Icons.check,
-                        color: CommonDesignTokens.headerLabelColor,
-                      )
-                    : null,
-                onTap: () => Navigator.of(ctx).pop('us'),
-              ),
-              ListTile(
-                title: const Text('UK (British English)'),
-                trailing: _readAloudAccent == 'uk'
-                    ? const Icon(
-                        Icons.check,
-                        color: CommonDesignTokens.headerLabelColor,
-                      )
-                    : null,
-                onTap: () => Navigator.of(ctx).pop('uk'),
-              ),
-              const SizedBox(height: 16),
-            ],
-          ),
-        );
-      },
-    ).then((selected) {
-      if (selected != null && mounted) {
-        setState(() => _readAloudAccent = selected);
+      isScrollControlled: true,
+      builder: (_) => _AddLanguageSheet(available: available),
+    ).then((languageCode) {
+      if (languageCode != null && mounted) {
+        // Add with the first available voice as default.
+        final voices = _catalog.voicesForLanguage(languageCode);
+        if (voices.isNotEmpty) {
+          // Prefer medium quality.
+          final preferred = voices.firstWhere(
+            (v) => v.quality == 'medium',
+            orElse: () => voices.first,
+          );
+          widget.ttsService.setVoiceForLanguage(
+            languageCode,
+            preferred.key,
+          );
+        }
       }
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Voice picker for a language
+  // ---------------------------------------------------------------------------
+
+  void _showVoicePicker(String languageCode) {
+    final voices = _catalog.voicesForLanguage(languageCode);
+    final group = _catalog.languageGroups[languageCode];
+    final currentSelection = widget.ttsService.voiceMap[languageCode];
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: CommonDesignTokens.cardBg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      isScrollControlled: true,
+      builder: (ctx) {
+        return _VoicePickerSheet(
+          languageCode: languageCode,
+          languageLabel: group?.displayLabel ?? languageCode,
+          voices: voices,
+          currentVoiceKey: currentSelection?.voiceKey,
+          currentSpeakerId: currentSelection?.speakerId ?? 0,
+          modelManager: _mm,
+          ttsService: widget.ttsService,
+          onSelect: (voiceKey, speakerId) {
+            widget.ttsService.setVoiceForLanguage(
+              languageCode,
+              voiceKey,
+              speakerId: speakerId,
+            );
+            Navigator.of(ctx).pop();
+          },
+          onRemoveLanguage: () {
+            widget.ttsService.removeLanguage(languageCode);
+            Navigator.of(ctx).pop();
+          },
+        );
+      },
+    );
   }
 
   // ---------------------------------------------------------------------------
   // Actions
   // ---------------------------------------------------------------------------
 
-  Future<void> _test() async {
-    final model = TtsModels.forAccent(_readAloudAccent);
-    if (!_mm.isReady(model)) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please download the model first.')),
-        );
-      }
+  String _sampleText(String languageCode) {
+    if (_sampleTexts.containsKey(languageCode)) {
+      return _sampleTexts[languageCode]!;
+    }
+    // Try language family fallback: "en_GB" -> "en_US".
+    final family = languageCode.split('_').first;
+    for (final entry in _sampleTexts.entries) {
+      if (entry.key.startsWith('${family}_')) return entry.value;
+    }
+    return _sampleTexts['en_US']!;
+  }
+
+  Future<void> _playLanguagePreview(String languageCode) async {
+    if (_isPlayingLang == languageCode && widget.ttsService.isSpeaking) {
+      await widget.ttsService.stop();
       return;
     }
-    await widget.ttsService.update(
-      speed: _speed,
-      volume: _volume,
-      usSpeakerId: _usSpeakerId,
-      ukSpeakerId: _ukSpeakerId,
-      readAloudAccent: _readAloudAccent,
-    );
-    await widget.ttsService.speak(
-      'This is a test of the text-to-speech settings.',
-    );
+    await widget.ttsService.updatePlayback(speed: _speed, volume: _volume);
+    _isStartingPreview = true;
+    setState(() => _isPlayingLang = languageCode);
+    try {
+      await widget.ttsService.speakWithLanguage(
+        _sampleText(languageCode),
+        languageCode,
+      );
+    } finally {
+      _isStartingPreview = false;
+    }
   }
 
   Future<void> _save() async {
-    await widget.ttsService.update(
-      speed: _speed,
-      volume: _volume,
-      usSpeakerId: _usSpeakerId,
-      ukSpeakerId: _ukSpeakerId,
-      readAloudAccent: _readAloudAccent,
-    );
+    await widget.ttsService.updatePlayback(speed: _speed, volume: _volume);
     if (mounted) Navigator.of(context).pop();
   }
 }
+
+// =============================================================================
+// Voice Picker Bottom Sheet (StatefulWidget for gender filter)
+// =============================================================================
+
+class _VoicePickerSheet extends StatefulWidget {
+  const _VoicePickerSheet({
+    required this.languageCode,
+    required this.languageLabel,
+    required this.voices,
+    required this.currentVoiceKey,
+    required this.currentSpeakerId,
+    required this.modelManager,
+    required this.ttsService,
+    required this.onSelect,
+    required this.onRemoveLanguage,
+  });
+
+  final String languageCode;
+  final String languageLabel;
+  final List<TtsVoiceInfo> voices;
+  final String? currentVoiceKey;
+  final int currentSpeakerId;
+  final TtsModelManager modelManager;
+  final TtsService ttsService;
+  final void Function(String voiceKey, int speakerId) onSelect;
+  final VoidCallback onRemoveLanguage;
+
+  @override
+  State<_VoicePickerSheet> createState() => _VoicePickerSheetState();
+}
+
+class _VoicePickerSheetState extends State<_VoicePickerSheet> {
+  VoiceGender? _genderFilter;
+  late String? _selectedKey;
+  late int _speakerId;
+  String? _previewingKey;
+  bool _isStartingPreview = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedKey = widget.currentVoiceKey;
+    _speakerId = widget.currentSpeakerId;
+    widget.modelManager.addListener(_onModelChange);
+    widget.ttsService.addListener(_onTtsChange);
+  }
+
+  @override
+  void dispose() {
+    widget.modelManager.removeListener(_onModelChange);
+    widget.ttsService.removeListener(_onTtsChange);
+    super.dispose();
+  }
+
+  void _onModelChange() {
+    if (mounted) setState(() {});
+  }
+
+  void _onTtsChange() {
+    if (!_isStartingPreview &&
+        !widget.ttsService.isSpeaking &&
+        _previewingKey != null) {
+      _previewingKey = null;
+    }
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _previewVoice(TtsVoiceInfo voice, TtsModelInfo modelInfo) async {
+    if (_previewingKey == voice.key && widget.ttsService.isSpeaking) {
+      await widget.ttsService.stop();
+      return;
+    }
+    _isStartingPreview = true;
+    setState(() => _previewingKey = voice.key);
+    final text = _TtsSettingsPageState._sampleTexts[widget.languageCode] ??
+        _TtsSettingsPageState._sampleTexts['en_US']!;
+    try {
+      await widget.ttsService.previewVoice(
+        text: text,
+        model: modelInfo,
+        speakerId: _selectedKey == voice.key ? _speakerId : 0,
+      );
+    } finally {
+      _isStartingPreview = false;
+    }
+  }
+
+  List<TtsVoiceInfo> get _filteredVoices {
+    if (_genderFilter == null) return widget.voices;
+    return widget.voices.where((v) => v.gender == _genderFilter).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filtered = _filteredVoices;
+    final selectedVoice = _selectedKey != null
+        ? widget.voices.where((v) => v.key == _selectedKey).firstOrNull
+        : null;
+    final showSpeakerId =
+        selectedVoice != null && selectedVoice.numSpeakers > 1;
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.65,
+      minChildSize: 0.3,
+      maxChildSize: 0.85,
+      expand: false,
+      builder: (_, scrollController) {
+        return Column(
+          children: [
+            // Handle bar
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: FormDesignTokens.dividerColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            // Title
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                widget.languageLabel,
+                style: const TextStyle(
+                  fontSize: CommonDesignTokens.bookTitleSize,
+                  fontWeight: FontWeight.w700,
+                  color: CommonDesignTokens.textPrimary,
+                ),
+              ),
+            ),
+            // Gender filter chips
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: Row(
+                children: [
+                  _filterChip('All', null),
+                  const SizedBox(width: 8),
+                  _filterChip('Male', VoiceGender.male),
+                  const SizedBox(width: 8),
+                  _filterChip('Female', VoiceGender.female),
+                ],
+              ),
+            ),
+            const SizedBox(height: 4),
+            // Voice list
+            Expanded(
+              child: RadioGroup<String>(
+                groupValue: _selectedKey ?? '',
+                onChanged: (v) {
+                  setState(() {
+                    _selectedKey = v;
+                    _speakerId = 0;
+                  });
+                },
+                child: ListView.builder(
+                  controller: scrollController,
+                  itemCount: filtered.length,
+                  itemBuilder: (_, index) {
+                    final voice = filtered[index];
+                    final isSelected = voice.key == _selectedKey;
+                    final modelInfo = TtsModelInfo.fromVoiceInfo(voice);
+                    final isReady = widget.modelManager.isReady(modelInfo);
+                    final state = widget.modelManager.stateOf(modelInfo);
+
+                    final isPreviewing = _previewingKey == voice.key &&
+                        widget.ttsService.isSpeaking;
+
+                    return ListTile(
+                      leading: Radio<String>(
+                        value: voice.key,
+                      ),
+                      title: Text(
+                        voice.displayName,
+                        style: TextStyle(
+                          fontWeight:
+                              isSelected ? FontWeight.w600 : FontWeight.w400,
+                          color: CommonDesignTokens.textPrimary,
+                        ),
+                      ),
+                      subtitle: Text(
+                        _voiceSubtitle(voice),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: CommonDesignTokens.textSecondary,
+                        ),
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (isReady)
+                            GestureDetector(
+                              onTap: () =>
+                                  _previewVoice(voice, modelInfo),
+                              child: Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 4),
+                                child: Icon(
+                                  isPreviewing
+                                      ? Icons.stop_circle_outlined
+                                      : Icons.play_circle_outline,
+                                  size: 22,
+                                  color: isPreviewing
+                                      ? CommonDesignTokens.textPrimary
+                                      : CommonDesignTokens.headerLabelColor,
+                                ),
+                              ),
+                            ),
+                          _buildVoiceTrailing(modelInfo, state, isReady),
+                        ],
+                      ),
+                      onTap: () {
+                        setState(() {
+                          _selectedKey = voice.key;
+                          _speakerId = 0;
+                        });
+                      },
+                    );
+                  },
+                ),
+              ),
+            ),
+            // Speaker ID row (if applicable)
+            if (showSpeakerId) ...[
+              Padding(
+                padding: const EdgeInsets.only(
+                    left: FormDesignTokens.dividerIndent),
+                child: Container(
+                  height: FormDesignTokens.dividerThickness,
+                  color: FormDesignTokens.dividerColor,
+                ),
+              ),
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.person_outlined,
+                      size: 20,
+                      color: CommonDesignTokens.headerLabelColor,
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Speaker ID',
+                      style: TextStyle(
+                        fontSize: FormDesignTokens.fieldLabelSize,
+                        fontWeight: FontWeight.w500,
+                        color: CommonDesignTokens.textSecondary,
+                      ),
+                    ),
+                    const Spacer(),
+                    GestureDetector(
+                      onTap: () => _showSpeakerIdPicker(
+                          selectedVoice.numSpeakers - 1),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '#$_speakerId',
+                            style: const TextStyle(
+                              fontSize: FormDesignTokens.fieldValueSize,
+                              color: CommonDesignTokens.textPrimary,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(
+                            Icons.edit_outlined,
+                            size: 18,
+                            color: CommonDesignTokens.textSecondary,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            // Bottom buttons
+            SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                child: Row(
+                  children: [
+                    // Remove language
+                    TextButton(
+                      onPressed: widget.onRemoveLanguage,
+                      child: const Text(
+                        'Remove',
+                        style: TextStyle(color: Colors.red),
+                      ),
+                    ),
+                    const Spacer(),
+                    // Select
+                    FilledButton(
+                      onPressed: _selectedKey != null
+                          ? () =>
+                              widget.onSelect(_selectedKey!, _speakerId)
+                          : null,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: FormDesignTokens.buttonBg,
+                        foregroundColor: FormDesignTokens.buttonText,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(
+                            CommonDesignTokens.cardRadius,
+                          ),
+                        ),
+                      ),
+                      child: const Text('Select'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _filterChip(String label, VoiceGender? gender) {
+    final isActive = _genderFilter == gender;
+    return ChoiceChip(
+      label: Text(label),
+      selected: isActive,
+      onSelected: (_) {
+        setState(() => _genderFilter = isActive ? null : gender);
+      },
+      selectedColor: CommonDesignTokens.textPrimary,
+      labelStyle: TextStyle(
+        color: isActive
+            ? CommonDesignTokens.cardBg
+            : CommonDesignTokens.textSecondary,
+        fontSize: 13,
+      ),
+      backgroundColor: CommonDesignTokens.pageBackground,
+      side: BorderSide.none,
+      visualDensity: VisualDensity.compact,
+    );
+  }
+
+  String _voiceSubtitle(TtsVoiceInfo voice) {
+    final parts = <String>[];
+    if (voice.gender != VoiceGender.unknown) {
+      parts.add(voice.gender == VoiceGender.male ? 'Male' : 'Female');
+    }
+    if (voice.numSpeakers > 1) {
+      parts.add('${voice.numSpeakers} speakers');
+    }
+    parts.add('~${voice.estimatedSizeMB} MB');
+    return parts.join(' · ');
+  }
+
+  Widget _buildVoiceTrailing(
+    TtsModelInfo modelInfo,
+    TtsModelState state,
+    bool isReady,
+  ) {
+    switch (state.status) {
+      case TtsModelStatus.ready:
+        return const Icon(
+          Icons.check_circle,
+          size: 20,
+          color: Color(0xFF22C55E),
+        );
+      case TtsModelStatus.downloading:
+        return SizedBox(
+          width: 50,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(3),
+                  child: LinearProgressIndicator(
+                    value: state.progress,
+                    minHeight: 4,
+                    backgroundColor: FormDesignTokens.dividerColor,
+                    valueColor: const AlwaysStoppedAnimation<Color>(
+                      CommonDesignTokens.textPrimary,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      case TtsModelStatus.extracting:
+        return const SizedBox(
+          width: 16,
+          height: 16,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        );
+      case TtsModelStatus.error:
+        return GestureDetector(
+          onTap: () => widget.modelManager.downloadModel(modelInfo),
+          child: const Icon(Icons.error_outline, size: 18, color: Colors.red),
+        );
+      case TtsModelStatus.notDownloaded:
+        return GestureDetector(
+          onTap: () => widget.modelManager.downloadModel(modelInfo),
+          child: const Icon(
+            Icons.download_outlined,
+            size: 22,
+            color: CommonDesignTokens.textSecondary,
+          ),
+        );
+    }
+  }
+
+  void _showSpeakerIdPicker(int max) {
+    final controller = TextEditingController(text: _speakerId.toString());
+    showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Speaker ID'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+            hintText: '0 - $max',
+            border: const OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              final v = int.tryParse(controller.text.trim()) ?? 0;
+              Navigator.of(ctx).pop(v.clamp(0, max));
+            },
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    ).then((v) {
+      if (v != null && mounted) {
+        setState(() => _speakerId = v);
+      }
+    });
+  }
+}
+
+// =============================================================================
+// Section label
+// =============================================================================
+
+// =============================================================================
+// Add Language Bottom Sheet with search
+// =============================================================================
+
+class _AddLanguageSheet extends StatefulWidget {
+  const _AddLanguageSheet({required this.available});
+
+  final List<TtsLanguageGroup> available;
+
+  @override
+  State<_AddLanguageSheet> createState() => _AddLanguageSheetState();
+}
+
+class _AddLanguageSheetState extends State<_AddLanguageSheet> {
+  String _query = '';
+
+  List<TtsLanguageGroup> get _filtered {
+    if (_query.isEmpty) return widget.available;
+    final q = _query.toLowerCase();
+    return widget.available.where((g) {
+      return g.languageCode.toLowerCase().contains(q) ||
+          g.languageName.toLowerCase().contains(q) ||
+          g.countryName.toLowerCase().contains(q);
+    }).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filtered = _filtered;
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      minChildSize: 0.3,
+      maxChildSize: 0.85,
+      expand: false,
+      builder: (_, scrollController) {
+        return Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: FormDesignTokens.dividerColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: Text(
+                'Add Language',
+                style: TextStyle(
+                  fontSize: CommonDesignTokens.bookTitleSize,
+                  fontWeight: FontWeight.w700,
+                  color: CommonDesignTokens.textPrimary,
+                ),
+              ),
+            ),
+            // Search field.
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: TextField(
+                autofocus: false,
+                style: const TextStyle(
+                  color: CommonDesignTokens.textPrimary,
+                  fontSize: 14,
+                ),
+                decoration: InputDecoration(
+                  hintText: 'Search language or code...',
+                  hintStyle: const TextStyle(
+                    color: CommonDesignTokens.textSecondary,
+                    fontSize: 14,
+                  ),
+                  prefixIcon: const Icon(
+                    Icons.search,
+                    size: 20,
+                    color: CommonDesignTokens.textSecondary,
+                  ),
+                  filled: true,
+                  fillColor: CommonDesignTokens.textPrimary
+                      .withValues(alpha: 0.06),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+                onChanged: (v) => setState(() => _query = v),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: ListView.builder(
+                controller: scrollController,
+                itemCount: filtered.length,
+                itemBuilder: (_, index) {
+                  final group = filtered[index];
+                  return ListTile(
+                    title: Text(
+                      group.displayLabel,
+                      style: const TextStyle(
+                        color: CommonDesignTokens.textPrimary,
+                      ),
+                    ),
+                    subtitle: Text(
+                      '${group.voices.length} voice${group.voices.length == 1 ? '' : 's'}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: CommonDesignTokens.textSecondary,
+                      ),
+                    ),
+                    trailing: Text(
+                      group.languageCode,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: CommonDesignTokens.textSecondary,
+                      ),
+                    ),
+                    onTap: () {
+                      Navigator.of(context).pop(group.languageCode);
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+// =============================================================================
+// Section label
+// =============================================================================
 
 class _SectionLabel extends StatelessWidget {
   const _SectionLabel({required this.label});

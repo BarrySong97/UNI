@@ -7,6 +7,7 @@ import '../../app/i18n/app-localizations.dart';
 import '../../app/providers/app-providers.dart';
 import '../../app/routes/route-names.dart';
 import '../../entities/book-entity.dart';
+import '../../services/tts/tts_voice_catalog.dart';
 import '../../shared/utils/cover-image-cache.dart';
 import '../../entities/reading-progress-entity.dart';
 import '../../services/library/book-profile-color-service.dart';
@@ -135,6 +136,37 @@ class _BookDetailPageState extends State<BookDetailPage> {
         await _deleteBook();
         break;
     }
+  }
+
+  Future<void> _showLanguagePicker(String? currentLanguage) async {
+    if (!mounted) return;
+
+    final selected = await showModalBottomSheet<String?>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: CommonDesignTokens.cardBg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) {
+        final providers = AppProvidersScope.of(context);
+        final catalog = providers.ttsService.catalog;
+        return _LanguagePickerSheet(
+          groups: catalog.languageGroups,
+          currentLanguage: currentLanguage,
+        );
+      },
+    );
+
+    if (selected == null || !mounted) return;
+
+    final newLang = selected.isEmpty ? null : selected;
+    final providers = AppProvidersScope.of(context);
+    await providers.libraryStore.updateBookLanguage(widget.bookId, newLang);
+
+    setState(() {
+      _dataFuture = _loadData();
+    });
   }
 
   Future<void> _deleteBook() async {
@@ -453,6 +485,57 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                       ),
                                     ),
                                   ],
+                                  const SizedBox(height: 10),
+                                  GestureDetector(
+                                    onTap: () => _showLanguagePicker(
+                                        data.book.language),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 6,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: CommonDesignTokens.textPrimary
+                                            .withValues(alpha: 0.08),
+                                        borderRadius:
+                                            BorderRadius.circular(16),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            Icons.language,
+                                            size: 14,
+                                            color: data.book.language != null
+                                                ? CommonDesignTokens
+                                                    .textPrimary
+                                                : LibraryDesignTokens
+                                                    .bookProfileMutedText,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            data.book.language ?? 'Set Language',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w500,
+                                              color: data.book.language != null
+                                                  ? CommonDesignTokens
+                                                      .textPrimary
+                                                  : LibraryDesignTokens
+                                                      .bookProfileMutedText,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 2),
+                                          Icon(
+                                            Icons.edit_outlined,
+                                            size: 12,
+                                            color: LibraryDesignTokens
+                                                .bookProfileMutedText,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
                                   const SizedBox(height: 24),
                                 ],
                               ),
@@ -533,4 +616,155 @@ class _BookProfileData {
   final BookEntity book;
   final ReadingProgressEntity? progress;
   final int totalWordCount;
+}
+
+/// Bottom sheet with search for picking a book language.
+class _LanguagePickerSheet extends StatefulWidget {
+  const _LanguagePickerSheet({
+    required this.groups,
+    required this.currentLanguage,
+  });
+
+  final Map<String, TtsLanguageGroup> groups;
+  final String? currentLanguage;
+
+  @override
+  State<_LanguagePickerSheet> createState() => _LanguagePickerSheetState();
+}
+
+class _LanguagePickerSheetState extends State<_LanguagePickerSheet> {
+  String _query = '';
+
+  List<MapEntry<String, TtsLanguageGroup>> get _filtered {
+    final entries = widget.groups.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    if (_query.isEmpty) return entries;
+    final q = _query.toLowerCase();
+    return entries.where((e) {
+      return e.key.toLowerCase().contains(q) ||
+          e.value.languageName.toLowerCase().contains(q) ||
+          e.value.countryName.toLowerCase().contains(q);
+    }).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filtered = _filtered;
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      minChildSize: 0.4,
+      maxChildSize: 0.85,
+      expand: false,
+      builder: (context, scrollController) {
+        return Column(
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: CommonDesignTokens.borderColor,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Set Book Language',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: CommonDesignTokens.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Search field.
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: TextField(
+                autofocus: false,
+                style: const TextStyle(
+                  color: CommonDesignTokens.textPrimary,
+                  fontSize: 14,
+                ),
+                decoration: InputDecoration(
+                  hintText: 'Search language or code...',
+                  hintStyle: const TextStyle(
+                    color: CommonDesignTokens.textSecondary,
+                    fontSize: 14,
+                  ),
+                  prefixIcon: const Icon(
+                    Icons.search,
+                    size: 20,
+                    color: CommonDesignTokens.textSecondary,
+                  ),
+                  filled: true,
+                  fillColor:
+                      CommonDesignTokens.textPrimary.withValues(alpha: 0.06),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+                onChanged: (v) => setState(() => _query = v),
+              ),
+            ),
+            const SizedBox(height: 8),
+            // Language list.
+            Expanded(
+              child: ListView.builder(
+                controller: scrollController,
+                itemCount: filtered.length + 1,
+                itemBuilder: (ctx, index) {
+                  // First item: "None (Default)".
+                  if (index == 0) {
+                    final isCurrent = widget.currentLanguage == null;
+                    return ListTile(
+                      title: const Text(
+                        'None (Default)',
+                        style: TextStyle(
+                          color: CommonDesignTokens.textPrimary,
+                        ),
+                      ),
+                      trailing: isCurrent
+                          ? const Icon(Icons.check, color: Colors.blue,
+                              size: 20)
+                          : null,
+                      onTap: () => Navigator.pop(ctx, ''),
+                    );
+                  }
+                  final entry = filtered[index - 1];
+                  final code = entry.key;
+                  final group = entry.value;
+                  final isCurrent = widget.currentLanguage == code;
+                  return ListTile(
+                    title: Text(
+                      group.displayLabel,
+                      style: TextStyle(
+                        color: CommonDesignTokens.textPrimary,
+                        fontWeight:
+                            isCurrent ? FontWeight.w600 : FontWeight.w400,
+                      ),
+                    ),
+                    trailing: isCurrent
+                        ? const Icon(Icons.check, color: Colors.blue,
+                            size: 20)
+                        : Text(
+                            code,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: CommonDesignTokens.textSecondary,
+                            ),
+                          ),
+                    onTap: () => Navigator.pop(ctx, code),
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
 }
