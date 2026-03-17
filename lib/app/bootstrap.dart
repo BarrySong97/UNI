@@ -13,6 +13,7 @@ import '../services/db/daos/chapters-dao.dart';
 import '../services/db/daos/highlights-dao.dart';
 import '../services/db/daos/progress-dao.dart';
 import '../services/ai/ai_settings_service.dart';
+import '../services/tts/tts_service.dart';
 import '../services/library/book-profile-entry-service.dart';
 import '../services/parser/book-import-service.dart';
 import '../services/reader/epub_preparse_service.dart';
@@ -61,6 +62,9 @@ class AppBootstrap {
     final aiSettings = AiSettingsService();
     await aiSettings.initialize();
 
+    final ttsService = TtsService();
+    await ttsService.initialize();
+
     // Initialize Rust FFI via flutter_rust_bridge.
     await RustLib.init();
     final epubPreparseService = EpubPreparseService();
@@ -75,6 +79,7 @@ class AppBootstrap {
       documentsDirectoryPath: docsPath,
       epubPreparseService: epubPreparseService,
       aiSettingsService: aiSettings,
+      ttsService: ttsService,
     );
 
     providers.registerStores(

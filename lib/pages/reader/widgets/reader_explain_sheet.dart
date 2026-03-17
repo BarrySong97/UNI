@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../../../services/ai/ai_settings_service.dart';
 import '../../../services/ai/openai_llm_provider.dart';
@@ -7,17 +8,20 @@ class ReaderExplainSheet extends StatefulWidget {
   const ReaderExplainSheet({
     super.key,
     required this.selectedText,
+    required this.pageContext,
     required this.aiSettings,
     required this.bookTitle,
   });
 
   final String selectedText;
+  final String pageContext;
   final AiSettingsService aiSettings;
   final String bookTitle;
 
   static Future<void> show({
     required BuildContext context,
     required String selectedText,
+    required String pageContext,
     required AiSettingsService aiSettings,
     required String bookTitle,
   }) {
@@ -30,6 +34,7 @@ class ReaderExplainSheet extends StatefulWidget {
       ),
       builder: (_) => ReaderExplainSheet(
         selectedText: selectedText,
+        pageContext: pageContext,
         aiSettings: aiSettings,
         bookTitle: bookTitle,
       ),
@@ -48,28 +53,66 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet> {
   bool _isStreaming = false;
   String? _error;
 
+  static final _sentenceEndPattern = RegExp(r'[.!?。！？]');
+
   @override
   void initState() {
     super.initState();
-    final text = widget.selectedText.length > 4000
-        ? '${widget.selectedText.substring(0, 4000)}\n(text truncated)'
-        : widget.selectedText;
+    final selectedText = widget.selectedText;
+    final text = selectedText.length > 4000
+        ? '${selectedText.substring(0, 4000)}\n(text truncated)'
+        : selectedText;
+
+    // Build context based on selection type.
+    final isWordOrPhrase = selectedText.length <= 80 &&
+        !_sentenceEndPattern.hasMatch(selectedText);
+
+    final surroundingContext = isWordOrPhrase
+        ? _extractContainingSentence(widget.pageContext, selectedText)
+        : widget.pageContext;
+
+    final promptTemplate = widget.aiSettings.prompt.isNotEmpty
+        ? widget.aiSettings.prompt
+        : AiSettingsService.defaultPrompt;
+    final systemPrompt = promptTemplate
+        .replaceAll('{bookTitle}', widget.bookTitle)
+        .replaceAll('{selectedText}', text)
+        .replaceAll('{context}', surroundingContext);
 
     _aiService = ExplainAiService(
       settings: widget.aiSettings,
-      systemPrompt: 'You are a reading assistant helping the user understand a '
-          'passage from the book "${widget.bookTitle}".\n\n'
-          'The user selected the following text:\n---\n$text\n---\n\n'
-          'Explain this passage clearly and concisely. Cover:\n'
-          '1. The meaning of the text in plain language\n'
-          '2. Any difficult vocabulary or phrases\n'
-          '3. The context or significance if apparent\n\n'
-          'Keep explanations helpful but not overly long. '
-          'If the user asks follow-up questions, answer based on the passage.',
+      systemPrompt: systemPrompt,
     );
 
     // Auto-send the first explanation request.
     _sendMessage('Explain this passage');
+  }
+
+  /// Find the sentence containing [target] within [fullText].
+  /// Falls back to [fullText] if [target] is not found.
+  static String _extractContainingSentence(String fullText, String target) {
+    final index = fullText.indexOf(target);
+    if (index < 0) return fullText;
+
+    // Search backward for sentence start.
+    var sentenceStart = 0;
+    for (var i = index - 1; i >= 0; i--) {
+      if (_sentenceEndPattern.hasMatch(fullText[i])) {
+        sentenceStart = i + 1;
+        break;
+      }
+    }
+
+    // Search forward for sentence end.
+    var sentenceEnd = fullText.length;
+    for (var i = index + target.length; i < fullText.length; i++) {
+      if (_sentenceEndPattern.hasMatch(fullText[i])) {
+        sentenceEnd = i + 1;
+        break;
+      }
+    }
+
+    return fullText.substring(sentenceStart, sentenceEnd).trim();
   }
 
   @override
@@ -253,15 +296,28 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet> {
                   height: 20,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : SelectableText(
-                  msg.text,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    height: 1.5,
-                    color: Colors.black87,
-                    decoration: TextDecoration.none,
-                  ),
-                ),
+              : msg.isUser
+                  ? SelectableText(
+                      msg.text,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        height: 1.5,
+                        color: Colors.black87,
+                        decoration: TextDecoration.none,
+                      ),
+                    )
+                  : MarkdownBody(
+                      data: msg.text,
+                      selectable: true,
+                      styleSheet: MarkdownStyleSheet(
+                        p: const TextStyle(
+                          fontSize: 15,
+                          height: 1.5,
+                          color: Colors.black87,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ),
         ),
       ),
     );

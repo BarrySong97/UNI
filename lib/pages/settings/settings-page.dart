@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../app/providers/app-providers.dart';
-import '../../components/settings/ai_settings_dialog.dart';
+import '../../components/settings/ai_settings_dialog.dart' show AiSettingsPage;
+import '../../components/settings/tts_settings_page.dart' show TtsSettingsPage;
+import '../../services/tts/tts_service.dart' show TtsService;
 import '../../shared/constants/common-design-tokens.dart';
 import '../../components/library/library-header.dart';
 import '../../components/settings/settings-account-card.dart';
@@ -13,6 +15,7 @@ class SettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final aiSettings = AppProvidersScope.of(context).aiSettingsService;
+    final ttsService = AppProvidersScope.of(context).ttsService;
 
     return Container(
       color: CommonDesignTokens.pageBackground,
@@ -86,11 +89,43 @@ class SettingsPage extends StatelessWidget {
                               ? 'Configured'
                               : 'Not Set',
                           showDivider: false,
-                          onTap: () =>
-                              AiSettingsDialog.show(context, aiSettings),
+                          onTap: () => AiSettingsPage.push(context, aiSettings),
                         ),
                       ),
                     ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 28),
+
+              // TTS SETTINGS
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: SettingsSectionLabel(label: 'TTS SETTINGS'),
+              ),
+              const SizedBox(height: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: CommonDesignTokens.cardBg,
+                    borderRadius: BorderRadius.circular(
+                      CommonDesignTokens.cardRadius,
+                    ),
+                  ),
+                  child: ListenableBuilder(
+                    listenable: ttsService,
+                    builder: (context, _) => SettingsRow(
+                      icon: Icons.record_voice_over_outlined,
+                      label: 'Text-to-Speech',
+                      value: ttsService.voiceName != null
+                          ? TtsService.parseDisplayName(ttsService.voiceName!)
+                          : 'Default',
+                      showDivider: false,
+                      onTap: () =>
+                          TtsSettingsPage.push(context, ttsService),
+                    ),
                   ),
                 ),
               ),

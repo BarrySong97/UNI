@@ -1006,7 +1006,7 @@ class _ReaderPageState extends State<ReaderPage>
     final tooltipY = aboveY >= safeTop ? aboveY : belowY;
 
     // Estimate tooltip width to clamp horizontal position.
-    const estimatedWidth = 160.0;
+    const estimatedWidth = 280.0;
     final tooltipLeft =
         (screenCenterX - estimatedWidth / 2).clamp(8.0, screenWidth - estimatedWidth - 8.0);
 
@@ -1040,12 +1040,31 @@ class _ReaderPageState extends State<ReaderPage>
                 return;
               }
 
+              final pageLayout = _store.currentPageLayout;
+              final pageContext = pageLayout != null
+                  ? extractFullPageText(pageLayout)
+                  : '';
+
               ReaderExplainSheet.show(
                 context: context,
                 selectedText: selectedText,
+                pageContext: pageContext,
                 aiSettings: aiSettings,
                 bookTitle: widget.book.title,
               );
+            }),
+            Container(width: 1, height: 20, color: Colors.white24),
+            _tooltipButton('Read Aloud', onPressed: () {
+              final selectedText = extractCrossPageText();
+              if (selectedText.isEmpty) return;
+
+              final ttsService =
+                  AppProvidersScope.of(context).ttsService;
+              if (ttsService.isSpeaking) {
+                ttsService.stop();
+              } else {
+                ttsService.speak(selectedText);
+              }
             }),
             Container(width: 1, height: 20, color: Colors.white24),
             _tooltipButton('Mark', onPressed: () {

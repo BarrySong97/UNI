@@ -324,3 +324,14 @@ String extractSelectedText(PageLayout page, PageSelection selection) {
 
   return buffer.toString();
 }
+
+/// Extract the full plain text of a page by concatenating all text elements.
+String extractFullPageText(PageLayout page) {
+  final buffer = StringBuffer();
+  for (final el in page.elements) {
+    if (el.textPainter == null) continue;
+    final text = _extractPainterText(el.textPainter!);
+    if (text.isNotEmpty) buffer.write(text);
+  }
+  return buffer.toString();
+}
