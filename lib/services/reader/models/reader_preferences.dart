@@ -98,19 +98,49 @@ enum ReaderTheme {
     textColor: Color(0xFF3B2F1E),
     name: 'Sepia',
   ),
+  mint(
+    backgroundColor: Color(0xFFE8F5E9),
+    textColor: Color(0xFF2E3D30),
+    name: 'Mint',
+  ),
+  rose(
+    backgroundColor: Color(0xFFFCE4EC),
+    textColor: Color(0xFF3D2B30),
+    name: 'Rose',
+  ),
+  paper(
+    backgroundColor: Color(0xFFF5F0E8),
+    textColor: Color(0xFF33302B),
+    name: 'Paper',
+  ),
+  dusk(
+    backgroundColor: Color(0xFF2C3E50),
+    textColor: Color(0xFFD5DDE5),
+    name: 'Dusk',
+    isDark: true,
+  ),
   dark(
     backgroundColor: Color(0xFF1A1A1A),
     textColor: Color(0xFFD4D4D4),
     name: 'Dark',
+    isDark: true,
+  ),
+  night(
+    backgroundColor: Color(0xFF000000),
+    textColor: Color(0xFFB0B0B0),
+    name: 'Night',
+    isDark: true,
   );
 
   const ReaderTheme({
     required this.backgroundColor,
     required this.textColor,
     required this.name,
+    this.isDark = false,
   });
 
   final Color backgroundColor;
   final Color textColor;
   final String name;
+  final bool isDark;
 }

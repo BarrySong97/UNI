@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
@@ -19,10 +20,21 @@ class EpubPreparseService {
   }) async {
     final cacheDir = p.join(booksDirectory, '${bookId}_parsed');
 
-    // Skip if already parsed.
+    // Skip if already parsed with current cache format.
     final manifest = File(p.join(cacheDir, 'book.json'));
     if (await manifest.exists()) {
-      return cacheDir;
+      try {
+        final content = await manifest.readAsString();
+        final json = jsonDecode(content) as Map<String, dynamic>;
+        if (json.containsKey('spine')) {
+          return cacheDir;
+        }
+        // Outdated cache (missing spine data) — delete and re-parse.
+        await Directory(cacheDir).delete(recursive: true);
+      } catch (_) {
+        // Corrupted cache — will be re-created below.
+        await Directory(cacheDir).delete(recursive: true);
+      }
     }
 
     // Call Rust via FFI — works on iOS/Android/desktop.

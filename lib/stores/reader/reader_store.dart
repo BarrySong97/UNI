@@ -331,6 +331,38 @@ class ReaderStore extends ChangeNotifier {
     _saveProgress();
   }
 
+  /// Jump to an approximate position in the book by percent (0.0–1.0).
+  Future<void> goToBookPercent(double percent) async {
+    if (_bookData == null || chapterCount == 0) return;
+    final clamped = percent.clamp(0.0, 1.0);
+
+    // Determine target chapter and page fraction within it.
+    final chapterFraction = 1.0 / chapterCount;
+    final targetChapter =
+        (clamped / chapterFraction).floor().clamp(0, chapterCount - 1);
+    final remainInChapter = clamped - targetChapter * chapterFraction;
+    final pageFraction = (remainInChapter / chapterFraction).clamp(0.0, 1.0);
+
+    _currentChapterIndex = targetChapter;
+    _currentPageIndex = 0;
+    _isLoading = true;
+    notifyListeners();
+
+    await _loadChapter(targetChapter);
+
+    if (_currentPagination != null && _currentPagination!.pages.isNotEmpty) {
+      _currentPageIndex =
+          (pageFraction * _currentPagination!.pages.length).floor().clamp(
+            0,
+            _currentPagination!.pages.length - 1,
+          );
+    }
+
+    _isLoading = false;
+    notifyListeners();
+    _saveProgress();
+  }
+
   // ---------------------------------------------------------------------------
   // Preferences
   // ---------------------------------------------------------------------------
@@ -342,17 +374,24 @@ class ReaderStore extends ChangeNotifier {
     }
 
     final needsRelayout = newPrefs.layoutHash != _preferences.layoutHash;
+    final themeChanged = newPrefs.theme != _preferences.theme;
     _preferences = newPrefs;
 
-    if (needsRelayout) {
+    if (needsRelayout || themeChanged) {
+      // Theme changes require re-pagination because text colors are baked
+      // into TextPainter instances during layout.
       _cache.clear();
-      _pageCountCache.clear();
-      _persistedPageCountsJson = null;
-      _allPagesComputed = false;
+      if (needsRelayout) {
+        _pageCountCache.clear();
+        _persistedPageCountsJson = null;
+        _allPagesComputed = false;
+      }
       if (_dataSource != null) {
         await _loadChapter(_currentChapterIndex);
       }
-      _computeAllPageCounts();
+      if (needsRelayout) {
+        _computeAllPageCounts();
+      }
     }
 
     notifyListeners();

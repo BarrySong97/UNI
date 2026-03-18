@@ -3,9 +3,10 @@ import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 
 import '../../../services/reader/models/reader_preferences.dart';
+import 'reader_pill_slider.dart';
 
 /// Font & layout settings panel shown above the bottom toolbar.
-class ReaderFontPanel extends StatelessWidget {
+class ReaderFontPanel extends StatefulWidget {
   const ReaderFontPanel({
     super.key,
     required this.preferences,
@@ -15,52 +16,59 @@ class ReaderFontPanel extends StatelessWidget {
   final ReaderPreferences preferences;
   final ValueChanged<ReaderPreferences> onPreferencesChanged;
 
-  Color get _textColor => preferences.theme.textColor;
+  @override
+  State<ReaderFontPanel> createState() => _ReaderFontPanelState();
+}
 
-  bool get _isDark => preferences.theme == ReaderTheme.dark;
+class _ReaderFontPanelState extends State<ReaderFontPanel> {
+  double? _dragFontSize;
 
-  Color get _segmentBorder =>
-      _isDark ? Colors.grey.shade600 : Colors.grey.shade400;
+  @override
+  void didUpdateWidget(covariant ReaderFontPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.preferences.baseFontSizePx !=
+        widget.preferences.baseFontSizePx) {
+      _dragFontSize = null;
+    }
+  }
 
-  Color get _segmentSelectedBg =>
-      _isDark ? Colors.grey.shade700 : Colors.grey.shade300;
+  ReaderPreferences get _prefs => widget.preferences;
+  Color get _text => _prefs.theme.textColor;
+  Color get _label => _text.withValues(alpha: 0.5);
+  Color get _segBorder => _text.withValues(alpha: 0.15);
+  Color get _segSelectedBg => _text.withValues(alpha: 0.1);
 
   // ---------------------------------------------------------------------------
-  // Margin & line-spacing presets
+  // Presets
   // ---------------------------------------------------------------------------
 
   static const _marginPresets = <String, double>{
     'SM': 16.0,
-    'Margin': 24.0,
+    'MD': 24.0,
     'LG': 36.0,
   };
 
   static const _lineHeightPresets = <String, double>{
-    'Tight': 1.2,
-    'Spacing': 1.6,
-    'Loose': 2.0,
+    '1.2': 1.2,
+    '1.6': 1.6,
+    '2.0': 2.0,
   };
 
-  String _currentMarginLabel() {
-    for (final e in _marginPresets.entries) {
-      if ((preferences.pageHorizontalPaddingPx - e.value).abs() < 1) {
-        return e.key;
-      }
-    }
-    return 'Margin';
-  }
+  static const _paragraphPresets = <String, double>{
+    'Tight': 0.5,
+    'Normal': 1.0,
+    'Loose': 1.5,
+  };
 
-  String _currentLineHeightLabel() {
-    for (final e in _lineHeightPresets.entries) {
-      if ((preferences.lineHeightMultiplier - e.value).abs() < 0.05) {
-        return e.key;
-      }
+  String _matchPreset(Map<String, double> presets, double value, double eps) {
+    for (final e in presets.entries) {
+      if ((value - e.value).abs() < eps) return e.key;
     }
-    return 'Spacing';
+    return presets.keys.elementAt(1); // default to middle
   }
 
   // ---------------------------------------------------------------------------
-  // System font list
+  // Fonts
   // ---------------------------------------------------------------------------
 
   static const _iosFonts = <String>[
@@ -86,7 +94,6 @@ class ReaderFontPanel extends StatelessWidget {
     try {
       return Platform.isIOS ? _iosFonts : _androidFonts;
     } catch (_) {
-      // Fallback for web / desktop.
       return _iosFonts;
     }
   }
@@ -97,22 +104,17 @@ class ReaderFontPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      decoration: BoxDecoration(
-        border: Border(
-          top: BorderSide(
-            color: _textColor.withValues(alpha: 0.1),
-          ),
-        ),
-      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _buildFontSizeRow(),
-          const SizedBox(height: 16),
-          _buildSegmentRow(),
-          const SizedBox(height: 16),
+          _buildFontSizeSlider(),
+          const SizedBox(height: 20),
+          _buildMarginAndLineHeight(),
+          const SizedBox(height: 20),
+          _buildParagraphSpacing(),
+          const SizedBox(height: 20),
           _buildFontFamilyRow(context),
         ],
       ),
@@ -120,246 +122,225 @@ class ReaderFontPanel extends StatelessWidget {
   }
 
   // ---------------------------------------------------------------------------
-  // Row 1: Font size (small A | number | large A)
+  // Row 1: Font size pill slider
   // ---------------------------------------------------------------------------
 
-  Widget _buildFontSizeRow() {
-    final size = preferences.baseFontSizePx.round();
-    return Container(
-      height: 44,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: _segmentBorder, width: 0.5),
-      ),
-      child: Row(
-        children: [
-          // A- decrease.
-          _fontSizeTapArea(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
-              children: [
-                Text(
-                  'A',
-                  style: TextStyle(
-                    color: preferences.baseFontSizePx > 12
-                        ? _textColor
-                        : _textColor.withValues(alpha: 0.3),
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                Text(
-                  '\u2212', // minus sign
-                  style: TextStyle(
-                    color: preferences.baseFontSizePx > 12
-                        ? _textColor
-                        : _textColor.withValues(alpha: 0.3),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-            onTap: preferences.baseFontSizePx > 12
-                ? () => onPreferencesChanged(preferences.copyWith(
-                      baseFontSizePx: preferences.baseFontSizePx - 1,
-                    ))
-                : null,
-          ),
-          // Current size badge.
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-            decoration: BoxDecoration(
-              color: _segmentSelectedBg,
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text(
-              '$size',
+  Widget _buildFontSizeSlider() {
+    final size = _dragFontSize ?? _prefs.baseFontSizePx;
+    const minVal = 12.0;
+    const maxVal = 32.0;
+    final normalized =
+        ((size - minVal) / (maxVal - minVal)).clamp(0.0, 1.0);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Font Size',
               style: TextStyle(
-                color: _textColor,
-                fontSize: 15,
+                color: _label,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            Text(
+              '${size.round()}px',
+              style: TextStyle(
+                color: _text,
+                fontSize: 13,
                 fontWeight: FontWeight.w600,
               ),
             ),
-          ),
-          // A+ increase.
-          _fontSizeTapArea(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
-              children: [
-                Text(
-                  'A',
-                  style: TextStyle(
-                    color: preferences.baseFontSizePx < 32
-                        ? _textColor
-                        : _textColor.withValues(alpha: 0.3),
-                    fontSize: 21,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                Text(
-                  '+',
-                  style: TextStyle(
-                    color: preferences.baseFontSizePx < 32
-                        ? _textColor
-                        : _textColor.withValues(alpha: 0.3),
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-            onTap: preferences.baseFontSizePx < 32
-                ? () => onPreferencesChanged(preferences.copyWith(
-                      baseFontSizePx: preferences.baseFontSizePx + 1,
-                    ))
-                : null,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _fontSizeTapArea({required Widget child, VoidCallback? onTap}) {
-    return Expanded(
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Center(child: child),
-      ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ReaderPillSlider(
+          value: normalized,
+          textColor: _text,
+          onChanged: (v) {
+            final s =
+                (minVal + v * (maxVal - minVal)).roundToDouble().clamp(minVal, maxVal);
+            setState(() => _dragFontSize = s);
+          },
+          onChangeEnd: () {
+            final s = _dragFontSize;
+            if (s != null) {
+              widget.onPreferencesChanged(_prefs.copyWith(baseFontSizePx: s));
+            }
+          },
+          onDecrement: () {
+            final s = (_prefs.baseFontSizePx - 1).clamp(minVal, maxVal);
+            widget.onPreferencesChanged(_prefs.copyWith(baseFontSizePx: s));
+          },
+          onIncrement: () {
+            final s = (_prefs.baseFontSizePx + 1).clamp(minVal, maxVal);
+            widget.onPreferencesChanged(_prefs.copyWith(baseFontSizePx: s));
+          },
+        ),
+      ],
     );
   }
 
   // ---------------------------------------------------------------------------
-  // Row 2: Margin segment + Line spacing segment
+  // Row 2: Margin + Line height (side by side)
   // ---------------------------------------------------------------------------
 
-  Widget _buildSegmentRow() {
-    final currentMargin = _currentMarginLabel();
-    final currentLineHeight = _currentLineHeightLabel();
+  Widget _buildMarginAndLineHeight() {
+    final currentMargin =
+        _matchPreset(_marginPresets, _prefs.pageHorizontalPaddingPx, 1);
+    final currentLH =
+        _matchPreset(_lineHeightPresets, _prefs.lineHeightMultiplier, 0.05);
 
     return Row(
       children: [
-        // Margin control.
         Expanded(
-          child: _buildSegmentControl(
-            labels: _marginPresets.keys.toList(),
+          child: _buildLabeledSegment(
+            label: 'Margin',
+            presets: _marginPresets,
             selected: currentMargin,
-            onSelected: (label) {
-              final value = _marginPresets[label]!;
-              onPreferencesChanged(preferences.copyWith(
-                pageHorizontalPaddingPx: value,
-              ));
-            },
+            onSelected: (label) => widget.onPreferencesChanged(
+              _prefs.copyWith(pageHorizontalPaddingPx: _marginPresets[label]),
+            ),
           ),
         ),
         const SizedBox(width: 12),
-        // Line spacing control.
         Expanded(
-          child: _buildSegmentControl(
-            labels: _lineHeightPresets.keys.toList(),
-            selected: currentLineHeight,
-            onSelected: (label) {
-              final value = _lineHeightPresets[label]!;
-              onPreferencesChanged(preferences.copyWith(
-                lineHeightMultiplier: value,
-              ));
-            },
+          child: _buildLabeledSegment(
+            label: 'Line Height',
+            presets: _lineHeightPresets,
+            selected: currentLH,
+            onSelected: (label) => widget.onPreferencesChanged(
+              _prefs.copyWith(lineHeightMultiplier: _lineHeightPresets[label]),
+            ),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildSegmentControl({
-    required List<String> labels,
-    required String selected,
-    required ValueChanged<String> onSelected,
-  }) {
-    return Container(
-      height: 40,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: _segmentBorder, width: 0.5),
-      ),
-      child: Row(
-        children: labels.map((label) {
-          final isSelected = label == selected;
-          return Expanded(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => onSelected(label),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: isSelected ? _segmentSelectedBg : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                alignment: Alignment.center,
-                margin: const EdgeInsets.all(3),
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    color: isSelected
-                        ? _textColor
-                        : _textColor.withValues(alpha: 0.6),
-                    fontSize: 13,
-                    fontWeight:
-                        isSelected ? FontWeight.w600 : FontWeight.normal,
-                  ),
-                ),
-              ),
-            ),
-          );
-        }).toList(),
+  // ---------------------------------------------------------------------------
+  // Row 3: Paragraph spacing
+  // ---------------------------------------------------------------------------
+
+  Widget _buildParagraphSpacing() {
+    final current = _matchPreset(
+      _paragraphPresets,
+      _prefs.paragraphSpacingMultiplier,
+      0.1,
+    );
+
+    return _buildLabeledSegment(
+      label: 'Paragraph Spacing',
+      presets: _paragraphPresets,
+      selected: current,
+      onSelected: (label) => widget.onPreferencesChanged(
+        _prefs.copyWith(paragraphSpacingMultiplier: _paragraphPresets[label]),
       ),
     );
   }
 
   // ---------------------------------------------------------------------------
-  // Row 3: Font family picker
+  // Row 4: Font family
   // ---------------------------------------------------------------------------
 
   Widget _buildFontFamilyRow(BuildContext context) {
-    final displayName = preferences.fontFamily ?? 'System Default';
+    final displayName = _prefs.fontFamily ?? 'System Default';
 
-    return Row(
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => _showFontPicker(context),
-            child: Container(
-              height: 40,
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: _segmentBorder, width: 0.5),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
+        Text(
+          'Font',
+          style: TextStyle(color: _label, fontSize: 12, fontWeight: FontWeight.w500),
+        ),
+        const SizedBox(height: 8),
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _showFontPicker(context),
+          child: Container(
+            height: 36,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: _segBorder, width: 0.5),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    displayName,
+                    style: TextStyle(
+                      color: _text,
+                      fontSize: 14,
+                      fontFamily: _prefs.fontFamily,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Icon(Icons.chevron_right, color: _label, size: 20),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Shared: labeled segment control
+  // ---------------------------------------------------------------------------
+
+  Widget _buildLabeledSegment({
+    required String label,
+    required Map<String, double> presets,
+    required String selected,
+    required ValueChanged<String> onSelected,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(color: _label, fontSize: 12, fontWeight: FontWeight.w500),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          height: 36,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: _segBorder, width: 0.5),
+          ),
+          child: Row(
+            children: presets.keys.map((key) {
+              final isSelected = key == selected;
+              return Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => onSelected(key),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: isSelected ? _segSelectedBg : Colors.transparent,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    alignment: Alignment.center,
+                    margin: const EdgeInsets.all(3),
                     child: Text(
-                      displayName,
+                      key,
                       style: TextStyle(
-                        color: _textColor,
-                        fontSize: 14,
-                        fontFamily: preferences.fontFamily,
+                        color: isSelected ? _text : _text.withValues(alpha: 0.5),
+                        fontSize: 13,
+                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                       ),
-                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  Icon(
-                    Icons.chevron_right,
-                    color: _textColor.withValues(alpha: 0.5),
-                    size: 20,
-                  ),
-                ],
-              ),
-            ),
+                ),
+              );
+            }).toList(),
           ),
         ),
       ],
@@ -371,12 +352,12 @@ class ReaderFontPanel extends StatelessWidget {
   // ---------------------------------------------------------------------------
 
   void _showFontPicker(BuildContext context) {
-    final barColor = _isDark ? const Color(0xFF2A2A2A) : Colors.white;
+    final bgColor = _prefs.theme.backgroundColor;
     final fonts = _availableFonts;
 
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: barColor,
+      backgroundColor: bgColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -385,13 +366,12 @@ class ReaderFontPanel extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Handle bar.
               Container(
                 margin: const EdgeInsets.only(top: 10, bottom: 8),
                 width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: _textColor.withValues(alpha: 0.2),
+                  color: _text.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -400,7 +380,7 @@ class ReaderFontPanel extends StatelessWidget {
                 child: Text(
                   'Font',
                   style: TextStyle(
-                    color: _textColor,
+                    color: _text,
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                   ),
@@ -411,18 +391,17 @@ class ReaderFontPanel extends StatelessWidget {
                 child: ListView(
                   shrinkWrap: true,
                   children: [
-                    // System Default option.
                     _fontListTile(
                       context: ctx,
                       displayName: 'System Default',
                       fontFamily: null,
-                      isSelected: preferences.fontFamily == null,
+                      isSelected: _prefs.fontFamily == null,
                     ),
                     ...fonts.map((font) => _fontListTile(
                           context: ctx,
                           displayName: font,
                           fontFamily: font,
-                          isSelected: preferences.fontFamily == font,
+                          isSelected: _prefs.fontFamily == font,
                         )),
                   ],
                 ),
@@ -444,20 +423,19 @@ class ReaderFontPanel extends StatelessWidget {
       title: Text(
         displayName,
         style: TextStyle(
-          color: _textColor,
+          color: _text,
           fontSize: 17,
           fontFamily: fontFamily,
         ),
       ),
-      trailing: isSelected
-          ? Icon(Icons.check, color: Colors.blue, size: 22)
-          : null,
+      trailing:
+          isSelected ? Icon(Icons.check, color: Colors.blue, size: 22) : null,
       onTap: () {
         Navigator.pop(context);
         if (fontFamily == null) {
-          onPreferencesChanged(preferences.copyWith(clearFontFamily: true));
+          widget.onPreferencesChanged(_prefs.copyWith(clearFontFamily: true));
         } else {
-          onPreferencesChanged(preferences.copyWith(fontFamily: fontFamily));
+          widget.onPreferencesChanged(_prefs.copyWith(fontFamily: fontFamily));
         }
       },
     );

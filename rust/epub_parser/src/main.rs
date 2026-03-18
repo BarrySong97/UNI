@@ -102,10 +102,15 @@ fn batch_export(epub_path: &str, out_dir: &str) {
     }
 
     // book.json: metadata + toc + chapter_count (no chapter content).
+    let spine: Vec<serde_json::Value> = book.chapters.iter().map(|ch| {
+        serde_json::json!({ "index": ch.index, "href": ch.href })
+    }).collect();
+
     let book_manifest = serde_json::json!({
         "metadata": book.metadata,
         "toc": book.toc,
         "chapter_count": chapter_count,
+        "spine": spine,
     });
     let manifest_path = format!("{}/book.json", out_dir);
     let json = serde_json::to_string(&book_manifest).unwrap();

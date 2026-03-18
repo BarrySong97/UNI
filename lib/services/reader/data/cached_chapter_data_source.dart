@@ -62,10 +62,19 @@ class CachedChapterDataSource implements ChapterDataSource {
         [];
     final chapterCount = json['chapter_count'] as int? ?? 0;
 
-    // Build lightweight chapter stubs (no nodes) so ReaderStore knows count.
+    // Parse spine href list for TOC→chapter mapping.
+    final spineList = json['spine'] as List?;
+
+    // Build lightweight chapter stubs with href from spine data.
     final chapters = List.generate(
       chapterCount,
-      (i) => ParsedChapter(index: i, title: '', href: '', nodes: []),
+      (i) {
+        final spineEntry = (spineList != null && i < spineList.length)
+            ? spineList[i] as Map<String, dynamic>
+            : null;
+        final href = spineEntry?['href'] as String? ?? '';
+        return ParsedChapter(index: i, title: '', href: href, nodes: []);
+      },
     );
 
     return ParsedBook(metadata: metadata, toc: toc, chapters: chapters);

@@ -788,7 +788,7 @@ class ReaderLayoutEngine {
 
     final bgColor =
         node.backgroundColor ??
-        (ctx.preferences.theme == ReaderTheme.dark ? 0xFF2D2D2D : 0xFFF5F5F5);
+        (ctx.preferences.theme.isDark ? 0xFF2D2D2D : 0xFFF5F5F5);
 
     final paragraph = ParagraphNode(
       children: children,

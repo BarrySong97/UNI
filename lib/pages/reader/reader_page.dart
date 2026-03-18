@@ -16,7 +16,6 @@ import 'widgets/reader_controls_overlay.dart';
 import 'widgets/reader_explain_sheet.dart';
 import 'widgets/reader_phonetics_sheet.dart';
 import 'widgets/reader_selection_handle.dart';
-import 'widgets/reader_toc_sheet.dart';
 
 /// Main reader page with multi-chapter navigation.
 ///
@@ -659,21 +658,6 @@ class _ReaderPageState extends State<ReaderPage>
     _pageAnimController.forward(from: 0.0);
   }
 
-  // ---------------------------------------------------------------------------
-  // TOC
-  // ---------------------------------------------------------------------------
-
-  void _onTocPressed() {
-    _store.hideControls();
-    ReaderTocSheet.show(
-      context: context,
-      toc: _store.toc,
-      currentChapterIndex: _store.currentChapterIndex,
-      preferences: _store.preferences,
-      onChapterSelected: (index) => _store.goToChapter(index),
-    );
-  }
-
   void _onMorePressed() {
     _store.hideControls();
     Navigator.of(context).pushNamed(
@@ -686,6 +670,15 @@ class _ReaderPageState extends State<ReaderPage>
   // Build
   // ---------------------------------------------------------------------------
 
+  String get _chapterTitle {
+    final chapters = _store.bookData?.chapters;
+    if (chapters != null && chapters.isNotEmpty) {
+      final title = chapters[_store.currentChapterIndex].title;
+      return title.isNotEmpty ? title : 'Chapter ${_store.currentChapterIndex + 1}';
+    }
+    return widget.book.title;
+  }
+
   @override
   Widget build(BuildContext context) {
     final prefs = _store.preferences;
@@ -693,16 +686,42 @@ class _ReaderPageState extends State<ReaderPage>
     final initialLoading = _store.book == null || _store.isLoading;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: prefs.theme == ReaderTheme.dark
+      value: prefs.theme.isDark
           ? SystemUiOverlayStyle.light
           : SystemUiOverlayStyle.dark,
       child: Scaffold(
         backgroundColor: prefs.theme.backgroundColor,
-        body: initialLoading
-            ? _buildLoading(prefs)
-            : _store.error != null
-            ? _buildError(prefs)
-            : _buildReader(prefs),
+        body: Stack(
+          children: [
+            if (initialLoading)
+              _buildLoading(prefs)
+            else if (_store.error != null)
+              _buildError(prefs)
+            else
+              _buildReader(prefs),
+            // Controls overlay — rendered above loading/content so it stays
+            // visible during chapter transitions triggered from the panel.
+            if (_store.showControls && _store.book != null)
+              ReaderControlsOverlay(
+                preferences: prefs,
+                chapterTitle: _chapterTitle,
+                currentPage: _store.currentPageIndex,
+                totalPages: _store.totalPagesInChapter,
+                bookPercent: _store.bookPercent,
+                onClose: () => _store.hideControls(),
+                onBack: () => Navigator.of(context).pop(),
+                onPreferencesChanged: (newPrefs) {
+                  _store.updatePreferences(newPrefs);
+                },
+                toc: _store.toc,
+                chapters: _store.bookData?.chapters ?? const [],
+                currentChapterIndex: _store.currentChapterIndex,
+                onChapterSelected: (index) => _store.goToChapter(index),
+                onPercentChanged: (percent) => _store.goToBookPercent(percent),
+                onMorePressed: _onMorePressed,
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -775,16 +794,6 @@ class _ReaderPageState extends State<ReaderPage>
 
     final mediaPadding = MediaQuery.of(context).padding;
     final screenWidth = MediaQuery.of(context).size.width;
-    final chapterTitle = _store.bookData?.chapters.isNotEmpty == true
-        ? (_store
-                  .bookData!
-                  .chapters[_store.currentChapterIndex]
-                  .title
-                  .isNotEmpty
-              ? _store.bookData!.chapters[_store.currentChapterIndex].title
-              : 'Chapter ${_store.currentChapterIndex + 1}')
-        : widget.book.title;
-
     // Determine which adjacent page to show during drag/animation.
     final PageLayout? adjacentPage;
     if (_dragOffset < 0) {
@@ -871,6 +880,19 @@ class _ReaderPageState extends State<ReaderPage>
           _buildSelectionTooltip(),
         ],
 
+        // Chapter title at top.
+        Positioned(
+          left: prefs.pageHorizontalPaddingPx,
+          top: mediaPadding.top + 8,
+          child: Text(
+            _chapterTitle,
+            style: TextStyle(
+              color: prefs.theme.textColor.withValues(alpha: 0.4),
+              fontSize: 11,
+            ),
+          ),
+        ),
+
         // Page indicator at bottom.
         Positioned(
           left: prefs.pageHorizontalPaddingPx,
@@ -899,22 +921,6 @@ class _ReaderPageState extends State<ReaderPage>
           ),
         ),
 
-        // Controls overlay.
-        if (_store.showControls)
-          ReaderControlsOverlay(
-            preferences: prefs,
-            chapterTitle: chapterTitle,
-            currentPage: _store.currentPageIndex,
-            totalPages: _store.totalPagesInChapter,
-            bookPercent: _store.bookPercent,
-            onClose: () => _store.hideControls(),
-            onBack: () => Navigator.of(context).pop(),
-            onPreferencesChanged: (newPrefs) {
-              _store.updatePreferences(newPrefs);
-            },
-            onTocPressed: _onTocPressed,
-            onMorePressed: _onMorePressed,
-          ),
       ],
     );
   }

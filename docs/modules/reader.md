@@ -91,11 +91,13 @@ lib/
     reader_page.dart                # Main page: CustomPaint + GestureDetector
     widgets/
       reader_canvas_painter.dart    # CustomPainter rendering PageLayout
-      reader_controls_overlay.dart  # Bottom icon toolbar + font panel toggle
+      reader_controls_overlay.dart  # Bottom icon toolbar + inline panel toggle (AnimatedSize)
       reader_font_panel.dart        # Font size, margin, line spacing, font family picker
+      reader_toc_panel.dart         # Inline TOC panel with scrollable chapter list
+      reader_progress_panel.dart    # Inline progress slider panel
+      reader_theme_panel.dart       # Inline theme color swatch panel
       reader_explain_sheet.dart     # AI explain bottom sheet (word header + Markdown response)
       reader_selection_handle.dart  # Draggable teardrop selection handle widget
-      reader_toc_sheet.dart         # TOC bottom sheet
 ```
 
 ## Core Flow
@@ -166,7 +168,7 @@ Invalidated by: font size/family change, line height change, page margin change,
 - Text selection via long-press: long-press to select a word, drag to extend. After release, two draggable handles appear for fine adjustment. Tap anywhere to clear selection. Selection is cleared on non-selection page navigation.
 - Cross-page selection: dragging a handle to the screen edge (40px zone) for 300ms triggers an animated page turn. The selection extends onto the new page with the anchor end preserved. A thin edge indicator shows when selection continues beyond the visible page. Supports multi-page and cross-chapter selection. Text extraction concatenates across all pages in the selection range.
 - AI Explain: selecting text shows a tooltip with "Explain" button. Tapping it opens a bottom sheet that calls an OpenAI-compatible LLM to explain the passage. For single words/phrases: shows the word in large bold text with the containing sentence (word highlighted in bold). For longer selections: shows an italic text preview. Below is the AI explanation rendered as Markdown (no chat input). Prompt detail levels: Brief (1-2 sentences), Balanced (short paragraph, default), Detailed (thorough but focused). Uses `ExplainAiService` backed by Genkit + OpenAI plugin. API credentials configured in Settings page via `AiSettingsService` (SharedPreferences).
-- Controls overlay with slide animation: top bar slides down (back + more menu), bottom icon toolbar slides up (5 buttons: TOC, annotation, progress, theme, font)
+- Controls overlay with slide animation: top bar slides down (back + more menu), bottom icon toolbar slides up (5 buttons: TOC, annotation, progress, theme, font). Each button toggles an inline panel above the toolbar with AnimatedSize expand/collapse. Only one panel visible at a time; tapping a different button switches directly.
 - Font settings panel (toggled by "A" button): A-/A+ font size control, margin presets (SM/Margin/LG), line spacing presets (Tight/Spacing/Loose), font family picker with curated system fonts
 - Preference changes keep controls overlay visible (no close on setting change)
 - TOC sheet: scrollable chapter list with current chapter highlighted
@@ -174,7 +176,7 @@ Invalidated by: font size/family change, line height change, page margin change,
 - Error state shows message + "Go Back" button
 - Loading state shows themed circular progress indicator
 - Font size range: 12-32px
-- Theme options: Light (white bg), Sepia (warm bg), Dark (dark bg)
+- Theme options: Light (white bg), Sepia (warm bg), Mint (soft green bg), Rose (soft pink bg), Dusk (deep blue-gray bg, dark), Dark (dark bg), Night (pure black AMOLED bg, dark) — selectable via inline theme panel with color swatches. Dark themes (`isDark` flag) automatically adjust status bar style, controls bar color, and code block backgrounds.
 
 ## Acceptance Criteria
 
@@ -187,7 +189,7 @@ Invalidated by: font size/family change, line height change, page margin change,
 - Cross-page selection works: handle drag to screen edge triggers page turn, selection spans multiple pages
 - AI Explain: selecting text → tap Explain → bottom sheet shows word header (word + sentence) or text preview → streams AI explanation as Markdown. Word mode bolds the selected word in the containing sentence. Unconfigured API key shows SnackBar prompt.
 - Font size adjustment causes repagination with correct results
-- Theme switching (light/sepia/dark) applies immediately
+- Theme switching (light/sepia/mint/rose/dusk/dark/night) applies immediately
 - Reading progress persists across app restarts
 - Reader preferences persist per book (font size, font family, margins, line spacing, theme)
 - Chapter navigation (next/previous) works
