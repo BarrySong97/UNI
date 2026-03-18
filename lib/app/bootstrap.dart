@@ -85,6 +85,7 @@ class AppBootstrap {
       aiSettingsService: aiSettings,
       ttsService: ttsService,
       phoneticsService: phoneticsService,
+      database: database,
     );
 
     providers.registerStores(

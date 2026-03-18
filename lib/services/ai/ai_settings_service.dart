@@ -73,16 +73,12 @@ class AiSettingsService extends ChangeNotifier {
   static const String defaultLanguage = 'en_US';
 
   static const String defaultPrompt =
-      'You are a reading assistant helping the user understand a passage '
-      'from the book "{bookTitle}".\n\n'
+      'You are a reading assistant for the book "{bookTitle}".\n\n'
       'The user selected: "{selectedText}"\n\n'
-      'Surrounding context:\n---\n{context}\n---\n\n'
-      'Explain this passage clearly and concisely. Cover:\n'
-      '1. The meaning of the text in plain language\n'
-      '2. Any difficult vocabulary or phrases\n'
-      '3. The context or significance if apparent\n\n'
-      'Keep explanations helpful but not overly long. '
-      'If the user asks follow-up questions, answer based on the passage.';
+      'Context:\n---\n{context}\n---\n\n'
+      'Give a clear, concise explanation of the selected text. '
+      'Focus on what it means in this context. '
+      'If it is a single word or short phrase, explain its meaning and usage here.';
 
   // Global settings.
   String _baseUrl = defaultBaseUrl;
@@ -129,15 +125,13 @@ class AiSettingsService extends ChangeNotifier {
   static String detailInstruction(ExplanationDetail detail) {
     switch (detail) {
       case ExplanationDetail.brief:
-        return 'Be very brief and concise. Give a short, direct explanation '
-            'in 2-3 sentences.';
+        return 'Be extremely brief. Explain in 1-2 sentences only.';
       case ExplanationDetail.balanced:
-        return 'Provide a balanced explanation that is thorough but not '
-            'overly long.';
+        return 'Keep your explanation concise — a short paragraph at most.';
       case ExplanationDetail.detailed:
-        return 'Provide a detailed, in-depth analysis. Cover nuances, '
-            'literary devices, cultural context, and any relevant '
-            'background information.';
+        return 'Provide a thorough explanation. Include nuances, background, '
+            'and any relevant context, but stay focused and avoid unnecessary '
+            'filler.';
     }
   }
 

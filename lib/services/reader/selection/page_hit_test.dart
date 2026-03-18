@@ -331,7 +331,10 @@ String extractFullPageText(PageLayout page) {
   for (final el in page.elements) {
     if (el.textPainter == null) continue;
     final text = _extractPainterText(el.textPainter!);
-    if (text.isNotEmpty) buffer.write(text);
+    if (text.isNotEmpty) {
+      if (buffer.isNotEmpty) buffer.write(' ');
+      buffer.write(text);
+    }
   }
   return buffer.toString();
 }

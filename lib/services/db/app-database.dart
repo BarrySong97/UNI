@@ -7,6 +7,7 @@ import '../../dtos/db/highlight-dto.dart';
 import '../../dtos/db/reading-progress-dto.dart';
 import 'tables/books-table.dart';
 import 'tables/chapters-table.dart';
+import 'tables/explain-cache-table.dart';
 import 'tables/highlights-table.dart';
 import 'tables/reading-progress-table.dart';
 
@@ -22,7 +23,7 @@ class AppDatabase {
     final path = p.join(root, 'uni_reader.db');
     final database = await openDatabase(
       path,
-      version: 12,
+      version: 14,
       onCreate: (db, _) async {
         await db.execute('''
 CREATE TABLE ${BooksTable.tableName} (
@@ -78,6 +79,17 @@ CREATE TABLE ${HighlightsTable.tableName} (
         await db.execute(
           'CREATE INDEX idx_highlights_book ON ${HighlightsTable.tableName} (${HighlightsTable.bookId})',
         );
+        await db.execute('''
+CREATE TABLE ${ExplainCacheTable.tableName} (
+  ${ExplainCacheTable.bookId} TEXT NOT NULL,
+  ${ExplainCacheTable.chapterIndex} INTEGER NOT NULL,
+  ${ExplainCacheTable.selectedText} TEXT NOT NULL,
+  ${ExplainCacheTable.contextSentence} TEXT NOT NULL DEFAULT '',
+  ${ExplainCacheTable.response} TEXT NOT NULL,
+  ${ExplainCacheTable.createdAt} INTEGER NOT NULL,
+  PRIMARY KEY (${ExplainCacheTable.bookId}, ${ExplainCacheTable.chapterIndex}, ${ExplainCacheTable.selectedText}, ${ExplainCacheTable.contextSentence})
+)
+''');
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 7) {
@@ -97,6 +109,12 @@ CREATE TABLE ${HighlightsTable.tableName} (
         }
         if (oldVersion < 12) {
           await _migrateToV12(db);
+        }
+        if (oldVersion < 13) {
+          await _migrateToV13(db);
+        }
+        if (oldVersion < 14) {
+          await _migrateToV14(db);
         }
       },
     );
@@ -160,6 +178,35 @@ CREATE TABLE ${HighlightsTable.tableName} (
     );
   }
 
+  static Future<void> _migrateToV13(DatabaseExecutor db) async {
+    await db.execute('''
+CREATE TABLE IF NOT EXISTS ${ExplainCacheTable.tableName} (
+  ${ExplainCacheTable.bookId} TEXT NOT NULL,
+  ${ExplainCacheTable.chapterIndex} INTEGER NOT NULL,
+  ${ExplainCacheTable.selectedText} TEXT NOT NULL,
+  ${ExplainCacheTable.response} TEXT NOT NULL,
+  ${ExplainCacheTable.createdAt} INTEGER NOT NULL,
+  PRIMARY KEY (${ExplainCacheTable.bookId}, ${ExplainCacheTable.chapterIndex}, ${ExplainCacheTable.selectedText})
+)
+''');
+  }
+
+  static Future<void> _migrateToV14(DatabaseExecutor db) async {
+    // Recreate explain_cache with context_sentence column added to PK.
+    await db.execute('DROP TABLE IF EXISTS ${ExplainCacheTable.tableName}');
+    await db.execute('''
+CREATE TABLE ${ExplainCacheTable.tableName} (
+  ${ExplainCacheTable.bookId} TEXT NOT NULL,
+  ${ExplainCacheTable.chapterIndex} INTEGER NOT NULL,
+  ${ExplainCacheTable.selectedText} TEXT NOT NULL,
+  ${ExplainCacheTable.contextSentence} TEXT NOT NULL DEFAULT '',
+  ${ExplainCacheTable.response} TEXT NOT NULL,
+  ${ExplainCacheTable.createdAt} INTEGER NOT NULL,
+  PRIMARY KEY (${ExplainCacheTable.bookId}, ${ExplainCacheTable.chapterIndex}, ${ExplainCacheTable.selectedText}, ${ExplainCacheTable.contextSentence})
+)
+''');
+  }
+
   static Future<void> _migrateToV9(DatabaseExecutor db) async {
     // Drop reader-specific tables while preserving user data
     await db.execute('DROP TABLE IF EXISTS reader_preferences');
@@ -205,6 +252,32 @@ CREATE TABLE ${HighlightsTable.tableName} (
 
   Future<void> deleteHighlight(String highlightId) =>
       _backend.deleteHighlight(highlightId);
+
+  Future<String?> getExplainCache({
+    required String bookId,
+    required int chapterIndex,
+    required String selectedText,
+    required String contextSentence,
+  }) => _backend.getExplainCache(
+        bookId: bookId,
+        chapterIndex: chapterIndex,
+        selectedText: selectedText,
+        contextSentence: contextSentence,
+      );
+
+  Future<void> upsertExplainCache({
+    required String bookId,
+    required int chapterIndex,
+    required String selectedText,
+    required String contextSentence,
+    required String response,
+  }) => _backend.upsertExplainCache(
+        bookId: bookId,
+        chapterIndex: chapterIndex,
+        selectedText: selectedText,
+        contextSentence: contextSentence,
+        response: response,
+      );
 }
 
 abstract class _DatabaseBackend {
@@ -221,6 +294,19 @@ abstract class _DatabaseBackend {
   Future<List<HighlightDto>> listHighlights(String bookId);
   Future<void> upsertHighlight(HighlightDto highlight);
   Future<void> deleteHighlight(String highlightId);
+  Future<String?> getExplainCache({
+    required String bookId,
+    required int chapterIndex,
+    required String selectedText,
+    required String contextSentence,
+  });
+  Future<void> upsertExplainCache({
+    required String bookId,
+    required int chapterIndex,
+    required String selectedText,
+    required String contextSentence,
+    required String response,
+  });
 }
 
 class _InMemoryBackend implements _DatabaseBackend {
@@ -229,6 +315,8 @@ class _InMemoryBackend implements _DatabaseBackend {
   final Map<String, ReadingProgressDto> _progress =
       <String, ReadingProgressDto>{};
   final Map<String, HighlightDto> _highlights = <String, HighlightDto>{};
+  // key: "bookId|chapterIndex|selectedText"
+  final Map<String, String> _explainCache = <String, String>{};
 
   @override
   Future<List<BookDto>> listBooks() async =>
@@ -248,6 +336,7 @@ class _InMemoryBackend implements _DatabaseBackend {
     _chapters.removeWhere((_, chapter) => chapter.bookId == bookId);
     _progress.remove(bookId);
     _highlights.removeWhere((_, highlight) => highlight.bookId == bookId);
+    _explainCache.removeWhere((key, _) => key.startsWith('$bookId|'));
   }
 
   @override
@@ -297,6 +386,27 @@ class _InMemoryBackend implements _DatabaseBackend {
   @override
   Future<void> deleteHighlight(String highlightId) async {
     _highlights.remove(highlightId);
+  }
+
+  @override
+  Future<String?> getExplainCache({
+    required String bookId,
+    required int chapterIndex,
+    required String selectedText,
+    required String contextSentence,
+  }) async {
+    return _explainCache['$bookId|$chapterIndex|$selectedText|$contextSentence'];
+  }
+
+  @override
+  Future<void> upsertExplainCache({
+    required String bookId,
+    required int chapterIndex,
+    required String selectedText,
+    required String contextSentence,
+    required String response,
+  }) async {
+    _explainCache['$bookId|$chapterIndex|$selectedText|$contextSentence'] = response;
   }
 }
 
@@ -349,6 +459,11 @@ class _SqfliteBackend implements _DatabaseBackend {
   @override
   Future<void> deleteBookCascade(String bookId) async {
     await _database.transaction((txn) async {
+      await txn.delete(
+        ExplainCacheTable.tableName,
+        where: '${ExplainCacheTable.bookId} = ?',
+        whereArgs: <Object?>[bookId],
+      );
       await txn.delete(
         HighlightsTable.tableName,
         where: '${HighlightsTable.bookId} = ?',
@@ -524,6 +639,48 @@ class _SqfliteBackend implements _DatabaseBackend {
       note: row[HighlightsTable.note] as String?,
       createdAtMillis: row[HighlightsTable.createdAt]! as int,
       updatedAtMillis: row[HighlightsTable.updatedAt]! as int,
+    );
+  }
+
+  @override
+  Future<String?> getExplainCache({
+    required String bookId,
+    required int chapterIndex,
+    required String selectedText,
+    required String contextSentence,
+  }) async {
+    final rows = await _database.query(
+      ExplainCacheTable.tableName,
+      columns: [ExplainCacheTable.response],
+      where:
+          '${ExplainCacheTable.bookId} = ? AND ${ExplainCacheTable.chapterIndex} = ? AND ${ExplainCacheTable.selectedText} = ? AND ${ExplainCacheTable.contextSentence} = ?',
+      whereArgs: <Object?>[bookId, chapterIndex, selectedText, contextSentence],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first[ExplainCacheTable.response] as String?;
+  }
+
+  @override
+  Future<void> upsertExplainCache({
+    required String bookId,
+    required int chapterIndex,
+    required String selectedText,
+    required String contextSentence,
+    required String response,
+  }) {
+    return _database.insert(
+      ExplainCacheTable.tableName,
+      <String, Object?>{
+        ExplainCacheTable.bookId: bookId,
+        ExplainCacheTable.chapterIndex: chapterIndex,
+        ExplainCacheTable.selectedText: selectedText,
+        ExplainCacheTable.contextSentence: contextSentence,
+        ExplainCacheTable.response: response,
+        ExplainCacheTable.createdAt:
+            DateTime.now().millisecondsSinceEpoch,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
 }

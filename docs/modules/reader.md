@@ -93,7 +93,7 @@ lib/
       reader_canvas_painter.dart    # CustomPainter rendering PageLayout
       reader_controls_overlay.dart  # Bottom icon toolbar + font panel toggle
       reader_font_panel.dart        # Font size, margin, line spacing, font family picker
-      reader_explain_sheet.dart     # AI explain bottom sheet (LlmChatView)
+      reader_explain_sheet.dart     # AI explain bottom sheet (word header + Markdown response)
       reader_selection_handle.dart  # Draggable teardrop selection handle widget
       reader_toc_sheet.dart         # TOC bottom sheet
 ```
@@ -165,7 +165,7 @@ Invalidated by: font size/family change, line height change, page margin change,
 - Tap left 30% = previous page, right 30% = next page, center 40% = toggle controls (tap and swipe coexist)
 - Text selection via long-press: long-press to select a word, drag to extend. After release, two draggable handles appear for fine adjustment. Tap anywhere to clear selection. Selection is cleared on non-selection page navigation.
 - Cross-page selection: dragging a handle to the screen edge (40px zone) for 300ms triggers an animated page turn. The selection extends onto the new page with the anchor end preserved. A thin edge indicator shows when selection continues beyond the visible page. Supports multi-page and cross-chapter selection. Text extraction concatenates across all pages in the selection range.
-- AI Explain: selecting text shows a tooltip with "Explain" button. Tapping it opens a bottom sheet with `LlmChatView` (flutter_ai_toolkit) that calls an OpenAI-compatible LLM to explain the passage. Uses a custom `OpenAiLlmProvider` backed by `dart_openai`. API credentials configured in Settings page via `AiSettingsService` (SharedPreferences).
+- AI Explain: selecting text shows a tooltip with "Explain" button. Tapping it opens a bottom sheet that calls an OpenAI-compatible LLM to explain the passage. For single words/phrases: shows the word in large bold text with the containing sentence (word highlighted in bold). For longer selections: shows an italic text preview. Below is the AI explanation rendered as Markdown (no chat input). Prompt detail levels: Brief (1-2 sentences), Balanced (short paragraph, default), Detailed (thorough but focused). Uses `ExplainAiService` backed by Genkit + OpenAI plugin. API credentials configured in Settings page via `AiSettingsService` (SharedPreferences).
 - Controls overlay with slide animation: top bar slides down (back + more menu), bottom icon toolbar slides up (5 buttons: TOC, annotation, progress, theme, font)
 - Font settings panel (toggled by "A" button): A-/A+ font size control, margin presets (SM/Margin/LG), line spacing presets (Tight/Spacing/Loose), font family picker with curated system fonts
 - Preference changes keep controls overlay visible (no close on setting change)
@@ -185,7 +185,7 @@ Invalidated by: font size/family change, line height change, page margin change,
 - Horizontal swipe page turning works with smooth animation and cross-chapter support
 - Text selection works: long-press selects word, drag extends, handles adjust range
 - Cross-page selection works: handle drag to screen edge triggers page turn, selection spans multiple pages
-- AI Explain: selecting text → tap Explain → bottom sheet calls LLM → streams explanation. Unconfigured API key shows SnackBar prompt.
+- AI Explain: selecting text → tap Explain → bottom sheet shows word header (word + sentence) or text preview → streams AI explanation as Markdown. Word mode bolds the selected word in the containing sentence. Unconfigured API key shows SnackBar prompt.
 - Font size adjustment causes repagination with correct results
 - Theme switching (light/sepia/dark) applies immediately
 - Reading progress persists across app restarts

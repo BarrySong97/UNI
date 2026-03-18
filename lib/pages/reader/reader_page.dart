@@ -1073,6 +1073,7 @@ class _ReaderPageState extends State<ReaderPage>
                 widget.book.language,
               );
 
+              final providers = AppProvidersScope.of(context);
               ReaderExplainSheet.show(
                 context: context,
                 selectedText: selectedText,
@@ -1080,6 +1081,11 @@ class _ReaderPageState extends State<ReaderPage>
                 aiSettings: aiSettings,
                 languageConfig: languageConfig,
                 bookTitle: widget.book.title,
+                phoneticsService: providers.phoneticsService,
+                ttsService: providers.ttsService,
+                database: providers.database,
+                bookId: widget.book.id,
+                chapterIndex: _store.currentChapterIndex,
               );
             }),
             Container(width: 1, height: 20, color: Colors.white24),
