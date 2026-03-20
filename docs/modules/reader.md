@@ -87,6 +87,7 @@ lib/
     epub_preparse_service.dart      # Calls Rust CLI --batch-export at import time
   stores/reader/
     reader_store.dart               # ChangeNotifier: pagination, navigation, progress
+    reader_store_manager.dart       # LRU cache of ReaderStore instances per book ID
   pages/reader/
     reader_page.dart                # Main page: CustomPaint + GestureDetector
     widgets/
@@ -135,17 +136,20 @@ lib/
 
 ### Performance Optimizations
 
-- **Chapter-scoped `WidthCache`**: A single `WidthCache` instance is shared across all paragraphs in a chapter via `LayoutContext`. Caches both space widths and word widths keyed by `(style, word)`. Repeated words like "the", "and" are measured only once per chapter, eliminating the TextPainter-per-word explosion.
+- **Cross-chapter `WidthCache`**: A single `WidthCache` instance is shared across all chapters within the same `ReaderStore` session (cleared only when layout-affecting preferences change). Caches both space widths and word widths keyed by `(style, word)`. Repeated words like "the", "and" are measured only once across all chapters, eliminating redundant TextPainter creation. Subsequent chapter paginations are 10-30% faster due to cache hits on common vocabulary.
 - **K-P solver look-ahead hoisting**: The look-ahead loop (computing `widthToNextBox/shrinkToNextBox/stretchToNextBox`) depends only on breakpoint position `b`, not on active node `a`. Hoisted above the active-node loop to avoid redundant O(active × scan) work per breakpoint.
 - **Deferred greedy TextPainter**: For justified paragraphs, the K-P path is attempted first. The greedy `TextSpan` + `TextPainter` are only created if K-P fails, avoiding wasted native layout calls on the happy path.
 - **Shared style computation**: `TextSpanBuilder.styleForTextNode()` is the single source of truth for `TextNode → TextStyle` conversion, used by both the greedy path and K-P item builder.
 - **Async page-count computation**: `_computeAllPageCounts()` yields to the event loop between chapters (`await Future.delayed(Duration.zero)`), has an abort guard (stops if book/preferences change mid-computation), and uses a lightweight `_pageCountCache` that survives across calls without storing full pagination data.
-- **Adjacent chapter prefetching**: After loading a chapter, the next chapter is prefetched fire-and-forget in the background. Uses `prefetchOnly` flag to avoid mutating current pagination state.
+- **Deferred adjacent chapter prefetching**: After loading a chapter, adjacent chapters (next and previous) are prefetched in the background with a 500ms delay. The delay ensures the first frame renders before heavy background pagination starts. Prefetches are sequenced (not concurrent) to avoid back-to-back pressure. Uses `prefetchOnly` flag to avoid mutating current pagination state.
 - **Persistent page count cache**: After `_computeAllPageCounts()` completes, the per-chapter page counts are serialized to a JSON blob (`pageCountsJson` column on `reading_progress` table, migration v11) alongside the raw layout parameters (viewport size + 6 preference values). On subsequent `openBook()`, if the stored parameters match the current viewport and preferences, page counts are restored instantly from DB — skipping the expensive full-book pagination entirely. Uses raw parameter comparison instead of `Object.hash` because hash seeds are randomized per Dart VM invocation.
 - **`pageCountOnly` fast pagination mode**: When computing page counts for progress display, `paginate(pageCountOnly: true)` skips the K-P justified layout path (all paragraphs use a single greedy `TextPainter.layout()` instead of per-word measurement + solver + per-fragment painters), skips `LayoutElement` allocation (only tracks a page counter), and skips list marker measurement + positioning. Greedy and K-P produce the same line count ±0-1 per paragraph, so page count accuracy is preserved. Reduces page-count computation time by ~60-75%.
 - **K-P solver data structure optimizations**: The active node collection uses `List<_Node>` instead of `Set<_Node>` (avoids iterator/hashCode overhead for the typical 5-15 node set). The `feasible` intermediate list is eliminated — the best feasible node is tracked inline during the active-node loop. The `toRemove` list is eliminated — nodes are removed in-place via `removeAt` during reverse iteration. `hasNegativeValues` is computed once with an early-exit loop instead of `items.any()` with closures.
 - **Data source warm-up**: `CachedChapterDataSource.warmUp()` pre-reads `book.json` and the first chapter JSON into memory. Called fire-and-forget in `ReaderEntryService` before `Navigator.push()`, so file I/O overlaps with the route transition animation (~300ms). When `ReaderStore.openBook()` calls `loadBook()`/`loadChapter()`, data is already in memory.
-- **Paginate yield**: `_loadChapter()` yields one frame (`await Future.delayed(Duration.zero)`) before calling `paginate()`, preventing the synchronous layout computation from freezing the loading spinner animation.
+- **ReaderStore LRU caching**: `ReaderStoreManager` maintains an LRU cache of up to 2 `ReaderStore` instances keyed by book ID. When the user re-opens a book, the existing store (with all in-memory pagination caches, decoded images, and TextPainters) is reused instantly. `openBook()` detects same-book re-opens via a fast path and skips the full load pipeline. Stores evicted from the LRU cache are disposed to free memory.
+- **Deferred text painter for K-P fragments**: In Knuth-Plass paragraph layout, pagination stores `(text, style)` on `LayoutElement` and creates `TextPainter` lazily via `ensurePainter()` only when rendering or hit-testing needs it. This removes large eager `TextPainter` allocation spikes during pagination.
+- **Async chunked pagination**: `ReaderLayoutEngine.paginateAsync()` yields to the event loop every few nodes. `ReaderStore` uses the async path for chapter load and whole-book page-count computation, so loading indicators and UI interactions remain responsive during pagination.
+- **Stale async result guard**: `ReaderStore` uses a monotonic request token to ignore outdated async pagination results, preventing race conditions when chapter/viewport/preferences change rapidly.
 
 ### Cache Invalidation
 
@@ -156,9 +160,15 @@ Invalidated by: font size/family change, line height change, page margin change,
 ## Key State & Data
 
 - `ReaderStore` (ChangeNotifier): manages book, chapters, pagination cache, current position, preferences
+- Reader progress semantics in `ReaderStore`:
+  - `bookPositionPercent`: position-based percent (first page = 0%, last page = 100%) for in-reader UI display and slider value.
+  - `bookReadPercent`: read-based percent (first page > 0%, last page = 100%) for persistence/statistics.
+- `ReadingTimeTracker`: tracks active reading time only while Reader is foregrounded and the user has interacted within the last 30 seconds; flushes whole seconds to DB on a timer, on background, and on dispose.
 - `ReaderPreferences`: baseFontSizePx, fontFamily, pageHorizontalPaddingPx, pageVerticalPaddingPx, lineHeightMultiplier, paragraphSpacingMultiplier, theme
-- `ReadingProgressEntity(bookId, locatorJson, percent, updatedAt, prefsJson, pageCountsJson)`: locatorJson stores `{"chapterIndex": N, "pageIndex": M}`, prefsJson stores per-book ReaderPreferences as JSON, pageCountsJson stores persisted page count cache with layout parameter validation
+- `ReadingProgressEntity(bookId, locatorJson, percent, updatedAt, prefsJson, pageCountsJson)`: locatorJson stores `{"chapterIndex": N, "pageIndex": M}`, `percent` stores read-based progress (`bookReadPercent`), prefsJson stores per-book ReaderPreferences as JSON, pageCountsJson stores persisted page count cache with layout parameter validation
 - `ChapterPagination`: cached per chapter, invalidated on layout parameter changes
+- `BookStatsTable(book_id, explain_count, phonetics_count, reading_time_seconds)`: per-book counters plus cumulative reading time in whole seconds (DB v16)
+- `ReadingTimeDailyTable(book_id, date_key, duration_seconds)`: per-book per-day aggregated reading time used by Shelf monthly statistics (DB v16)
 
 ## Interaction & Error Handling
 
@@ -167,7 +177,9 @@ Invalidated by: font size/family change, line height change, page margin change,
 - Tap left 30% = previous page, right 30% = next page, center 40% = toggle controls (tap and swipe coexist)
 - Text selection via long-press: long-press to select a word, drag to extend. After release, two draggable handles appear for fine adjustment. Tap anywhere to clear selection. Selection is cleared on non-selection page navigation.
 - Cross-page selection: dragging a handle to the screen edge (40px zone) for 300ms triggers an animated page turn. The selection extends onto the new page with the anchor end preserved. A thin edge indicator shows when selection continues beyond the visible page. Supports multi-page and cross-chapter selection. Text extraction concatenates across all pages in the selection range.
-- AI Explain: selecting text shows a tooltip with "Explain" button. Tapping it opens a bottom sheet that calls an OpenAI-compatible LLM to explain the passage. For single words/phrases: shows the word in large bold text with the containing sentence (word highlighted in bold). For longer selections: shows an italic text preview. Below is the AI explanation rendered as Markdown (no chat input). Prompt detail levels: Brief (1-2 sentences), Balanced (short paragraph, default), Detailed (thorough but focused). Uses `ExplainAiService` backed by Genkit + OpenAI plugin. API credentials configured in Settings page via `AiSettingsService` (SharedPreferences).
+- AI Explain: selecting text shows a tooltip with "Explain" button. Tapping it opens a bottom sheet that calls an OpenAI-compatible LLM to explain the passage. For single words/phrases: shows the word in large bold text with the containing sentence (word highlighted in bold). For longer selections: shows an italic text preview. Below is the AI explanation rendered as Markdown (no chat input). Prompt detail levels: Brief (1-2 sentences), Balanced (short paragraph, default), Detailed (thorough but focused). Uses `ExplainAiService` backed by Genkit + OpenAI plugin. API credentials configured in Settings page via `AiSettingsService` (SharedPreferences). Each tap on Explain increments per-book `explain_count` in `book_stats` table.
+- Phonetics lookup count: each tap on the "Phonetics" tooltip button increments per-book `phonetics_count` in `book_stats` table (DB v15).
+- Reading time tracking: opening Reader counts as the initial interaction. While the page remains in the foreground, reading time continues only if the user has interacted in the last 30 seconds (tap, drag, long-press, selection handle drag, etc.). Going to background immediately flushes and pauses tracking; returning to foreground requires a new interaction before time resumes. Time is stored as whole seconds and aggregated by local calendar day.
 - Controls overlay with slide animation: top bar slides down (back + more menu), bottom icon toolbar slides up (5 buttons: TOC, annotation, progress, theme, font). Each button toggles an inline panel above the toolbar with AnimatedSize expand/collapse. Only one panel visible at a time; tapping a different button switches directly.
 - Font settings panel (toggled by "A" button): A-/A+ font size control, margin presets (SM/Margin/LG), line spacing presets (Tight/Spacing/Loose), font family picker with curated system fonts
 - Preference changes keep controls overlay visible (no close on setting change)
@@ -194,6 +206,9 @@ Invalidated by: font size/family change, line height change, page margin change,
 - Reader preferences persist per book (font size, font family, margins, line spacing, theme)
 - Chapter navigation (next/previous) works
 - TOC sheet lists chapters and supports jump-to-chapter
+- Tapping Explain increments `explain_count` in `book_stats` for the current book
+- Tapping Phonetics increments `phonetics_count` in `book_stats` for the current book
+- Active reading time is recorded into `book_stats.reading_time_seconds` and `reading_time_daily`
 - `flutter analyze` passes with no issues in reader code
 
 ## Non-Goals
@@ -201,6 +216,5 @@ Invalidated by: font size/family change, line height change, page margin change,
 - Highlighting in Canvas reader (future work)
 - Audio/translation
 - TXT/PDF format support
-- Real reading time tracking
 - flutter_rust_bridge FFI (Phase 2, currently using JSON CLI bridge)
 - Full image rendering from EPUB (placeholder only)

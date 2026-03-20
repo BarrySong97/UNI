@@ -5,6 +5,7 @@ import 'package:flutter/painting.dart';
 import '../models/page_layout.dart';
 import '../models/reader_preferences.dart';
 import '../models/render_node.dart';
+import 'knuth_plass/width_cache.dart';
 import 'knuth_plass/kp_item_builder.dart';
 import 'knuth_plass/kp_items.dart';
 import 'knuth_plass/kp_solver.dart';
@@ -13,12 +14,14 @@ import 'text_span_builder.dart';
 
 class _KPLineFragment {
   const _KPLineFragment({
-    required this.painter,
+    required this.text,
+    required this.style,
     required this.xOffset,
     required this.width,
   });
 
-  final TextPainter painter;
+  final String text;
+  final TextStyle? style;
   final double xOffset;
   final double width;
 }
@@ -292,12 +295,14 @@ class ParagraphLayouter {
       positioned: positioned,
       fallbackLineHeight: _fallbackKpLineHeight(
         items: items,
+        widthCache: widthCache,
         prefs: prefs,
         headingLevel: headingLevel,
         effectiveLineHeight: effectiveLineHeight,
         defaultColor: defaultColor,
       ),
       availableWidth: availableWidth,
+      widthCache: widthCache,
     );
     if (lines.isEmpty) return false;
 
@@ -329,6 +334,7 @@ class ParagraphLayouter {
     required List<KPPositionedItem> positioned,
     required double fallbackLineHeight,
     required double availableWidth,
+    required WidthCache widthCache,
   }) {
     final lines = <_KPLineLayout>[];
     final byLine = <int, List<KPPositionedItem>>{};
@@ -345,18 +351,25 @@ class ParagraphLayouter {
 
       for (final pos in linePositions) {
         final item = items[pos.item];
-        TextPainter? painter;
+        String? text;
+        TextStyle? style;
         if (item is KPBox) {
-          painter = _singleRunPainter(item.text, item.style);
+          text = item.text;
+          style = item.style;
         } else if (item is KPPenalty && item.width > 0) {
-          painter = _singleRunPainter('-', _lastBoxStyle(items, pos.item));
+          text = '-';
+          style = _lastBoxStyle(items, pos.item);
         }
-        if (painter == null) continue;
+        if (text == null) continue;
 
-        lineHeight = lineHeight < painter.height ? painter.height : lineHeight;
+        if (style != null) {
+          final height = widthCache.lineHeight(style);
+          lineHeight = lineHeight < height ? height : lineHeight;
+        }
         fragments.add(
           _KPLineFragment(
-            painter: painter,
+            text: text,
+            style: style,
             xOffset: pos.xOffset,
             width: pos.width,
           ),
@@ -374,11 +387,14 @@ class ParagraphLayouter {
           final perInterval = gap / intervalCount;
           final corrected = <_KPLineFragment>[];
           for (var i = 0; i < fragments.length; i++) {
-            corrected.add(_KPLineFragment(
-              painter: fragments[i].painter,
-              xOffset: fragments[i].xOffset + perInterval * i,
-              width: fragments[i].width,
-            ));
+            corrected.add(
+              _KPLineFragment(
+                text: fragments[i].text,
+                style: fragments[i].style,
+                xOffset: fragments[i].xOffset + perInterval * i,
+                width: fragments[i].width,
+              ),
+            );
           }
           fragments
             ..clear()
@@ -389,7 +405,12 @@ class ParagraphLayouter {
       if (lineHeight == 0.0) {
         final start = b == 0 ? breakpoints[b] : breakpoints[b] + 1;
         final end = breakpoints[b + 1];
-        lineHeight = _lineHeightForRange(items, start, end);
+        lineHeight = _lineHeightForRange(
+          items,
+          start,
+          end,
+          widthCache: widthCache,
+        );
       }
       if (lineHeight == 0.0) {
         lineHeight = fallbackLineHeight;
@@ -400,15 +421,12 @@ class ParagraphLayouter {
     return lines;
   }
 
-  static TextPainter _singleRunPainter(String text, TextStyle? style) {
-    final painter = TextPainter(
-      text: TextSpan(text: text, style: style),
-      textDirection: ui.TextDirection.ltr,
-    )..layout();
-    return painter;
-  }
-
-  static double _lineHeightForRange(List<KPItem> items, int start, int end) {
+  static double _lineHeightForRange(
+    List<KPItem> items,
+    int start,
+    int end, {
+    required WidthCache widthCache,
+  }) {
     TextStyle? style;
     for (var i = start; i <= end; i++) {
       final it = items[i];
@@ -419,14 +437,12 @@ class ParagraphLayouter {
     }
     style ??= _lastBoxStyle(items, end + 1);
     if (style == null) return 0.0;
-    final painter = _singleRunPainter(' ', style);
-    final height = painter.height;
-    painter.dispose();
-    return height;
+    return widthCache.lineHeight(style);
   }
 
   static double _fallbackKpLineHeight({
     required List<KPItem> items,
+    required WidthCache widthCache,
     required ReaderPreferences prefs,
     required int? headingLevel,
     required double effectiveLineHeight,
@@ -434,10 +450,9 @@ class ParagraphLayouter {
   }) {
     for (final item in items) {
       if (item is KPBox) {
-        final painter = _singleRunPainter(' ', item.style);
-        final height = painter.height;
-        painter.dispose();
-        return height;
+        if (item.style != null) {
+          return widthCache.lineHeight(item.style!);
+        }
       }
     }
 
@@ -452,10 +467,7 @@ class ParagraphLayouter {
       height: effectiveLineHeight,
       color: defaultColor ?? prefs.theme.textColor,
     );
-    final painter = _singleRunPainter(' ', baseStyle);
-    final height = painter.height;
-    painter.dispose();
-    return height;
+    return widthCache.lineHeight(baseStyle);
   }
 
   /// Find the style of the most recent KPBox at or before index [i].
@@ -537,7 +549,8 @@ class ParagraphLayouter {
               lineHeight,
             ),
             sourceNode: node,
-            textPainter: fragment.painter,
+            deferredText: fragment.text,
+            deferredStyle: fragment.style,
           ),
         );
       }

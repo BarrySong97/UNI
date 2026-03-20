@@ -1,67 +1,54 @@
 import 'package:flutter/material.dart';
 
+import '../../entities/reading-time-entity.dart';
 import '../../shared/constants/common-design-tokens.dart';
 import '../../shared/constants/shelf-design-tokens.dart';
 
 class LibraryReadingStats extends StatelessWidget {
-  const LibraryReadingStats({this.onTap, super.key});
+  const LibraryReadingStats({
+    required this.readingTime,
+    required this.booksReadThisYear,
+    this.onReadingTimeTap,
+    this.onBooksReadTap,
+    super.key,
+  });
 
-  final VoidCallback? onTap;
+  static const double _barChartHeight = 36;
+  static const int _secondsPerDay = 24 * 60 * 60;
 
-  // Mock data - will be replaced with real data later
-  static const int _mockMonthlyMinutes = 109;
-  static const int _mockBooksRead = 12;
-
-  static const List<double> _mockBarHeights = [
-    0.3,
-    0.5,
-    0.8,
-    0.4,
-    0.6,
-    0.9,
-    0.7,
-    0.5,
-    0.3,
-    0.6,
-    0.8,
-    0.4,
-    0.5,
-    0.7,
-    0.9,
-    0.6,
-    0.4,
-    0.8,
-    0.5,
-    0.3,
-    0.7,
-    0.6,
-    0.4,
-    0.8,
-    0.5,
-    0.9,
-    0.3,
-    0.6,
-    0.7,
-    0.4,
-  ];
+  final ReadingTimeEntity readingTime;
+  final int booksReadThisYear;
+  final VoidCallback? onReadingTimeTap;
+  final VoidCallback? onBooksReadTap;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Row(
-        children: <Widget>[
-          Expanded(child: _buildDailyGoalCard()),
-          const SizedBox(width: 12),
-          Expanded(child: _buildBooksReadCard()),
-        ],
-      ),
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: GestureDetector(
+            key: const ValueKey<String>('reading-time-stat-card'),
+            behavior: HitTestBehavior.opaque,
+            onTap: onReadingTimeTap,
+            child: _buildDailyGoalCard(),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: GestureDetector(
+            key: const ValueKey<String>('books-read-stat-card'),
+            behavior: HitTestBehavior.opaque,
+            onTap: onBooksReadTap,
+            child: _buildBooksReadCard(),
+          ),
+        ),
+      ],
     );
   }
 
   Widget _buildDailyGoalCard() {
-    final hours = _mockMonthlyMinutes ~/ 60;
-    final minutes = _mockMonthlyMinutes % 60;
+    final hours = readingTime.totalSeconds ~/ 3600;
+    final minutes = (readingTime.totalSeconds % 3600) ~/ 60;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -75,7 +62,7 @@ class LibraryReadingStats extends StatelessWidget {
           Row(
             children: <Widget>[
               Text(
-                _currentMonthLabel(),
+                _monthLabel(readingTime.month),
                 style: const TextStyle(
                   fontSize: 12,
                   color: ShelfDesignTokens.statsLabelColor,
@@ -90,24 +77,54 @@ class LibraryReadingStats extends StatelessWidget {
           _buildTimeDisplay(hours, minutes),
           const SizedBox(height: 14),
           SizedBox(
-            height: 36,
+            height: _barChartHeight,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
-              children: _mockBarHeights.map((h) {
-                return Expanded(
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 0.5),
-                    height: 36 * h,
-                    decoration: BoxDecoration(
-                      color: ShelfDesignTokens.statsBarColor,
-                      borderRadius: BorderRadius.circular(1),
-                    ),
-                  ),
-                );
-              }).toList(),
+              children: <Widget>[
+                for (var i = 0; i < readingTime.dailySeconds.length; i++)
+                  _buildDailyBar(i, readingTime.dailySeconds[i]),
+              ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildDailyBar(int index, int seconds) {
+    final ratio = (seconds / _secondsPerDay).clamp(0.0, 1.0);
+    final backgroundColor = ShelfDesignTokens.statsBarColor.withValues(
+      alpha: 0.32,
+    );
+    final fillColor = ShelfDesignTokens.statsNumberColor;
+
+    return Expanded(
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 0.5),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(1),
+          child: DecoratedBox(
+            key: ValueKey<String>('reading-bar-bg-$index'),
+            decoration: BoxDecoration(color: backgroundColor),
+            child: SizedBox(
+              height: _barChartHeight,
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: ratio == 0
+                    ? const SizedBox.shrink()
+                    : FractionallySizedBox(
+                        heightFactor: ratio,
+                        widthFactor: 1,
+                        alignment: Alignment.bottomCenter,
+                        child: DecoratedBox(
+                          key: ValueKey<String>('reading-bar-fill-$index'),
+                          decoration: BoxDecoration(color: fillColor),
+                        ),
+                      ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -145,10 +162,10 @@ class LibraryReadingStats extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           RichText(
-            text: const TextSpan(
+            text: TextSpan(
               children: <InlineSpan>[
                 TextSpan(
-                  text: '$_mockBooksRead',
+                  text: '$booksReadThisYear',
                   style: TextStyle(
                     fontSize: 32,
                     fontWeight: FontWeight.w700,
@@ -184,7 +201,7 @@ class LibraryReadingStats extends StatelessWidget {
     );
   }
 
-  static String _currentMonthLabel() {
+  static String _monthLabel(int month) {
     const months = [
       'JANUARY',
       'FEBRUARY',
@@ -199,7 +216,7 @@ class LibraryReadingStats extends StatelessWidget {
       'NOVEMBER',
       'DECEMBER',
     ];
-    return months[DateTime.now().month - 1];
+    return months[month - 1];
   }
 
   Widget _buildTimeDisplay(int hours, int minutes) {

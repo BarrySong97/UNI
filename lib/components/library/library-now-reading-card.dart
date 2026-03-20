@@ -133,6 +133,18 @@ class NowReadingCard extends StatelessWidget {
           ),
         ],
         const SizedBox(height: 14),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(2),
+          child: LinearProgressIndicator(
+            value: progress,
+            minHeight: 4,
+            backgroundColor: ShelfDesignTokens.nowReadingProgressBg,
+            valueColor: const AlwaysStoppedAnimation<Color>(
+              ShelfDesignTokens.nowReadingProgressFill,
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
         Align(
           alignment: Alignment.centerRight,
           child: GestureDetector(

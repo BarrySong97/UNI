@@ -59,6 +59,7 @@ void main() {
       bookImportService: _FakeBookImportService(draft),
       booksDirectory: tempDir.path,
       progressRepository: progressRepository,
+      database: database,
       bookProfileColorService: BookProfileColorService(
         dominantColorExtractor: (bytes) async => const Color(0xFF336699),
       ),

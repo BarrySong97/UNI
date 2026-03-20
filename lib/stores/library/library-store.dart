@@ -7,25 +7,32 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 
 import '../../entities/book-entity.dart';
+import '../../entities/reading-time-entity.dart';
 import '../../repositories/book/book-repository.dart';
 import '../../repositories/progress/progress-repository.dart';
+import '../../services/db/app-database.dart';
 import '../../services/library/book-profile-color-service.dart';
 import '../../services/parser/book-import-service.dart';
 import '../../services/reader/epub_preparse_service.dart';
 import 'library-state.dart';
 
 class LibraryStore extends ChangeNotifier {
+  static const double _booksReadProgressThreshold = 0.4;
+  static const int _booksReadTimeThresholdSeconds = 20 * 60;
+
   LibraryStore({
     required BookRepository bookRepository,
     required BookImportService bookImportService,
     required String booksDirectory,
     required ProgressRepository progressRepository,
+    required AppDatabase database,
     BookProfileColorService? bookProfileColorService,
     required EpubPreparseService epubPreparseService,
   }) : _bookRepository = bookRepository,
        _bookImportService = bookImportService,
        _booksDirectory = booksDirectory,
        _progressRepository = progressRepository,
+       _database = database,
        _bookProfileColorService =
            bookProfileColorService ?? const BookProfileColorService(),
        _epubPreparseService = epubPreparseService;
@@ -34,6 +41,7 @@ class LibraryStore extends ChangeNotifier {
   final BookImportService _bookImportService;
   final String _booksDirectory;
   final ProgressRepository _progressRepository;
+  final AppDatabase _database;
   final BookProfileColorService _bookProfileColorService;
   final EpubPreparseService _epubPreparseService;
   LibraryState _state = LibraryState.initial();
@@ -48,12 +56,16 @@ class LibraryStore extends ChangeNotifier {
       final books = await _bookRepository.getShelfBooks();
       await _migrateAbsolutePathsIfNeeded(books);
       final progressData = await _loadProgressData(books);
+      final readingTime = await _loadCurrentMonthReadingTime();
+      final booksReadThisYear = await _loadBooksReadThisYear();
       _state = _state.copyWith(
         books: books,
         filteredBooks: _filterByCategory(books, _state.activeCategory),
         progressMap: progressData.percentMap,
         progressLocatorMap: progressData.locatorMap,
         progressUpdatedMap: progressData.updatedMap,
+        readingTime: readingTime,
+        booksReadThisYear: booksReadThisYear,
         isLoading: false,
         errorMessage: null,
       );
@@ -70,16 +82,37 @@ class LibraryStore extends ChangeNotifier {
   Future<void> refreshProgress() async {
     try {
       final progressData = await _loadProgressData(_state.books);
+      final readingTime = await _loadCurrentMonthReadingTime();
+      final booksReadThisYear = await _loadBooksReadThisYear();
       _state = _state.copyWith(
         progressMap: progressData.percentMap,
         progressLocatorMap: progressData.locatorMap,
         progressUpdatedMap: progressData.updatedMap,
+        readingTime: readingTime,
+        booksReadThisYear: booksReadThisYear,
         filteredBooks: _filterByCategory(_state.books, _state.activeCategory),
       );
       notifyListeners();
     } catch (_) {
       // Keep current UI state on background refresh failures.
     }
+  }
+
+  Future<ReadingTimeEntity> _loadCurrentMonthReadingTime() {
+    final now = DateTime.now();
+    return _database.getMonthlyReadingTime(year: now.year, month: now.month);
+  }
+
+  Future<int> _loadBooksReadThisYear() {
+    final now = DateTime.now();
+    final start = DateTime(now.year, 1, 1);
+    final end = DateTime(now.year + 1, 1, 1);
+    return _database.getBooksReadCountInRange(
+      startInclusive: start,
+      endExclusive: end,
+      progressThreshold: _booksReadProgressThreshold,
+      readingTimeThresholdSeconds: _booksReadTimeThresholdSeconds,
+    );
   }
 
   Future<_ProgressData> _loadProgressData(List<BookEntity> books) async {

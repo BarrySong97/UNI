@@ -10,10 +10,12 @@ import 'data/cached_chapter_data_source.dart';
 /// Entry point for opening books in the reader.
 class ReaderEntryService {
   Future<void> openBook(BuildContext context, String bookId) async {
+    final sw = Stopwatch()..start();
     if (!context.mounted) return;
 
     final providers = AppProvidersScope.of(context);
     final book = await providers.bookRepository.getBookById(bookId);
+    debugPrint('[ReaderEntry] getBookById: ${sw.elapsedMilliseconds}ms');
 
     if (book == null || !context.mounted) return;
 
@@ -43,8 +45,9 @@ class ReaderEntryService {
 
     // If cache is missing, run preparse on the fly.
     final manifest = File(p.join(cacheDir, 'book.json'));
-    debugPrint('[ReaderEntry] cacheDir=$cacheDir exists=${await manifest.exists()}');
-    if (!await manifest.exists()) {
+    final cacheExists = await manifest.exists();
+    debugPrint('[ReaderEntry] cacheDir check: ${sw.elapsedMilliseconds}ms, exists=$cacheExists');
+    if (!cacheExists) {
       if (!context.mounted) return;
 
       // Resolve the EPUB file path.
@@ -80,16 +83,16 @@ class ReaderEntryService {
     if (!context.mounted) return;
 
     final dataSource = CachedChapterDataSource(cacheDir: cacheDir);
-    // Fire-and-forget: pre-read book.json + first chapter into memory while
-    // the route transition animates (~300ms).
+    debugPrint('[ReaderEntry] warmUp start: ${sw.elapsedMilliseconds}ms');
     dataSource.warmUp();
 
-    Navigator.of(context).push(
+    debugPrint('[ReaderEntry] Navigator.push: ${sw.elapsedMilliseconds}ms');
+    await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => ReaderPage(
           book: book,
           dataSource: dataSource,
-          progressRepository: providers.progressRepository,
+          storeManager: providers.readerStoreManager,
         ),
       ),
     );

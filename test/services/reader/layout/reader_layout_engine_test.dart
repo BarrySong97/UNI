@@ -3,8 +3,15 @@ import 'dart:ui'
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uni/services/reader/layout/reader_layout_engine.dart';
+import 'package:uni/services/reader/models/page_layout.dart';
 import 'package:uni/services/reader/models/reader_preferences.dart';
 import 'package:uni/services/reader/models/render_node.dart';
+
+String _elementText(LayoutElement element) {
+  final painter = element.ensurePainter();
+  if (painter == null) return '';
+  return painter.text?.toPlainText() ?? '';
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -35,7 +42,7 @@ void main() {
     );
 
     final textElements = chapter.pages.first.elements
-        .where((e) => e.textPainter != null)
+        .where((e) => e.hasText)
         .toList();
 
     expect(textElements.length, greaterThanOrEqualTo(1));
@@ -100,8 +107,8 @@ void main() {
       );
       // Marker is now a separate element from the text content.
       final markers = chapter.pages.first.elements
-          .where((e) => e.textPainter != null)
-          .map((e) => e.textPainter!.text!.toPlainText())
+          .where((e) => e.hasText)
+          .map((e) => _elementText(e))
           .toList();
       // First text element is the body text, marker is placed after it.
       return markers.firstWhere((t) => !t.contains('Alpha'));
@@ -139,13 +146,13 @@ void main() {
     );
 
     final textElements = chapter.pages.first.elements
-        .where((e) => e.textPainter != null)
+        .where((e) => e.hasText)
         .toList();
     final parent = textElements.firstWhere(
-      (e) => e.textPainter!.text!.toPlainText().contains('Parent'),
+      (e) => _elementText(e).contains('Parent'),
     );
     final child = textElements.firstWhere(
-      (e) => e.textPainter!.text!.toPlainText().contains('Child'),
+      (e) => _elementText(e).contains('Child'),
     );
     expect(child.rect.left, greaterThan(parent.rect.left));
   });
@@ -221,49 +228,46 @@ void main() {
     expect(hasRenderedImage, isTrue);
   });
 
-  test(
-    'justified mixed styles use positioned fragments and fill line width',
-    () {
-      final chapter = engine.paginate(
-        chapterIndex: 0,
-        nodes: const [
-          ParagraphNode(
-            align: TextAlign.justify,
-            children: [
-              TextNode(content: 'Alpha beta gamma delta '),
-              TextNode(content: 'EPSILON ZETA ', bold: true),
-              TextNode(
-                content:
-                    'eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega',
-              ),
-            ],
-          ),
-        ],
-        viewportSize: const Size(360, 300),
-        prefs: prefs,
-      );
+  test('justified mixed styles use positioned fragments and fill line width', () {
+    final chapter = engine.paginate(
+      chapterIndex: 0,
+      nodes: const [
+        ParagraphNode(
+          align: TextAlign.justify,
+          children: [
+            TextNode(content: 'Alpha beta gamma delta '),
+            TextNode(content: 'EPSILON ZETA ', bold: true),
+            TextNode(
+              content:
+                  'eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega',
+            ),
+          ],
+        ),
+      ],
+      viewportSize: const Size(360, 300),
+      prefs: prefs,
+    );
 
-      final textElements = chapter.pages.first.elements
-          .where((e) => e.textPainter != null)
-          .toList();
-      expect(textElements.length, greaterThan(2));
+    final textElements = chapter.pages.first.elements
+        .where((e) => e.hasText)
+        .toList();
+    expect(textElements.length, greaterThan(2));
 
-      final firstLineTop = textElements
-          .map((e) => e.rect.top)
-          .reduce((a, b) => a < b ? a : b);
-      final firstLineElements = textElements
-          .where((e) => (e.rect.top - firstLineTop).abs() < 0.01)
-          .toList();
+    final firstLineTop = textElements
+        .map((e) => e.rect.top)
+        .reduce((a, b) => a < b ? a : b);
+    final firstLineElements = textElements
+        .where((e) => (e.rect.top - firstLineTop).abs() < 0.01)
+        .toList();
 
-      // Positioned fragment mode produces multiple text elements on one line.
-      expect(firstLineElements.length, greaterThan(1));
+    // Positioned fragment mode produces multiple text elements on one line.
+    expect(firstLineElements.length, greaterThan(1));
 
-      final firstLineRight = firstLineElements
-          .map((e) => e.rect.right)
-          .reduce((a, b) => a > b ? a : b);
-      expect(firstLineRight, closeTo(360.0, 5.0));
-    },
-  );
+    final firstLineRight = firstLineElements
+        .map((e) => e.rect.right)
+        .reduce((a, b) => a > b ? a : b);
+    expect(firstLineRight, closeTo(360.0, 5.0));
+  });
 
   test(
     'justified CJK paragraph keeps small right-side gaps on non-last lines',
@@ -287,7 +291,7 @@ void main() {
       );
 
       final textElements = chapter.pages.first.elements
-          .where((e) => e.textPainter != null)
+          .where((e) => e.hasText)
           .toList();
       expect(textElements.isNotEmpty, isTrue);
 
@@ -331,7 +335,7 @@ void main() {
       );
 
       final textElements = chapter.pages.first.elements
-          .where((e) => e.textPainter != null)
+          .where((e) => e.hasText)
           .toList();
       expect(textElements.isNotEmpty, isTrue);
 
@@ -353,203 +357,192 @@ void main() {
     },
   );
 
-  test(
-    'left-aligned paragraph is auto-justified by layout engine',
-    () {
-      // ParagraphNode with default TextAlign.left should be overridden to
-      // justify by the layout engine when text is long enough (flowing body
-      // text), producing multiple fragments per line.
-      final chapter = engine.paginate(
-        chapterIndex: 0,
-        nodes: const [
-          ParagraphNode(
-            // align defaults to TextAlign.left
-            children: [
-              TextNode(
-                content:
-                    'Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega. '
-                    'These additional words ensure the paragraph is long enough to be detected as flowing body text by the layout engine heuristic.',
-              ),
-            ],
-          ),
-        ],
-        viewportSize: const Size(360, 400),
-        prefs: prefs,
+  test('left-aligned paragraph is auto-justified by layout engine', () {
+    // ParagraphNode with default TextAlign.left should be overridden to
+    // justify by the layout engine when text is long enough (flowing body
+    // text), producing multiple fragments per line.
+    final chapter = engine.paginate(
+      chapterIndex: 0,
+      nodes: const [
+        ParagraphNode(
+          // align defaults to TextAlign.left
+          children: [
+            TextNode(
+              content:
+                  'Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega. '
+                  'These additional words ensure the paragraph is long enough to be detected as flowing body text by the layout engine heuristic.',
+            ),
+          ],
+        ),
+      ],
+      viewportSize: const Size(360, 400),
+      prefs: prefs,
+    );
+
+    final textElements = chapter.pages.first.elements
+        .where((e) => e.hasText)
+        .toList();
+
+    // K-P justified layout produces multiple fragments (one per word).
+    expect(textElements.length, greaterThan(3));
+
+    // Non-last lines should fill the available width.
+    final byLine = <double, List<double>>{};
+    for (final e in textElements) {
+      final key = (e.rect.top * 10).roundToDouble() / 10;
+      byLine.putIfAbsent(key, () => <double>[]).add(e.rect.right);
+    }
+    final lineKeys = byLine.keys.toList()..sort();
+    if (lineKeys.length > 2) {
+      final firstLineRight = byLine[lineKeys[0]]!.reduce(
+        (a, b) => a > b ? a : b,
       );
+      expect(360.0 - firstLineRight, lessThanOrEqualTo(5.0));
+    }
+  });
 
-      final textElements = chapter.pages.first.elements
-          .where((e) => e.textPainter != null)
-          .toList();
+  test('last line of justified paragraph is not excessively stretched', () {
+    // Use a short last line to ensure the gap is visible.
+    final chapter = engine.paginate(
+      chapterIndex: 0,
+      nodes: const [
+        ParagraphNode(
+          align: TextAlign.justify,
+          children: [
+            TextNode(
+              content:
+                  'Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega. '
+                  'These additional words make the paragraph long enough for multiple well-filled lines at this viewport width. End.',
+            ),
+          ],
+        ),
+      ],
+      viewportSize: const Size(360, 400),
+      prefs: prefs,
+    );
 
-      // K-P justified layout produces multiple fragments (one per word).
-      expect(textElements.length, greaterThan(3));
+    final textElements = chapter.pages.first.elements
+        .where((e) => e.hasText)
+        .toList();
 
-      // Non-last lines should fill the available width.
+    final byLine = <double, List<double>>{};
+    for (final e in textElements) {
+      final key = (e.rect.top * 10).roundToDouble() / 10;
+      byLine.putIfAbsent(key, () => <double>[]).add(e.rect.right);
+    }
+    final lineKeys = byLine.keys.toList()..sort();
+    expect(lineKeys.length, greaterThan(1));
+
+    // Non-last lines should be close to the line width.
+    if (lineKeys.length > 2) {
+      final firstLineRight = byLine[lineKeys[0]]!.reduce(
+        (a, b) => a > b ? a : b,
+      );
+      expect(firstLineRight, closeTo(360.0, 5.0));
+    }
+  });
+
+  test('short paragraph does not get excessively stretched word spacing', () {
+    // A paragraph with few words should not have huge gaps between words,
+    // even if the K-P algorithm runs. The ratio cap in positionItems
+    // ensures moderate spacing.
+    final chapter = engine.paginate(
+      chapterIndex: 0,
+      nodes: const [
+        ParagraphNode(
+          align: TextAlign.justify,
+          children: [
+            TextNode(
+              content:
+                  'I then proceeded to have a wonderful time at the event.',
+            ),
+          ],
+        ),
+      ],
+      viewportSize: const Size(300, 300),
+      prefs: prefs,
+    );
+
+    final textElements = chapter.pages.first.elements
+        .where((e) => e.hasText)
+        .toList();
+    expect(textElements.isNotEmpty, isTrue);
+
+    // If K-P runs, check that fragment gaps are not excessive.
+    if (textElements.length > 1) {
       final byLine = <double, List<double>>{};
       for (final e in textElements) {
         final key = (e.rect.top * 10).roundToDouble() / 10;
-        byLine.putIfAbsent(key, () => <double>[]).add(e.rect.right);
+        byLine.putIfAbsent(key, () => []);
+        byLine[key]!.add(e.rect.left);
+        byLine[key]!.add(e.rect.right);
       }
-      final lineKeys = byLine.keys.toList()..sort();
-      if (lineKeys.length > 2) {
-        final firstLineRight = byLine[lineKeys[0]]!
-            .reduce((a, b) => a > b ? a : b);
-        expect(360.0 - firstLineRight, lessThanOrEqualTo(5.0));
-      }
-    },
-  );
 
-  test(
-    'last line of justified paragraph is not excessively stretched',
-    () {
-      // Use a short last line to ensure the gap is visible.
-      final chapter = engine.paginate(
-        chapterIndex: 0,
-        nodes: const [
-          ParagraphNode(
-            align: TextAlign.justify,
-            children: [
-              TextNode(
-                content:
-                    'Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega. '
-                    'These additional words make the paragraph long enough for multiple well-filled lines at this viewport width. End.',
-              ),
-            ],
-          ),
-        ],
-        viewportSize: const Size(360, 400),
-        prefs: prefs,
-      );
-
-      final textElements = chapter.pages.first.elements
-          .where((e) => e.textPainter != null)
-          .toList();
-
-      final byLine = <double, List<double>>{};
-      for (final e in textElements) {
-        final key = (e.rect.top * 10).roundToDouble() / 10;
-        byLine.putIfAbsent(key, () => <double>[]).add(e.rect.right);
-      }
-      final lineKeys = byLine.keys.toList()..sort();
-      expect(lineKeys.length, greaterThan(1));
-
-      // Non-last lines should be close to the line width.
-      if (lineKeys.length > 2) {
-        final firstLineRight = byLine[lineKeys[0]]!
-            .reduce((a, b) => a > b ? a : b);
-        expect(firstLineRight, closeTo(360.0, 5.0));
-      }
-    },
-  );
-
-  test(
-    'short paragraph does not get excessively stretched word spacing',
-    () {
-      // A paragraph with few words should not have huge gaps between words,
-      // even if the K-P algorithm runs. The ratio cap in positionItems
-      // ensures moderate spacing.
-      final chapter = engine.paginate(
-        chapterIndex: 0,
-        nodes: const [
-          ParagraphNode(
-            align: TextAlign.justify,
-            children: [
-              TextNode(
-                content: 'I then proceeded to have a wonderful time at the event.',
-              ),
-            ],
-          ),
-        ],
-        viewportSize: const Size(300, 300),
-        prefs: prefs,
-      );
-
-      final textElements = chapter.pages.first.elements
-          .where((e) => e.textPainter != null)
-          .toList();
-      expect(textElements.isNotEmpty, isTrue);
-
-      // If K-P runs, check that fragment gaps are not excessive.
-      if (textElements.length > 1) {
-        final byLine = <double, List<double>>{};
-        for (final e in textElements) {
-          final key = (e.rect.top * 10).roundToDouble() / 10;
-          byLine.putIfAbsent(key, () => []);
-          byLine[key]!.add(e.rect.left);
-          byLine[key]!.add(e.rect.right);
-        }
-
-        // For each line, the max gap between adjacent fragments should be
-        // reasonable (not exceeding ~4x normal space width at 16px ≈ ~25px).
-        for (final positions in byLine.values) {
-          positions.sort();
-          for (var i = 1; i < positions.length - 1; i += 2) {
-            final gap = positions[i + 1] - positions[i];
-            // Gap between fragment right edge and next fragment left edge.
-            if (gap > 0) {
-              expect(gap, lessThan(30.0),
-                  reason: 'Word gap should not be excessively wide');
-            }
+      // For each line, the max gap between adjacent fragments should be
+      // reasonable (not exceeding ~4x normal space width at 16px ≈ ~25px).
+      for (final positions in byLine.values) {
+        positions.sort();
+        for (var i = 1; i < positions.length - 1; i += 2) {
+          final gap = positions[i + 1] - positions[i];
+          // Gap between fragment right edge and next fragment left edge.
+          if (gap > 0) {
+            expect(
+              gap,
+              lessThan(30.0),
+              reason: 'Word gap should not be excessively wide',
+            );
           }
         }
       }
-    },
-  );
+    }
+  });
 
-  test(
-    'short paragraph is not auto-justified (stays left-aligned)',
-    () {
-      // A short paragraph that doesn't fill ~1.5 lines should not be
-      // auto-justified, keeping normal left-aligned spacing.
-      final chapter = engine.paginate(
-        chapterIndex: 0,
-        nodes: const [
-          ParagraphNode(
-            // align defaults to TextAlign.left
-            children: [
-              TextNode(content: 'ISBN 978-0-123456-47-2'),
-            ],
-          ),
-        ],
-        viewportSize: const Size(360, 300),
-        prefs: prefs,
-      );
+  test('short paragraph is not auto-justified (stays left-aligned)', () {
+    // A short paragraph that doesn't fill ~1.5 lines should not be
+    // auto-justified, keeping normal left-aligned spacing.
+    final chapter = engine.paginate(
+      chapterIndex: 0,
+      nodes: const [
+        ParagraphNode(
+          // align defaults to TextAlign.left
+          children: [TextNode(content: 'ISBN 978-0-123456-47-2')],
+        ),
+      ],
+      viewportSize: const Size(360, 300),
+      prefs: prefs,
+    );
 
-      final textElements = chapter.pages.first.elements
-          .where((e) => e.textPainter != null)
-          .toList();
-      // Should be a single greedy element (not K-P fragments).
-      expect(textElements.length, equals(1));
-    },
-  );
+    final textElements = chapter.pages.first.elements
+        .where((e) => e.hasText)
+        .toList();
+    // Should be a single greedy element (not K-P fragments).
+    expect(textElements.length, equals(1));
+  });
 
-  test(
-    'paragraph with LineBreakNode is not auto-justified',
-    () {
-      // Structured content with forced line breaks (e.g. ISBN metadata,
-      // addresses) should not be force-justified even if long enough.
-      final chapter = engine.paginate(
-        chapterIndex: 0,
-        nodes: const [
-          ParagraphNode(
-            children: [
-              TextNode(content: 'First Edition published in 2020'),
-              LineBreakNode(),
-              TextNode(content: 'Second Edition published in 2023'),
-              LineBreakNode(),
-              TextNode(content: 'Third Edition published in 2025'),
-            ],
-          ),
-        ],
-        viewportSize: const Size(360, 300),
-        prefs: prefs,
-      );
+  test('paragraph with LineBreakNode is not auto-justified', () {
+    // Structured content with forced line breaks (e.g. ISBN metadata,
+    // addresses) should not be force-justified even if long enough.
+    final chapter = engine.paginate(
+      chapterIndex: 0,
+      nodes: const [
+        ParagraphNode(
+          children: [
+            TextNode(content: 'First Edition published in 2020'),
+            LineBreakNode(),
+            TextNode(content: 'Second Edition published in 2023'),
+            LineBreakNode(),
+            TextNode(content: 'Third Edition published in 2025'),
+          ],
+        ),
+      ],
+      viewportSize: const Size(360, 300),
+      prefs: prefs,
+    );
 
-      final textElements = chapter.pages.first.elements
-          .where((e) => e.textPainter != null)
-          .toList();
-      // Should be a single greedy element (not K-P fragments).
-      expect(textElements.length, equals(1));
-    },
-  );
+    final textElements = chapter.pages.first.elements
+        .where((e) => e.hasText)
+        .toList();
+    // Should be a single greedy element (not K-P fragments).
+    expect(textElements.length, equals(1));
+  });
 }

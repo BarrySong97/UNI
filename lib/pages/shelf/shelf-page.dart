@@ -55,6 +55,8 @@ class _ShelfPageState extends State<ShelfPage> {
           progressMap: state.progressMap,
           progressBookIds: state.progressUpdatedMap.keys.toSet(),
           hasReadingProgress: state.progressUpdatedMap.isNotEmpty,
+          readingTime: state.readingTime,
+          booksReadThisYear: state.booksReadThisYear,
           emptyMessage: localizations.tr('emptyLibrary'),
           importingMessage: localizations.tr('importingBook'),
           nowReadingBook: nowReading,
@@ -149,6 +151,9 @@ class _ShelfPageState extends State<ShelfPage> {
     await AppProvidersScope.of(
       context,
     ).readerEntryService.openBook(context, bookId);
+    if (mounted) {
+      AppProvidersScope.of(context).libraryStore.loadShelf();
+    }
   }
 
   Future<void> _openBookFromLibrary(String bookId, bool hasProgress) async {
@@ -166,6 +171,9 @@ class _ShelfPageState extends State<ShelfPage> {
         await Navigator.of(
           context,
         ).pushNamed(RouteNames.bookDetail, arguments: bookId);
+        if (mounted) {
+          AppProvidersScope.of(context).libraryStore.loadShelf();
+        }
       }
     } finally {
       _isNavigatingBook = false;

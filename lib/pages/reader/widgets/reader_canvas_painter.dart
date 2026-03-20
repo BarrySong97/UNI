@@ -64,8 +64,9 @@ class ReaderCanvasPainter extends CustomPainter {
     }
 
     // Text content.
-    if (element.textPainter != null) {
-      element.textPainter!.paint(canvas, element.rect.topLeft);
+    final tp = element.ensurePainter();
+    if (tp != null) {
+      tp.paint(canvas, element.rect.topLeft);
     }
 
     // Image content.
@@ -80,7 +81,7 @@ class ReaderCanvasPainter extends CustomPainter {
 
     // Horizontal rule: draw a thin line across the element rect.
     if (element.sourceNode is HorizontalRuleNode &&
-        element.textPainter == null &&
+        !element.hasText &&
         element.image == null &&
         element.backgroundPaint == null) {
       final rulePaint = Paint()

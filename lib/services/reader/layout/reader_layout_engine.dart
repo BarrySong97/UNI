@@ -7,6 +7,7 @@ import 'package:flutter/painting.dart';
 import '../models/page_layout.dart';
 import '../models/reader_preferences.dart';
 import '../models/render_node.dart';
+import 'knuth_plass/width_cache.dart';
 import 'layout_context.dart';
 import 'paragraph_layouter.dart';
 import 'text_span_builder.dart';
@@ -20,7 +21,8 @@ class ReaderLayoutEngine {
 
   /// Pre-decode all base64 images in a chapter's nodes.
   ///
-  /// Call this before [paginate] so images are available during layout.
+  /// Call this before [paginate]/[paginateAsync] so images are available during
+  /// layout.
   /// Returns a map from the ImageNode's dataBase64 hash to the decoded image.
   Future<Map<String, ui.Image>> decodeImages(
     List<RenderNode> nodes,
@@ -56,6 +58,10 @@ class ReaderLayoutEngine {
   }
 
   /// Paginate a single chapter.
+  ///
+  /// Pass a shared [widthCache] to reuse word-width measurements across
+  /// chapters with the same font settings, avoiding redundant TextPainter
+  /// creation for common words.
   ChapterPagination paginate({
     required int chapterIndex,
     required List<RenderNode> nodes,
@@ -65,6 +71,7 @@ class ReaderLayoutEngine {
     double safeAreaTop = 0.0,
     double safeAreaBottom = 0.0,
     bool pageCountOnly = false,
+    WidthCache? widthCache,
   }) {
     final contentWidth = viewportSize.width - 2 * prefs.pageHorizontalPaddingPx;
     final contentHeight =
@@ -80,10 +87,58 @@ class ReaderLayoutEngine {
       chapterIndex: chapterIndex,
       pageCountOnly: pageCountOnly,
       decodedImages: decodedImages ?? const {},
+      widthCache: widthCache,
     );
 
     for (final node in nodes) {
       _layoutNode(node, ctx);
+    }
+
+    final pages = ctx.finalize();
+
+    return ChapterPagination(
+      chapterIndex: chapterIndex,
+      pages: pages,
+      viewportSize: viewportSize,
+      preferencesHash: prefs.layoutHash,
+    );
+  }
+
+  /// Async pagination variant that yields every few nodes so the UI can keep
+  /// animating while layout work is in progress.
+  Future<ChapterPagination> paginateAsync({
+    required int chapterIndex,
+    required List<RenderNode> nodes,
+    required Size viewportSize,
+    required ReaderPreferences prefs,
+    Map<String, ui.Image>? decodedImages,
+    double safeAreaTop = 0.0,
+    double safeAreaBottom = 0.0,
+    bool pageCountOnly = false,
+    WidthCache? widthCache,
+  }) async {
+    final contentWidth = viewportSize.width - 2 * prefs.pageHorizontalPaddingPx;
+    final contentHeight =
+        viewportSize.height -
+        2 * prefs.pageVerticalPaddingPx -
+        safeAreaTop -
+        safeAreaBottom;
+
+    final ctx = LayoutContext(
+      contentWidth: contentWidth,
+      contentHeight: contentHeight,
+      preferences: prefs,
+      chapterIndex: chapterIndex,
+      pageCountOnly: pageCountOnly,
+      decodedImages: decodedImages ?? const {},
+      widthCache: widthCache,
+    );
+
+    for (var i = 0; i < nodes.length; i++) {
+      _layoutNode(nodes[i], ctx);
+      if ((i + 1) % 5 == 0) {
+        await Future<void>.delayed(Duration.zero);
+      }
     }
 
     final pages = ctx.finalize();
@@ -108,8 +163,8 @@ class ReaderLayoutEngine {
         // line breaks) stay left-aligned.
         final effectiveAlign =
             node.align == ui.TextAlign.left && _shouldJustify(node, ctx)
-                ? ui.TextAlign.justify
-                : node.align;
+            ? ui.TextAlign.justify
+            : node.align;
         final needsCopy = nestingIndentEm > 0 || effectiveAlign != node.align;
         final paragraph = needsCopy
             ? ParagraphNode(
@@ -172,9 +227,10 @@ class ReaderLayoutEngine {
 
     // Estimate whether text fills at least ~1.5 lines.
     // Average char width ≈ fontSize * 0.5 for Latin text.
-    final totalChars = node.children
-        .whereType<TextNode>()
-        .fold<int>(0, (sum, t) => sum + t.content.length);
+    final totalChars = node.children.whereType<TextNode>().fold<int>(
+      0,
+      (sum, t) => sum + t.content.length,
+    );
     final fontSize = ctx.preferences.baseFontSizePx;
     final charsPerLine = ctx.contentWidth / (fontSize * 0.5);
     return totalChars > charsPerLine * 1.5;
@@ -374,7 +430,10 @@ class ReaderLayoutEngine {
       // Find where the first text element of this item was placed,
       // then position the marker on the same page and Y.
       final markerGap = prefs.emToPx(0.3);
-      final markerX = math.max(0.0, prefs.emToPx(indentEm) - markerWidth - markerGap);
+      final markerX = math.max(
+        0.0,
+        prefs.emToPx(indentEm) - markerWidth - markerGap,
+      );
       final (markerPage, markerY) = _findFirstTextPosition(
         ctx: ctx,
         preLayoutPageCount: preLayoutPageCount,
@@ -412,15 +471,19 @@ class ReaderLayoutEngine {
     // 1. Check the page that was current at snapshot time (now possibly completed).
     if (ctx.pages.length > preLayoutPageCount) {
       final snapshotPage = ctx.pages[preLayoutPageCount];
-      for (var j = preLayoutElementCount; j < snapshotPage.elements.length; j++) {
-        if (snapshotPage.elements[j].textPainter != null) {
+      for (
+        var j = preLayoutElementCount;
+        j < snapshotPage.elements.length;
+        j++
+      ) {
+        if (snapshotPage.elements[j].hasText) {
           return (snapshotPage, snapshotPage.elements[j].rect.top);
         }
       }
       // 2. Check pages created after the snapshot page.
       for (var p = preLayoutPageCount + 1; p < ctx.pages.length; p++) {
         for (final el in ctx.pages[p].elements) {
-          if (el.textPainter != null) return (ctx.pages[p], el.rect.top);
+          if (el.hasText) return (ctx.pages[p], el.rect.top);
         }
       }
     }
@@ -431,7 +494,7 @@ class ReaderLayoutEngine {
         ? 0
         : preLayoutElementCount;
     for (var j = startIdx; j < elements.length; j++) {
-      if (elements[j].textPainter != null) {
+      if (elements[j].hasText) {
         return (null, elements[j].rect.top);
       }
     }

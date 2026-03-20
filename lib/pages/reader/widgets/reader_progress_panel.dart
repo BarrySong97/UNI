@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../services/reader/models/parsed_chapter.dart';
 import '../../../services/reader/models/reader_preferences.dart';
 import 'reader_pill_slider.dart';
 
@@ -9,13 +8,13 @@ class ReaderProgressPanel extends StatefulWidget {
   const ReaderProgressPanel({
     super.key,
     required this.bookPercent,
-    required this.chapters,
+    required this.chapterTitleForPercent,
     required this.preferences,
     required this.onPercentChanged,
   });
 
   final double bookPercent;
-  final List<ParsedChapter> chapters;
+  final String Function(double percent) chapterTitleForPercent;
   final ReaderPreferences preferences;
   final ValueChanged<double> onPercentChanged;
 
@@ -25,39 +24,45 @@ class ReaderProgressPanel extends StatefulWidget {
 
 class _ReaderProgressPanelState extends State<ReaderProgressPanel> {
   late double _value;
+  bool _awaitingCommit = false;
+  double _preRequestSourceValue = 0.0;
 
   @override
   void initState() {
     super.initState();
     _value = widget.bookPercent;
+    _preRequestSourceValue = widget.bookPercent;
   }
 
   @override
   void didUpdateWidget(covariant ReaderProgressPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.bookPercent != widget.bookPercent) {
+      if (_awaitingCommit) {
+        // Ignore one stale bounce to the pre-request value. Commit when a real
+        // store update arrives after navigation.
+        final bouncedBack =
+            (widget.bookPercent - _preRequestSourceValue).abs() < 1e-6;
+        if (bouncedBack) {
+          return;
+        }
+        _awaitingCommit = false;
+      }
       _value = widget.bookPercent;
     }
   }
 
-  /// Compute the chapter title for a given percent position.
-  String _chapterTitleAt(double percent) {
-    final chapters = widget.chapters;
-    if (chapters.isEmpty) return '';
-    final chapterFraction = 1.0 / chapters.length;
-    final index =
-        (percent / chapterFraction).floor().clamp(0, chapters.length - 1);
-    final chapter = chapters[index];
-    return chapter.title.isNotEmpty
-        ? chapter.title
-        : 'Chapter ${index + 1}';
+  void _requestPercentChange(double value) {
+    _awaitingCommit = true;
+    _preRequestSourceValue = widget.bookPercent;
+    widget.onPercentChanged(value);
   }
 
   Color get _text => widget.preferences.theme.textColor;
 
   @override
   Widget build(BuildContext context) {
-    final chapterTitle = _chapterTitleAt(_value);
+    final chapterTitle = widget.chapterTitleForPercent(_value);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
@@ -81,26 +86,23 @@ class _ReaderProgressPanelState extends State<ReaderProgressPanel> {
             value: _value,
             textColor: _text,
             onChanged: (v) => setState(() => _value = v),
-            onChangeEnd: () => widget.onPercentChanged(_value),
+            onChangeEnd: () => _requestPercentChange(_value),
             onDecrement: () {
               final v = (_value - 0.01).clamp(0.0, 1.0);
               setState(() => _value = v);
-              widget.onPercentChanged(v);
+              _requestPercentChange(v);
             },
             onIncrement: () {
               final v = (_value + 0.01).clamp(0.0, 1.0);
               setState(() => _value = v);
-              widget.onPercentChanged(v);
+              _requestPercentChange(v);
             },
           ),
           const SizedBox(height: 4),
           // Percent label.
           Text(
             '${(_value * 100).toStringAsFixed(1)}%',
-            style: TextStyle(
-              color: _text.withValues(alpha: 0.5),
-              fontSize: 13,
-            ),
+            style: TextStyle(color: _text.withValues(alpha: 0.5), fontSize: 13),
           ),
         ],
       ),

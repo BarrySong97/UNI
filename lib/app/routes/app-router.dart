@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../pages/statistics/statistics-page.dart';
+import '../../pages/statistics/statistics-types.dart';
 import '../../pages/word-of-day/word-of-day-page.dart';
 import '../../pages/library/book-detail-page.dart';
 import '../../pages/shelf/shelf-page.dart';
@@ -30,7 +31,10 @@ class AppRouter {
           builder: (_) => BookDetailPage(bookId: bookId ?? ''),
         );
       case RouteNames.statistics:
-        return MaterialPageRoute<void>(builder: (_) => const StatisticsPage());
+        final arguments = settings.arguments as StatisticsPageArguments?;
+        return MaterialPageRoute<void>(
+          builder: (_) => StatisticsPage(arguments: arguments),
+        );
       case RouteNames.wordOfDay:
         return MaterialPageRoute<void>(builder: (_) => const WordOfDayPage());
       default:

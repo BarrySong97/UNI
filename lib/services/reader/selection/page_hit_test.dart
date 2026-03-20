@@ -57,10 +57,11 @@ PagePosition? hitTestPage(PageLayout page, Offset contentOffset) {
   // First pass: exact hit on an element rect.
   for (var i = 0; i < page.elements.length; i++) {
     final el = page.elements[i];
-    if (el.textPainter == null) continue;
+    final painter = el.ensurePainter();
+    if (painter == null) continue;
     if (el.rect.contains(contentOffset)) {
       final local = contentOffset - el.rect.topLeft;
-      final pos = el.textPainter!.getPositionForOffset(local);
+      final pos = painter.getPositionForOffset(local);
       return PagePosition(elementIndex: i, charOffset: pos.offset);
     }
   }
@@ -75,7 +76,8 @@ PagePosition? _findNearest(PageLayout page, Offset offset) {
 
   for (var i = 0; i < page.elements.length; i++) {
     final el = page.elements[i];
-    if (el.textPainter == null) continue;
+    final painter = el.ensurePainter();
+    if (painter == null) continue;
 
     // Distance from offset to the closest point on the rect.
     final clampedX = offset.dx.clamp(el.rect.left, el.rect.right);
@@ -97,7 +99,9 @@ PagePosition? _findNearest(PageLayout page, Offset offset) {
     (offset.dx - el.rect.left).clamp(0, el.rect.width),
     (offset.dy - el.rect.top).clamp(0, el.rect.height),
   );
-  final pos = el.textPainter!.getPositionForOffset(local);
+  final painter = el.ensurePainter();
+  if (painter == null) return null;
+  final pos = painter.getPositionForOffset(local);
   return PagePosition(elementIndex: bestIndex, charOffset: pos.offset);
 }
 
@@ -107,9 +111,10 @@ PagePosition? _findNearest(PageLayout page, Offset offset) {
 /// elements), selects the entire element text.
 PageSelection? expandToWord(PageLayout page, PagePosition position) {
   final el = page.elements[position.elementIndex];
-  if (el.textPainter == null) return null;
+  final painter = el.ensurePainter();
+  if (painter == null) return null;
 
-  final text = _extractPainterText(el.textPainter!);
+  final text = _extractPainterText(painter);
   if (text.isEmpty) return null;
 
   final offset = position.charOffset.clamp(0, text.length);
@@ -132,14 +137,8 @@ PageSelection? expandToWord(PageLayout page, PagePosition position) {
   }
 
   return PageSelection(
-    start: PagePosition(
-      elementIndex: position.elementIndex,
-      charOffset: start,
-    ),
-    end: PagePosition(
-      elementIndex: position.elementIndex,
-      charOffset: end,
-    ),
+    start: PagePosition(elementIndex: position.elementIndex, charOffset: start),
+    end: PagePosition(elementIndex: position.elementIndex, charOffset: end),
   );
 }
 
@@ -164,9 +163,10 @@ List<Rect> getSelectionRects(PageLayout page, PageSelection selection) {
   for (var i = startIdx; i <= endIdx; i++) {
     if (i < 0 || i >= page.elements.length) continue;
     final el = page.elements[i];
-    if (el.textPainter == null) continue;
+    final painter = el.ensurePainter();
+    if (painter == null) continue;
 
-    final text = _extractPainterText(el.textPainter!);
+    final text = _extractPainterText(painter);
     if (text.isEmpty) continue;
 
     // Determine char range within this element.
@@ -197,18 +197,20 @@ List<Rect> getSelectionRects(PageLayout page, PageSelection selection) {
       continue;
     }
 
-    final boxes = el.textPainter!.getBoxesForSelection(
+    final boxes = painter.getBoxesForSelection(
       TextSelection(baseOffset: selStart, extentOffset: selEnd),
       boxHeightStyle: ui.BoxHeightStyle.max,
     );
 
     for (final box in boxes) {
-      rects.add(Rect.fromLTRB(
-        el.rect.left + box.left,
-        el.rect.top + box.top,
-        el.rect.left + box.right,
-        el.rect.top + box.bottom,
-      ));
+      rects.add(
+        Rect.fromLTRB(
+          el.rect.left + box.left,
+          el.rect.top + box.top,
+          el.rect.left + box.right,
+          el.rect.top + box.bottom,
+        ),
+      );
     }
 
     // Fallback if getBoxesForSelection returns nothing (K-P single-word).
@@ -293,9 +295,10 @@ String extractSelectedText(PageLayout page, PageSelection selection) {
   for (var i = startIdx; i <= endIdx; i++) {
     if (i < 0 || i >= page.elements.length) continue;
     final el = page.elements[i];
-    if (el.textPainter == null) continue;
+    final painter = el.ensurePainter();
+    if (painter == null) continue;
 
-    final text = _extractPainterText(el.textPainter!);
+    final text = _extractPainterText(painter);
     if (text.isEmpty) continue;
 
     int selStart;
@@ -329,8 +332,9 @@ String extractSelectedText(PageLayout page, PageSelection selection) {
 String extractFullPageText(PageLayout page) {
   final buffer = StringBuffer();
   for (final el in page.elements) {
-    if (el.textPainter == null) continue;
-    final text = _extractPainterText(el.textPainter!);
+    final painter = el.ensurePainter();
+    if (painter == null) continue;
+    final text = _extractPainterText(painter);
     if (text.isNotEmpty) {
       if (buffer.isNotEmpty) buffer.write(' ');
       buffer.write(text);

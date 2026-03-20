@@ -11,6 +11,8 @@ import '../../components/library/library-now-reading-card.dart';
 import '../../components/library/library-reading-stats.dart';
 import '../../components/library/library-word-of-day-card.dart';
 import '../../app/routes/route-names.dart';
+import '../../entities/reading-time-entity.dart';
+import '../statistics/statistics-types.dart';
 
 class ShelfPageLayout extends StatelessWidget {
   const ShelfPageLayout({
@@ -23,6 +25,8 @@ class ShelfPageLayout extends StatelessWidget {
     this.progressMap = const <String, double>{},
     this.progressBookIds = const <String>{},
     this.hasReadingProgress = false,
+    this.readingTime,
+    this.booksReadThisYear = 0,
     this.nowReadingBook,
     this.nowReadingProgress = 0,
     this.gridBooks = const <BookEntity>[],
@@ -40,6 +44,8 @@ class ShelfPageLayout extends StatelessWidget {
   final Map<String, double> progressMap;
   final Set<String> progressBookIds;
   final bool hasReadingProgress;
+  final ReadingTimeEntity? readingTime;
+  final int booksReadThisYear;
   final BookEntity? nowReadingBook;
   final double nowReadingProgress;
   final List<BookEntity> gridBooks;
@@ -85,9 +91,31 @@ class ShelfPageLayout extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: hasReadingProgress
                           ? LibraryReadingStats(
-                              onTap: () => Navigator.of(
-                                context,
-                              ).pushNamed(RouteNames.statistics),
+                              readingTime:
+                                  readingTime ??
+                                  ReadingTimeEntity.empty(
+                                    year: DateTime.now().year,
+                                    month: DateTime.now().month,
+                                  ),
+                              booksReadThisYear: booksReadThisYear,
+                              onReadingTimeTap: () =>
+                                  Navigator.of(context).pushNamed(
+                                    RouteNames.statistics,
+                                    arguments: const StatisticsPageArguments(
+                                      initialTab: StatisticsTab.readingTime,
+                                      initialPeriodPreset:
+                                          StatisticsPeriodPreset.thisMonth,
+                                    ),
+                                  ),
+                              onBooksReadTap: () =>
+                                  Navigator.of(context).pushNamed(
+                                    RouteNames.statistics,
+                                    arguments: const StatisticsPageArguments(
+                                      initialTab: StatisticsTab.booksRead,
+                                      initialPeriodPreset:
+                                          StatisticsPeriodPreset.thisMonth,
+                                    ),
+                                  ),
                             )
                           : _buildStatsEmptyState(),
                     ),

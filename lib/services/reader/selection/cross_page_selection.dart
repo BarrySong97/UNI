@@ -20,13 +20,12 @@ class BookPosition implements Comparable<BookPosition> {
     PagePosition pos, {
     required int chapterIndex,
     required int pageIndexInChapter,
-  }) =>
-      BookPosition(
-        chapterIndex: chapterIndex,
-        pageIndexInChapter: pageIndexInChapter,
-        elementIndex: pos.elementIndex,
-        charOffset: pos.charOffset,
-      );
+  }) => BookPosition(
+    chapterIndex: chapterIndex,
+    pageIndexInChapter: pageIndexInChapter,
+    elementIndex: pos.elementIndex,
+    charOffset: pos.charOffset,
+  );
 
   /// Convert to a [PagePosition] (drops page/chapter info).
   PagePosition toPagePosition() =>
@@ -101,8 +100,7 @@ class CrossPageSelection {
 
     final isStartPage =
         ch == start.chapterIndex && pg == start.pageIndexInChapter;
-    final isEndPage =
-        ch == end.chapterIndex && pg == end.pageIndexInChapter;
+    final isEndPage = ch == end.chapterIndex && pg == end.pageIndexInChapter;
 
     if (isStartPage && isEndPage) {
       return PageSelection(
@@ -142,9 +140,13 @@ PagePosition _endOfPage(PageLayout page) {
   if (page.elements.isEmpty) {
     return const PagePosition(elementIndex: 0, charOffset: 0);
   }
-  final lastIdx = page.elements.length - 1;
-  final lastEl = page.elements[lastIdx];
-  final textLen =
-      lastEl.textPainter != null ? extractPainterTextLength(lastEl.textPainter!) : 0;
-  return PagePosition(elementIndex: lastIdx, charOffset: textLen);
+  for (var i = page.elements.length - 1; i >= 0; i--) {
+    final painter = page.elements[i].ensurePainter();
+    if (painter == null) continue;
+    return PagePosition(
+      elementIndex: i,
+      charOffset: extractPainterTextLength(painter),
+    );
+  }
+  return const PagePosition(elementIndex: 0, charOffset: 0);
 }

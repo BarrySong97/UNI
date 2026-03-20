@@ -75,15 +75,27 @@ void main() {
         updatedAtMillis: nowMillis,
       ),
     );
+    await database.addReadingTime(
+      bookId: 'book-1',
+      dateKey: '2026-03-01',
+      deltaSeconds: 120,
+    );
+    await database.addReadingTime(
+      bookId: 'book-2',
+      dateKey: '2026-03-01',
+      deltaSeconds: 60,
+    );
 
     await database.deleteBookCascade('book-1');
 
     expect(await database.getBook('book-1'), isNull);
     expect(await database.getProgress('book-1'), isNull);
     expect(await database.listHighlights('book-1'), isEmpty);
+    expect(await database.getBookReadingTimeSeconds('book-1'), 0);
 
     expect(await database.getBook('book-2'), isNotNull);
     expect(await database.getProgress('book-2'), isNotNull);
     expect(await database.listHighlights('book-2'), isNotEmpty);
+    expect(await database.getBookReadingTimeSeconds('book-2'), 60);
   });
 }

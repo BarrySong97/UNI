@@ -1,16 +1,20 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../app/providers/app-providers.dart';
 import '../../app/routes/route-names.dart';
 import '../../entities/book-entity.dart';
-import '../../repositories/progress/progress-repository.dart';
+import '../../services/db/app-database.dart';
 import '../../services/reader/data/chapter_data_source.dart';
 import '../../services/reader/models/page_layout.dart';
 import '../../services/reader/models/reader_preferences.dart';
+import '../../services/reader/reading_time_tracker.dart';
 import '../../services/reader/selection/cross_page_selection.dart';
 import '../../services/reader/selection/page_hit_test.dart';
 import '../../stores/reader/reader_store.dart';
+import '../../stores/reader/reader_store_manager.dart';
 import 'widgets/reader_canvas_painter.dart';
 import 'widgets/reader_controls_overlay.dart';
 import 'widgets/reader_explain_sheet.dart';
@@ -25,20 +29,23 @@ class ReaderPage extends StatefulWidget {
     super.key,
     required this.book,
     required this.dataSource,
-    required this.progressRepository,
+    required this.storeManager,
   });
 
   final BookEntity book;
   final ChapterDataSource dataSource;
-  final ProgressRepository progressRepository;
+  final ReaderStoreManager storeManager;
 
   @override
   State<ReaderPage> createState() => _ReaderPageState();
 }
 
 class _ReaderPageState extends State<ReaderPage>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final ReaderStore _store;
+  late final AppDatabase _database;
+  late final ReadingTimeTracker _readingTimeTracker;
+  bool _didInitDependencies = false;
 
   // -- Page swipe animation state --
   late final AnimationController _pageAnimController;
@@ -67,22 +74,39 @@ class _ReaderPageState extends State<ReaderPage>
   @override
   void initState() {
     super.initState();
-    _store = ReaderStore(progressRepository: widget.progressRepository);
+    _store = widget.storeManager.getStore(widget.book.id);
     _store.addListener(_onStoreChanged);
+    WidgetsBinding.instance.addObserver(this);
 
-    _pageAnimController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 300),
-    )..addListener(_onAnimTick)
-     ..addStatusListener(_onAnimStatus);
+    _pageAnimController =
+        AnimationController(
+            vsync: this,
+            duration: const Duration(milliseconds: 300),
+          )
+          ..addListener(_onAnimTick)
+          ..addStatusListener(_onAnimStatus);
 
     WidgetsBinding.instance.addPostFrameCallback((_) => _initReader());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_didInitDependencies) {
+      return;
+    }
+
+    _database = AppProvidersScope.of(context).database;
+    _readingTimeTracker = ReadingTimeTracker(onFlush: _flushReadingTime);
+    _didInitDependencies = true;
   }
 
   Future<void> _initReader() async {
     if (!mounted) return;
 
     final mq = MediaQuery.of(context);
+    _readingTimeTracker.onAppForeground();
+    _readingTimeTracker.onInteraction();
 
     await _store.openBook(
       book: widget.book,
@@ -92,6 +116,52 @@ class _ReaderPageState extends State<ReaderPage>
       safeAreaBottom: mq.padding.bottom,
       devicePixelRatio: mq.devicePixelRatio,
     );
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!_didInitDependencies) {
+      return;
+    }
+
+    switch (state) {
+      case AppLifecycleState.resumed:
+        _readingTimeTracker.onAppForeground();
+        break;
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.paused:
+      case AppLifecycleState.detached:
+        unawaited(_readingTimeTracker.onAppBackground());
+        break;
+    }
+  }
+
+  Future<void> _flushReadingTime(int deltaSeconds) async {
+    if (deltaSeconds <= 0) {
+      return;
+    }
+
+    await _database.addReadingTime(
+      bookId: widget.book.id,
+      dateKey: _dateKeyForNow(),
+      deltaSeconds: deltaSeconds,
+    );
+  }
+
+  String _dateKeyForNow() {
+    final now = DateTime.now();
+    final year = now.year.toString().padLeft(4, '0');
+    final month = now.month.toString().padLeft(2, '0');
+    final day = now.day.toString().padLeft(2, '0');
+    return '$year-$month-$day';
+  }
+
+  void _recordInteraction() {
+    if (!_didInitDependencies) {
+      return;
+    }
+    _readingTimeTracker.onInteraction();
   }
 
   void _onStoreChanged() {
@@ -117,7 +187,12 @@ class _ReaderPageState extends State<ReaderPage>
   void dispose() {
     _pageAnimController.dispose();
     _store.removeListener(_onStoreChanged);
-    _store.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    if (_didInitDependencies) {
+      unawaited(_readingTimeTracker.dispose());
+    }
+    // Do NOT dispose the store — the ReaderStoreManager owns its lifecycle
+    // so it can be reused when re-opening the same book.
     super.dispose();
   }
 
@@ -253,8 +328,10 @@ class _ReaderPageState extends State<ReaderPage>
 
     setState(() {
       _selectionMoving = movingPos;
-      _crossSelection =
-          CrossPageSelection.normalized(_selectionAnchor!, movingPos);
+      _crossSelection = CrossPageSelection.normalized(
+        _selectionAnchor!,
+        movingPos,
+      );
       _updateSelectionRects();
     });
   }
@@ -291,8 +368,7 @@ class _ReaderPageState extends State<ReaderPage>
       _triggerSelectionPageTurn(1);
       return;
     }
-    if (_isAtPageStart(page, hit, contentOffset) &&
-        !_store.isFirstPageOfBook) {
+    if (_isAtPageStart(page, hit, contentOffset) && !_store.isFirstPageOfBook) {
       _triggerSelectionPageTurn(-1);
       return;
     }
@@ -306,8 +382,10 @@ class _ReaderPageState extends State<ReaderPage>
 
     setState(() {
       _selectionMoving = movingPos;
-      _crossSelection =
-          CrossPageSelection.normalized(_selectionAnchor!, movingPos);
+      _crossSelection = CrossPageSelection.normalized(
+        _selectionAnchor!,
+        movingPos,
+      );
       _updateSelectionRects();
     });
   }
@@ -318,12 +396,11 @@ class _ReaderPageState extends State<ReaderPage>
 
   /// Whether [hit] is at the last text position on [page] and the touch is
   /// past the content (below or to the right of the last element).
-  bool _isAtPageEnd(
-      PageLayout page, PagePosition hit, Offset contentOffset) {
+  bool _isAtPageEnd(PageLayout page, PagePosition hit, Offset contentOffset) {
     // Find last text element.
     int lastTextIdx = -1;
     for (var i = page.elements.length - 1; i >= 0; i--) {
-      if (page.elements[i].textPainter != null) {
+      if (page.elements[i].hasText) {
         lastTextIdx = i;
         break;
       }
@@ -332,7 +409,9 @@ class _ReaderPageState extends State<ReaderPage>
     if (hit.elementIndex != lastTextIdx) return false;
 
     final lastEl = page.elements[lastTextIdx];
-    final textLen = extractPainterTextLength(lastEl.textPainter!);
+    final lastPainter = lastEl.ensurePainter();
+    if (lastPainter == null) return false;
+    final textLen = extractPainterTextLength(lastPainter);
     if (hit.charOffset < textLen) return false;
 
     // Touch must be past the last element's bottom edge.
@@ -341,12 +420,11 @@ class _ReaderPageState extends State<ReaderPage>
 
   /// Whether [hit] is at the first text position on [page] and the touch is
   /// before the content (above or to the left of the first element).
-  bool _isAtPageStart(
-      PageLayout page, PagePosition hit, Offset contentOffset) {
+  bool _isAtPageStart(PageLayout page, PagePosition hit, Offset contentOffset) {
     // Find first text element.
     int firstTextIdx = -1;
     for (var i = 0; i < page.elements.length; i++) {
-      if (page.elements[i].textPainter != null) {
+      if (page.elements[i].hasText) {
         firstTextIdx = i;
         break;
       }
@@ -368,7 +446,7 @@ class _ReaderPageState extends State<ReaderPage>
     // Find first text element.
     int firstIdx = -1;
     for (var i = 0; i < page.elements.length; i++) {
-      if (page.elements[i].textPainter != null) {
+      if (page.elements[i].hasText) {
         firstIdx = i;
         break;
       }
@@ -388,15 +466,15 @@ class _ReaderPageState extends State<ReaderPage>
     int lastOnLine = firstIdx;
     for (var i = firstIdx + 1; i < page.elements.length; i++) {
       final el = page.elements[i];
-      if (el.textPainter == null) continue;
+      if (!el.hasText) continue;
       // Same line: significant vertical overlap.
       final overlapTop = el.rect.top < firstRect.bottom
           ? (el.rect.top > firstRect.top ? el.rect.top : firstRect.top)
           : el.rect.top;
       final overlapBot = el.rect.bottom > firstRect.top
           ? (el.rect.bottom < firstRect.bottom
-              ? el.rect.bottom
-              : firstRect.bottom)
+                ? el.rect.bottom
+                : firstRect.bottom)
           : el.rect.bottom;
       if (overlapBot - overlapTop > firstRect.height * 0.5) {
         lastOnLine = i;
@@ -406,7 +484,16 @@ class _ReaderPageState extends State<ReaderPage>
     }
 
     final lastEl = page.elements[lastOnLine];
-    final textLen = extractPainterTextLength(lastEl.textPainter!);
+    final lastPainter = lastEl.ensurePainter();
+    if (lastPainter == null) {
+      return BookPosition(
+        chapterIndex: page.chapterIndex,
+        pageIndexInChapter: page.pageIndexInChapter,
+        elementIndex: lastOnLine,
+        charOffset: 0,
+      );
+    }
+    final textLen = extractPainterTextLength(lastPainter);
     return BookPosition(
       chapterIndex: page.chapterIndex,
       pageIndexInChapter: page.pageIndexInChapter,
@@ -420,7 +507,7 @@ class _ReaderPageState extends State<ReaderPage>
     // Find last text element.
     int lastIdx = -1;
     for (var i = page.elements.length - 1; i >= 0; i--) {
-      if (page.elements[i].textPainter != null) {
+      if (page.elements[i].hasText) {
         lastIdx = i;
         break;
       }
@@ -440,14 +527,14 @@ class _ReaderPageState extends State<ReaderPage>
     int firstOnLine = lastIdx;
     for (var i = lastIdx - 1; i >= 0; i--) {
       final el = page.elements[i];
-      if (el.textPainter == null) continue;
+      if (!el.hasText) continue;
       final overlapTop = el.rect.top < lastRect.bottom
           ? (el.rect.top > lastRect.top ? el.rect.top : lastRect.top)
           : el.rect.top;
       final overlapBot = el.rect.bottom > lastRect.top
           ? (el.rect.bottom < lastRect.bottom
-              ? el.rect.bottom
-              : lastRect.bottom)
+                ? el.rect.bottom
+                : lastRect.bottom)
           : el.rect.bottom;
       if (overlapBot - overlapTop > lastRect.height * 0.5) {
         firstOnLine = i;
@@ -486,8 +573,10 @@ class _ReaderPageState extends State<ReaderPage>
     }
 
     _selectionMoving = newMoving;
-    _crossSelection =
-        CrossPageSelection.normalized(_selectionAnchor!, newMoving);
+    _crossSelection = CrossPageSelection.normalized(
+      _selectionAnchor!,
+      newMoving,
+    );
 
     // Animate page turn.
     final screenWidth = MediaQuery.of(context).size.width;
@@ -525,8 +614,9 @@ class _ReaderPageState extends State<ReaderPage>
     final buffer = StringBuffer();
 
     for (var ch = sel.start.chapterIndex; ch <= sel.end.chapterIndex; ch++) {
-      final startPage =
-          (ch == sel.start.chapterIndex) ? sel.start.pageIndexInChapter : 0;
+      final startPage = (ch == sel.start.chapterIndex)
+          ? sel.start.pageIndexInChapter
+          : 0;
       final totalPages = _store.pagesInChapter(ch);
       if (totalPages == null) continue;
       final endPage = (ch == sel.end.chapterIndex)
@@ -648,8 +738,7 @@ class _ReaderPageState extends State<ReaderPage>
     }
 
     final remaining = (tween.end! - _dragOffset).abs();
-    final durationMs =
-        (remaining / screenWidth * 300).clamp(100, 400).toInt();
+    final durationMs = (remaining / screenWidth * 300).clamp(100, 400).toInt();
     _pageAnimController.duration = Duration(milliseconds: durationMs);
 
     _curvedDragAnim = tween.animate(
@@ -660,24 +749,16 @@ class _ReaderPageState extends State<ReaderPage>
 
   void _onMorePressed() {
     _store.hideControls();
-    Navigator.of(context).pushNamed(
-      RouteNames.bookDetail,
-      arguments: widget.book.id,
-    );
+    Navigator.of(
+      context,
+    ).pushNamed(RouteNames.bookDetail, arguments: widget.book.id);
   }
 
   // ---------------------------------------------------------------------------
   // Build
   // ---------------------------------------------------------------------------
 
-  String get _chapterTitle {
-    final chapters = _store.bookData?.chapters;
-    if (chapters != null && chapters.isNotEmpty) {
-      final title = chapters[_store.currentChapterIndex].title;
-      return title.isNotEmpty ? title : 'Chapter ${_store.currentChapterIndex + 1}';
-    }
-    return widget.book.title;
-  }
+  String get _chapterTitle => _store.currentChapterTitle;
 
   @override
   Widget build(BuildContext context) {
@@ -691,36 +772,44 @@ class _ReaderPageState extends State<ReaderPage>
           : SystemUiOverlayStyle.dark,
       child: Scaffold(
         backgroundColor: prefs.theme.backgroundColor,
-        body: Stack(
-          children: [
-            if (initialLoading)
-              _buildLoading(prefs)
-            else if (_store.error != null)
-              _buildError(prefs)
-            else
-              _buildReader(prefs),
-            // Controls overlay — rendered above loading/content so it stays
-            // visible during chapter transitions triggered from the panel.
-            if (_store.showControls && _store.book != null)
-              ReaderControlsOverlay(
-                preferences: prefs,
-                chapterTitle: _chapterTitle,
-                currentPage: _store.currentPageIndex,
-                totalPages: _store.totalPagesInChapter,
-                bookPercent: _store.bookPercent,
-                onClose: () => _store.hideControls(),
-                onBack: () => Navigator.of(context).pop(),
-                onPreferencesChanged: (newPrefs) {
-                  _store.updatePreferences(newPrefs);
-                },
-                toc: _store.toc,
-                chapters: _store.bookData?.chapters ?? const [],
-                currentChapterIndex: _store.currentChapterIndex,
-                onChapterSelected: (index) => _store.goToChapter(index),
-                onPercentChanged: (percent) => _store.goToBookPercent(percent),
-                onMorePressed: _onMorePressed,
-              ),
-          ],
+        body: Listener(
+          behavior: HitTestBehavior.translucent,
+          onPointerDown: (_) => _recordInteraction(),
+          onPointerMove: (_) => _recordInteraction(),
+          onPointerSignal: (_) => _recordInteraction(),
+          child: Stack(
+            children: [
+              if (initialLoading)
+                _buildLoading(prefs)
+              else if (_store.error != null)
+                _buildError(prefs)
+              else
+                _buildReader(prefs),
+              // Controls overlay — rendered above loading/content so it stays
+              // visible during chapter transitions triggered from the panel.
+              if (_store.showControls && _store.book != null)
+                ReaderControlsOverlay(
+                  preferences: prefs,
+                  chapterTitle: _chapterTitle,
+                  currentPage: _store.currentPageIndex,
+                  totalPages: _store.totalPagesInChapter,
+                  bookPercent: _store.bookPositionPercent,
+                  onClose: () => _store.hideControls(),
+                  onBack: () => Navigator.of(context).pop(),
+                  onPreferencesChanged: (newPrefs) {
+                    _store.updatePreferences(newPrefs);
+                  },
+                  toc: _store.toc,
+                  chapters: _store.bookData?.chapters ?? const [],
+                  currentChapterIndex: _store.currentChapterIndex,
+                  chapterTitleForPercent: _store.chapterTitleAtPositionPercent,
+                  onChapterSelected: (index) => _store.goToChapter(index),
+                  onPercentChanged: (percent) =>
+                      _store.goToBookPercent(percent),
+                  onMorePressed: _onMorePressed,
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -823,8 +912,8 @@ class _ReaderPageState extends State<ReaderPage>
               _dragOffset == 0
                   ? screenWidth
                   : (_dragOffset < 0
-                      ? _dragOffset + screenWidth
-                      : _dragOffset - screenWidth),
+                        ? _dragOffset + screenWidth
+                        : _dragOffset - screenWidth),
               0,
             ),
             child: adjacentPage != null
@@ -862,8 +951,9 @@ class _ReaderPageState extends State<ReaderPage>
                     preferences: prefs,
                     safeAreaTop: mediaPadding.top,
                     safeAreaBottom: mediaPadding.bottom,
-                    selectionRects:
-                        _selectionRects.isNotEmpty ? _selectionRects : null,
+                    selectionRects: _selectionRects.isNotEmpty
+                        ? _selectionRects
+                        : null,
                   ),
                   size: Size.infinite,
                 ),
@@ -911,7 +1001,7 @@ class _ReaderPageState extends State<ReaderPage>
                 ),
               ),
               Text(
-                '${(_store.bookPercent * 100).toStringAsFixed(1)}%',
+                '${(_store.bookPositionPercent * 100).toStringAsFixed(1)}%',
                 style: TextStyle(
                   color: prefs.theme.textColor.withValues(alpha: 0.4),
                   fontSize: 11,
@@ -920,7 +1010,6 @@ class _ReaderPageState extends State<ReaderPage>
             ],
           ),
         ),
-
       ],
     );
   }
@@ -938,9 +1027,11 @@ class _ReaderPageState extends State<ReaderPage>
     final ch = page.chapterIndex;
     final pg = page.pageIndexInChapter;
 
-    final startOnPage = _crossSelection!.start.chapterIndex == ch &&
+    final startOnPage =
+        _crossSelection!.start.chapterIndex == ch &&
         _crossSelection!.start.pageIndexInChapter == pg;
-    final endOnPage = _crossSelection!.end.chapterIndex == ch &&
+    final endOnPage =
+        _crossSelection!.end.chapterIndex == ch &&
         _crossSelection!.end.pageIndexInChapter == pg;
 
     const hitSize = ReaderSelectionHandle.hitSize;
@@ -949,16 +1040,18 @@ class _ReaderPageState extends State<ReaderPage>
     if (startOnPage) {
       final firstRect = _selectionRects.first;
       final startScreen = _toScreenOffset(firstRect.bottomLeft);
-      handles.add(Positioned(
-        left: startScreen.dx - hitSize / 2,
-        top: startScreen.dy - hitSize / 2,
-        child: ReaderSelectionHandle(
-          color: color,
-          isStart: true,
-          onDragUpdate: (d) => _onHandleDrag(d, isStart: true),
-          onDragEnd: _onHandleDragEnd,
+      handles.add(
+        Positioned(
+          left: startScreen.dx - hitSize / 2,
+          top: startScreen.dy - hitSize / 2,
+          child: ReaderSelectionHandle(
+            color: color,
+            isStart: true,
+            onDragUpdate: (d) => _onHandleDrag(d, isStart: true),
+            onDragEnd: _onHandleDragEnd,
+          ),
         ),
-      ));
+      );
     } else {
       // Selection continues from a previous page — left edge indicator.
       handles.add(_buildEdgeIndicator(isLeft: true, color: color));
@@ -967,16 +1060,18 @@ class _ReaderPageState extends State<ReaderPage>
     if (endOnPage) {
       final lastRect = _selectionRects.last;
       final endScreen = _toScreenOffset(lastRect.bottomRight);
-      handles.add(Positioned(
-        left: endScreen.dx - hitSize / 2,
-        top: endScreen.dy - hitSize / 2,
-        child: ReaderSelectionHandle(
-          color: color,
-          isStart: false,
-          onDragUpdate: (d) => _onHandleDrag(d, isStart: false),
-          onDragEnd: _onHandleDragEnd,
+      handles.add(
+        Positioned(
+          left: endScreen.dx - hitSize / 2,
+          top: endScreen.dy - hitSize / 2,
+          child: ReaderSelectionHandle(
+            color: color,
+            isStart: false,
+            onDragUpdate: (d) => _onHandleDrag(d, isStart: false),
+            onDragEnd: _onHandleDragEnd,
+          ),
         ),
-      ));
+      );
     } else {
       // Selection continues to a later page — right edge indicator.
       handles.add(_buildEdgeIndicator(isLeft: false, color: color));
@@ -994,10 +1089,7 @@ class _ReaderPageState extends State<ReaderPage>
       right: isLeft ? null : 0,
       top: mq.padding.top,
       bottom: mq.padding.bottom,
-      child: Container(
-        width: 3,
-        color: color.withValues(alpha: 0.5),
-      ),
+      child: Container(width: 3, color: color.withValues(alpha: 0.5)),
     );
   }
 
@@ -1011,8 +1103,7 @@ class _ReaderPageState extends State<ReaderPage>
     final safeTop = MediaQuery.of(context).padding.top;
 
     // Horizontal center of the selection.
-    final selCenterX =
-        (firstRect.left + lastRect.right) / 2;
+    final selCenterX = (firstRect.left + lastRect.right) / 2;
     final screenCenterX = _toScreenOffset(Offset(selCenterX, 0)).dx;
 
     // Vertical: prefer above the first rect; fall back to below last rect.
@@ -1024,8 +1115,10 @@ class _ReaderPageState extends State<ReaderPage>
 
     // Estimate tooltip width to clamp horizontal position.
     const estimatedWidth = 370.0;
-    final tooltipLeft =
-        (screenCenterX - estimatedWidth / 2).clamp(8.0, screenWidth - estimatedWidth - 8.0);
+    final tooltipLeft = (screenCenterX - estimatedWidth / 2).clamp(
+      8.0,
+      screenWidth - estimatedWidth - 8.0,
+    );
 
     return Positioned(
       left: tooltipLeft,
@@ -1039,97 +1132,111 @@ class _ReaderPageState extends State<ReaderPage>
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _tooltipButton('Phonetics', onPressed: () {
-              final selectedText = extractCrossPageText();
-              if (selectedText.isEmpty) return;
+            _tooltipButton(
+              'Phonetics',
+              onPressed: () {
+                final selectedText = extractCrossPageText();
+                if (selectedText.isEmpty) return;
 
-              final providers = AppProvidersScope.of(context);
-              ReaderPhoneticsSheet.show(
-                context: context,
-                selectedText: selectedText,
-                phoneticsService: providers.phoneticsService,
-                ttsService: providers.ttsService,
-              );
-            }),
-            Container(width: 1, height: 20, color: Colors.white24),
-            _tooltipButton('Explain', onPressed: () {
-              final selectedText = extractCrossPageText();
-              if (selectedText.isEmpty) return;
-
-              final aiSettings =
-                  AppProvidersScope.of(context).aiSettingsService;
-
-              if (!aiSettings.isConfigured) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Please configure your AI API key in Settings.',
-                    ),
-                  ),
+                final providers = AppProvidersScope.of(context);
+                providers.database.incrementPhoneticsCount(widget.book.id);
+                ReaderPhoneticsSheet.show(
+                  context: context,
+                  selectedText: selectedText,
+                  phoneticsService: providers.phoneticsService,
+                  ttsService: providers.ttsService,
                 );
-                return;
-              }
-
-              final pageLayout = _store.currentPageLayout;
-              final pageContext = pageLayout != null
-                  ? extractFullPageText(pageLayout)
-                  : '';
-
-              final languageConfig = aiSettings.resolveConfig(
-                widget.book.language,
-              );
-
-              final providers = AppProvidersScope.of(context);
-              ReaderExplainSheet.show(
-                context: context,
-                selectedText: selectedText,
-                pageContext: pageContext,
-                aiSettings: aiSettings,
-                languageConfig: languageConfig,
-                bookTitle: widget.book.title,
-                phoneticsService: providers.phoneticsService,
-                ttsService: providers.ttsService,
-                database: providers.database,
-                bookId: widget.book.id,
-                chapterIndex: _store.currentChapterIndex,
-              );
-            }),
+              },
+            ),
             Container(width: 1, height: 20, color: Colors.white24),
-            _tooltipButton('Read Aloud', onPressed: () {
-              final selectedText = extractCrossPageText();
-              if (selectedText.isEmpty) return;
+            _tooltipButton(
+              'Explain',
+              onPressed: () {
+                final selectedText = extractCrossPageText();
+                if (selectedText.isEmpty) return;
 
-              final ttsService =
-                  AppProvidersScope.of(context).ttsService;
+                final aiSettings = AppProvidersScope.of(
+                  context,
+                ).aiSettingsService;
 
-              if (ttsService.isSpeaking) {
-                ttsService.stop();
-              } else {
-                final langCode = ttsService.resolveBookLanguage(
-                  widget.book.language,
-                );
-                final model = ttsService.modelInfoForLanguage(langCode);
-                if (model == null ||
-                    !ttsService.modelManager.isReady(model)) {
+                if (!aiSettings.isConfigured) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text(
-                        'TTS model not downloaded. Please download it in Settings.',
+                        'Please configure your AI API key in Settings.',
                       ),
                     ),
                   );
                   return;
                 }
-                ttsService.speakForBookLanguage(
-                  selectedText,
+
+                final pageLayout = _store.currentPageLayout;
+                final pageContext = pageLayout != null
+                    ? extractFullPageText(pageLayout)
+                    : '';
+
+                final languageConfig = aiSettings.resolveConfig(
                   widget.book.language,
                 );
-              }
-            }),
+
+                final providers = AppProvidersScope.of(context);
+                providers.database.incrementExplainCount(widget.book.id);
+                ReaderExplainSheet.show(
+                  context: context,
+                  selectedText: selectedText,
+                  pageContext: pageContext,
+                  aiSettings: aiSettings,
+                  languageConfig: languageConfig,
+                  bookTitle: widget.book.title,
+                  phoneticsService: providers.phoneticsService,
+                  ttsService: providers.ttsService,
+                  database: providers.database,
+                  bookId: widget.book.id,
+                  chapterIndex: _store.currentChapterIndex,
+                );
+              },
+            ),
             Container(width: 1, height: 20, color: Colors.white24),
-            _tooltipButton('Mark', onPressed: () {
-              // TODO: implement mark
-            }),
+            _tooltipButton(
+              'Read Aloud',
+              onPressed: () {
+                final selectedText = extractCrossPageText();
+                if (selectedText.isEmpty) return;
+
+                final ttsService = AppProvidersScope.of(context).ttsService;
+
+                if (ttsService.isSpeaking) {
+                  ttsService.stop();
+                } else {
+                  final langCode = ttsService.resolveBookLanguage(
+                    widget.book.language,
+                  );
+                  final model = ttsService.modelInfoForLanguage(langCode);
+                  if (model == null ||
+                      !ttsService.modelManager.isReady(model)) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'TTS model not downloaded. Please download it in Settings.',
+                        ),
+                      ),
+                    );
+                    return;
+                  }
+                  ttsService.speakForBookLanguage(
+                    selectedText,
+                    widget.book.language,
+                  );
+                }
+              },
+            ),
+            Container(width: 1, height: 20, color: Colors.white24),
+            _tooltipButton(
+              'Mark',
+              onPressed: () {
+                // TODO: implement mark
+              },
+            ),
           ],
         ),
       ),

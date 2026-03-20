@@ -4,6 +4,7 @@
 The app has two main book-related pages:
 - **Shelf** (`ShelfPage`, tab 0): The home dashboard with reading stats, Now Reading card, Word of Day, and a book grid (no category filters).
 - **Library** (`LibraryPage`, tab 1): A dedicated book browsing page with category tabs (All/Reading/Finished) and a 2-column book grid.
+- **Statistics** (`StatisticsPage`, pushed from Shelf stat cards): A detailed analytics page with separate `Reading Time` and `Books Read` views plus reusable time-block filtering.
 
 Both pages share the same data source (`LibraryStore`) and reusable components (`LibraryBookGrid`, `LibraryHeader`, etc.).
 
@@ -11,6 +12,7 @@ Both pages share the same data source (`LibraryStore`) and reusable components (
 ### In
 - Shelf dashboard layout (Header / Stats / Now Reading / Word of the Day / Book Grid)
 - Library page with category filter tabs and 2-column grid
+- Statistics page layout and filtering (`This Month` / `This Year` / `Pick Month`)
 - Book list loading and display
 - "Now Reading" card (based on most recent reading progress; falls back to first book when no progress exists)
 - Book grid with cover tiles, title, author, and progress percentage badge
@@ -41,6 +43,9 @@ lib/pages/library/
   book-detail-page.dart   — BookDetailPage (book profile)
   index.dart
 
+lib/pages/statistics/
+  statistics-page.dart    — StatisticsPage (reading analytics detail)
+
 lib/components/library/   — Shared components (grid, header, tiles, etc.)
 lib/stores/library/       — LibraryStore + LibraryState
 ```
@@ -63,6 +68,14 @@ lib/stores/library/       — LibraryStore + LibraryState
    - Has saved progress record (even if percent is 0): unified reader entry (overlay-first + route fallback)
 7. When leaving reader, progress is flushed and `LibraryStore.refreshProgress()` reloads `progressMap/progressUpdatedMap` so grid badges and category filtering update without full page reload.
 8. iOS reflowable EPUB visual pagination cache (`reader_visual_pagination_cache`) is shared with Reader as the single source for layout-specific total-page data; Shelf/Library currently still render percent-first UI and do not show live `current/total`.
+9. User taps the left Shelf stat card (`Reading Time`) or right Shelf stat card (`Books Read`) -> both navigate to `/statistics`, but pass different initial tab arguments while keeping the same route.
+10. Statistics resolves a reusable time block from the selected preset:
+   - `This Month`: current calendar month
+   - `This Year`: current calendar year
+   - `Pick Month`: selected month start/end
+11. Statistics loads both payloads for the selected time block:
+   - `Reading Time`: total time, avg/day, chart series, heatmap cells
+   - `Books Read`: qualified books + almost-there books
 
 ## Page Layout
 
@@ -73,6 +86,25 @@ LibraryReadingStats (DAILY GOAL + BOOKS READ) — empty state when no progress
 Now Reading (Section Header + NowReadingCard) — first book when no progress
 WordOfDayCard — replaced by reading prompt when no progress
 Horizontal book scroll (fixed-width items, edge-to-edge)
+```
+
+### Statistics (pushed page)
+```
+Top bar (back + centered "Statistics")
+Time preset control (This Month / This Year / Pick Month)
+Tab switch (Reading Time / Books Read) with shared sliding thumb animation
+
+Reading Time:
+- Total Time card
+- Avg / Day card
+- `This Month` / `Pick Month`: 24-hour day-track progress chart
+- `This Year`: monthly comparative bar chart
+- Reading heatmap
+
+Books Read:
+- Goal achievement hero card
+- Qualified Books list
+- Almost There list
 ```
 
 ### Library (tab 1)
@@ -91,8 +123,13 @@ Header + "Add Your First Book" button (on Shelf).
 - `LibraryState.activeCategory`
 - `LibraryState.progressMap` (Map<String, double>)
 - `LibraryState.progressUpdatedMap` (Map<String, DateTime>)
+- `LibraryState.readingTime` (`ReadingTimeEntity`) — current local calendar month's total reading seconds plus per-day buckets for Shelf's Statistic Card
+- `LibraryState.booksReadThisYear` (`int`) — Book Read card count for the current year
 - `LibraryState.isLoading / isImporting`
-- `reader_visual_pagination_cache` (`book_id + layout_signature`) — 与 Reader 共用的视觉分页缓存，保存当前设备/版式下的整书总页数
+- `StatisticsStore` — page-owned state for selected tab, selected period preset, resolved time block, loading/error state, and loaded statistics payloads
+- `book_stats.reading_time_seconds` — per-book cumulative reading time, updated by Reader
+- `reading_time_daily(book_id, date_key, duration_seconds)` — per-book per-day reading time aggregation used for Shelf monthly totals and bars
+- Book Read aggregation rule is time-block based (`[startInclusive, endExclusive)`), so Shelf can pass a "current year" block now and future pages can reuse the same query with month/custom ranges.
 - `BookEntity.coverUrl` (data url cover)
 - `BookEntity.profileBgColor` (`#AARRGGBB`)
 - `BookEntity.epubFilePath` (relative path, e.g. `books/book_xxx.epub`, resolved at runtime)
@@ -109,6 +146,13 @@ Header + "Add Your First Book" button (on Shelf).
 - Book Profile settings menu can delete book with cascading cleanup.
 - Importing: top linear progress indicator (no blocking overlay).
 - Grid items show progress percentage badge (top-right) on cover.
+- Shelf Statistic Card reads real monthly `ReadingTime` from `reading_time_daily` and shows the current calendar month's cumulative `xh ym` plus normalized daily bars.
+- Shelf `BOOKS READ` uses the same time-block aggregation API with the current year block (`YYYY-01-01` to `(YYYY+1)-01-01`) and counts unique books that satisfy both: persisted progress `>= 40%` and aggregated reading time in block `>= 20 minutes` (1200s).
+- Statistics page always reuses the same time-block data APIs; changing tabs does not change the current time block.
+- Statistics `Reading Time` month views (`This Month` / `Pick Month`) render absolute 24-hour tracks per day: the pale background is a full day and the fill is `seconds / 86400`, with a tiny minimum visible fill for non-zero reading days.
+- `Books Read` view shows:
+  - qualified books meeting both thresholds
+  - almost-there books that meet exactly one threshold and have reading activity in the selected block
 - Shelf/Library progress UI keeps using persisted percent as the primary display; if future page-total UI is needed, it must read the shared visual pagination cache instead of `estimated_total_pages`.
 
 ## Acceptance Criteria
@@ -118,6 +162,8 @@ Header + "Add Your First Book" button (on Shelf).
 - Grid tiles show cover, title, author, and progress badge.
 - Empty state shows "Add Your First Book" button.
 - "Continue" and all progress-based reader entries follow unified overlay-first + route-fallback behavior.
+- Statistics route opens from both Shelf stat cards and preserves the selected entry tab.
+- Statistics supports `This Month`, `This Year`, and `Pick Month`.
 - Imported EPUB shows real cover; other formats show placeholder.
 - App restart on iOS doesn't break book file access (relative paths).
 - Book deletion cascades to associated data.
@@ -127,4 +173,3 @@ Header + "Add Your First Book" button (on Shelf).
 - No recommendation algorithm or bookstore sorting.
 - No account or cloud sync.
 - Word of the Day is static placeholder.
-- Reading duration stats are mock data.

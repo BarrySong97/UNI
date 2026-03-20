@@ -28,6 +28,7 @@ class ReaderControlsOverlay extends StatefulWidget {
     required this.toc,
     required this.chapters,
     required this.currentChapterIndex,
+    required this.chapterTitleForPercent,
     required this.onChapterSelected,
     required this.onPercentChanged,
     this.onMorePressed,
@@ -44,6 +45,7 @@ class ReaderControlsOverlay extends StatefulWidget {
   final List<TocEntry> toc;
   final List<ParsedChapter> chapters;
   final int currentChapterIndex;
+  final String Function(double percent) chapterTitleForPercent;
   final ValueChanged<int> onChapterSelected;
   final ValueChanged<double> onPercentChanged;
   final VoidCallback? onMorePressed;
@@ -68,9 +70,8 @@ class _ReaderControlsOverlayState extends State<ReaderControlsOverlay>
 
   ReaderPreferences get _prefs => widget.preferences;
 
-  Color get _barColor => _prefs.theme.isDark
-      ? const Color(0xFF2A2A2A)
-      : Colors.white;
+  Color get _barColor =>
+      _prefs.theme.isDark ? const Color(0xFF2A2A2A) : Colors.white;
 
   Color get _textColor => _prefs.theme.textColor;
 
@@ -180,8 +181,7 @@ class _ReaderControlsOverlayState extends State<ReaderControlsOverlay>
                   ),
                   const Spacer(),
                   IconButton(
-                    icon:
-                        Icon(Icons.more_horiz, color: _textColor, size: 22),
+                    icon: Icon(Icons.more_horiz, color: _textColor, size: 22),
                     onPressed: widget.onMorePressed,
                   ),
                 ],
@@ -260,26 +260,26 @@ class _ReaderControlsOverlayState extends State<ReaderControlsOverlay>
   Widget _buildRenderedPanel() {
     return switch (_renderedPanel) {
       _ActivePanel.toc => ReaderTocPanel(
-          toc: widget.toc,
-          chapters: widget.chapters,
-          currentChapterIndex: widget.currentChapterIndex,
-          preferences: _prefs,
-          onChapterSelected: widget.onChapterSelected,
-        ),
+        toc: widget.toc,
+        chapters: widget.chapters,
+        currentChapterIndex: widget.currentChapterIndex,
+        preferences: _prefs,
+        onChapterSelected: widget.onChapterSelected,
+      ),
       _ActivePanel.progress => ReaderProgressPanel(
-          bookPercent: widget.bookPercent,
-          chapters: widget.chapters,
-          preferences: _prefs,
-          onPercentChanged: widget.onPercentChanged,
-        ),
+        bookPercent: widget.bookPercent,
+        chapterTitleForPercent: widget.chapterTitleForPercent,
+        preferences: _prefs,
+        onPercentChanged: widget.onPercentChanged,
+      ),
       _ActivePanel.theme => ReaderThemePanel(
-          preferences: _prefs,
-          onPreferencesChanged: widget.onPreferencesChanged,
-        ),
+        preferences: _prefs,
+        onPreferencesChanged: widget.onPreferencesChanged,
+      ),
       _ActivePanel.font => ReaderFontPanel(
-          preferences: _prefs,
-          onPreferencesChanged: widget.onPreferencesChanged,
-        ),
+        preferences: _prefs,
+        onPreferencesChanged: widget.onPreferencesChanged,
+      ),
       _ActivePanel.none => const SizedBox.shrink(),
     };
   }
@@ -301,10 +301,7 @@ class _ReaderControlsOverlayState extends State<ReaderControlsOverlay>
             onTap: () => _togglePanel(_ActivePanel.toc),
           ),
           // 2. Annotation (placeholder)
-          _toolbarButton(
-            icon: Icons.border_color_outlined,
-            onTap: () {},
-          ),
+          _toolbarButton(icon: Icons.border_color_outlined, onTap: () {}),
           // 3. Progress
           _toolbarButton(
             icon: Icons.data_usage_outlined,

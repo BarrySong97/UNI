@@ -94,6 +94,7 @@ class AppBootstrap {
         bookImportService: BookImportService(),
         booksDirectory: booksDirectory,
         progressRepository: progressRepository,
+        database: database,
         epubPreparseService: epubPreparseService,
       ),
       highlightStore: HighlightStore(highlightRepository: highlightRepository),

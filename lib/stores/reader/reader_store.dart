@@ -6,6 +6,7 @@ import '../../entities/book-entity.dart';
 import '../../entities/reading-progress-entity.dart';
 import '../../repositories/progress/progress-repository.dart';
 import '../../services/reader/data/chapter_data_source.dart';
+import '../../services/reader/layout/knuth_plass/width_cache.dart';
 import '../../services/reader/layout/reader_layout_engine.dart';
 import '../../services/reader/models/page_layout.dart';
 import '../../services/reader/models/parsed_chapter.dart';
@@ -47,6 +48,10 @@ class ReaderStore extends ChangeNotifier {
   /// Cache: cacheKey → page count (lightweight, survives across page-count runs).
   final Map<int, int> _pageCountCache = {};
 
+  /// Shared width cache across chapters — avoids re-measuring common words.
+  /// Cleared when layout-affecting preferences change.
+  WidthCache? _widthCache;
+
   /// Per-chapter page counts for whole-book pagination (null = not yet computed).
   List<int?> _chapterPageCounts = [];
   bool _allPagesComputed = false;
@@ -54,6 +59,9 @@ class ReaderStore extends ChangeNotifier {
   /// Serialized page count cache for DB persistence. Only set when all page
   /// counts have been computed; carried through on every [_saveProgress] call.
   String? _persistedPageCountsJson;
+
+  /// Monotonic token to ignore stale async pagination results.
+  int _chapterLoadToken = 0;
 
   // ---------------------------------------------------------------------------
   // Getters
@@ -79,6 +87,46 @@ class ReaderStore extends ChangeNotifier {
   bool get showControls => _showControls;
   int get chapterCount => _bookData?.chapters.length ?? 0;
   List<TocEntry> get toc => _bookData?.toc ?? const [];
+
+  /// Resolve a human-readable chapter title for [index].
+  ///
+  /// Looks up the TOC entry whose href matches the spine chapter's href first;
+  /// falls back to ParsedChapter.title, then "Chapter N".
+  String chapterTitleAt(int index) {
+    if (_bookData == null || index < 0 || index >= _bookData!.chapters.length) {
+      return 'Chapter ${index + 1}';
+    }
+    final chapter = _bookData!.chapters[index];
+    // Try matching TOC entry by href.
+    final chapterBase = chapter.href.split('#').first;
+    final tocTitle = _findTocTitle(_bookData!.toc, chapterBase);
+    if (tocTitle != null && tocTitle.isNotEmpty) return tocTitle;
+    // Fall back to spine chapter title.
+    if (chapter.title.isNotEmpty) return chapter.title;
+    return 'Chapter ${index + 1}';
+  }
+
+  /// Recursively search TOC tree for an entry whose href matches [baseHref].
+  String? _findTocTitle(List<TocEntry> entries, String baseHref) {
+    for (final entry in entries) {
+      if (entry.href.split('#').first == baseHref) return entry.title;
+      final child = _findTocTitle(entry.children, baseHref);
+      if (child != null) return child;
+    }
+    return null;
+  }
+
+  String get currentChapterTitle => chapterTitleAt(_currentChapterIndex);
+
+  /// Chapter title mapped from position-based percent.
+  ///
+  /// Uses real page-count distribution when available; otherwise falls back to
+  /// chapter-uniform mapping.
+  String chapterTitleAtPositionPercent(double percent) {
+    if (_bookData == null || _bookData!.chapters.isEmpty) return '';
+    final (chapterIndex, _) = _targetByPositionPercent(percent);
+    return chapterTitleAt(chapterIndex);
+  }
 
   /// Whether the current page is the absolute first page of the book.
   bool get isFirstPageOfBook =>
@@ -130,12 +178,18 @@ class ReaderStore extends ChangeNotifier {
     return _cache[_cacheKey(chapterIndex)]?.pages.length;
   }
 
+  int _chapterPageCountForProgress(int chapterIndex) {
+    final cached = _cache[_cacheKey(chapterIndex)];
+    if (cached != null) return cached.pages.length;
+    return _chapterPageCounts[chapterIndex] ?? 0;
+  }
+
   /// Total pages across the entire book (0 while still computing).
   int get totalBookPages {
     if (!_allPagesComputed) return 0;
     var total = 0;
-    for (final c in _chapterPageCounts) {
-      total += c ?? 0;
+    for (var i = 0; i < _chapterPageCounts.length; i++) {
+      total += _chapterPageCountForProgress(i);
     }
     return total;
   }
@@ -145,20 +199,67 @@ class ReaderStore extends ChangeNotifier {
     if (!_allPagesComputed) return 0;
     var page = 0;
     for (var i = 0; i < _currentChapterIndex; i++) {
-      page += _chapterPageCounts[i] ?? 0;
+      page += _chapterPageCountForProgress(i);
     }
-    page += _currentPageIndex + 1;
+    final currentChapterPages = _chapterPageCountForProgress(
+      _currentChapterIndex,
+    );
+    if (currentChapterPages <= 0) {
+      return page;
+    }
+    final safePageIndex = _currentPageIndex.clamp(0, currentChapterPages - 1);
+    page += safePageIndex + 1;
     return page;
   }
 
-  double get bookPercent {
+  /// Position-based progress:
+  /// first page = 0%, last page = 100%.
+  double get bookPositionPercent {
     if (_bookData == null || _bookData!.chapters.isEmpty) return 0.0;
-    final chapterFraction = 1.0 / _bookData!.chapters.length;
+
+    if (_allPagesComputed) {
+      if (totalBookPages <= 0) return 0.0;
+      if (totalBookPages == 1) return 1.0;
+      return ((currentBookPage - 1) / (totalBookPages - 1)).clamp(0.0, 1.0);
+    }
+
+    return _chapterFallbackPositionPercent();
+  }
+
+  /// Read-based progress:
+  /// first page > 0%, last page = 100%.
+  double get bookReadPercent {
+    if (_bookData == null || _bookData!.chapters.isEmpty) return 0.0;
+
+    if (_allPagesComputed) {
+      if (totalBookPages <= 0) return 0.0;
+      return (currentBookPage / totalBookPages).clamp(0.0, 1.0);
+    }
+
+    return _chapterFallbackReadPercent();
+  }
+
+  /// Backward-compatible alias for existing consumers.
+  double get bookPercent => bookPositionPercent;
+
+  double _chapterFallbackPositionPercent() {
+    final chapters = _bookData!.chapters.length;
+    final chapterFraction = 1.0 / chapters;
     final chapterBase = _currentChapterIndex * chapterFraction;
     final pageFraction = totalPagesInChapter > 0
         ? (_currentPageIndex / totalPagesInChapter) * chapterFraction
         : 0.0;
-    return chapterBase + pageFraction;
+    return (chapterBase + pageFraction).clamp(0.0, 1.0);
+  }
+
+  double _chapterFallbackReadPercent() {
+    final chapters = _bookData!.chapters.length;
+    final chapterFraction = 1.0 / chapters;
+    final chapterBase = _currentChapterIndex * chapterFraction;
+    final pageFraction = totalPagesInChapter > 0
+        ? ((_currentPageIndex + 1) / totalPagesInChapter) * chapterFraction
+        : 0.0;
+    return (chapterBase + pageFraction).clamp(0.0, 1.0);
   }
 
   // ---------------------------------------------------------------------------
@@ -166,6 +267,9 @@ class ReaderStore extends ChangeNotifier {
   // ---------------------------------------------------------------------------
 
   /// Open a book for reading.
+  ///
+  /// If this store already has the same book loaded with a matching viewport
+  /// and valid pagination cache, the full load is skipped (instant re-open).
   Future<void> openBook({
     required BookEntity book,
     required ChapterDataSource dataSource,
@@ -174,6 +278,19 @@ class ReaderStore extends ChangeNotifier {
     required double safeAreaBottom,
     double devicePixelRatio = 1.0,
   }) async {
+    // Fast path: same book, same viewport, still has valid pagination.
+    if (_book?.id == book.id &&
+        _viewportSize == viewportSize &&
+        _safeAreaTop == safeAreaTop &&
+        _safeAreaBottom == safeAreaBottom &&
+        _currentPagination != null) {
+      _dataSource = dataSource;
+      _isLoading = false;
+      notifyListeners();
+      _saveProgress();
+      return;
+    }
+
     _book = book;
     _dataSource = dataSource;
     _viewportSize = viewportSize;
@@ -182,6 +299,7 @@ class ReaderStore extends ChangeNotifier {
     _devicePixelRatio = devicePixelRatio;
     _cache.clear();
     _pageCountCache.clear();
+    _widthCache = null;
     _persistedPageCountsJson = null;
     _allPagesComputed = false;
 
@@ -189,10 +307,13 @@ class ReaderStore extends ChangeNotifier {
     _error = null;
     notifyListeners();
 
+    final sw = Stopwatch()..start();
+
     try {
-      debugPrint('[ReaderStore] loadBook ...');
       _bookData = await dataSource.loadBook();
-      debugPrint('[ReaderStore] chapters=${_bookData!.chapters.length}');
+      debugPrint(
+        '[ReaderStore] loadBook: ${sw.elapsedMilliseconds}ms, chapters=${_bookData!.chapters.length}',
+      );
 
       // Restore saved progress (position, preferences, and page count cache).
       final progress = await _progressRepository.getProgress(book.id);
@@ -200,9 +321,12 @@ class ReaderStore extends ChangeNotifier {
         _restoreProgress(progress);
         _tryRestorePageCounts(progress.pageCountsJson);
       }
-      debugPrint('[ReaderStore] loadChapter($_currentChapterIndex) ...');
+      debugPrint('[ReaderStore] restoreProgress: ${sw.elapsedMilliseconds}ms');
 
       await _loadChapter(_currentChapterIndex);
+      debugPrint(
+        '[ReaderStore] loadChapter($_currentChapterIndex): ${sw.elapsedMilliseconds}ms',
+      );
 
       // Skip empty chapters (e.g. cover pages with unresolved images).
       while (_currentPagination != null &&
@@ -210,13 +334,15 @@ class ReaderStore extends ChangeNotifier {
           _currentChapterIndex < chapterCount - 1) {
         _currentChapterIndex++;
         _currentPageIndex = 0;
-        debugPrint('[ReaderStore] chapter empty, advancing to $_currentChapterIndex');
         await _loadChapter(_currentChapterIndex);
+        debugPrint(
+          '[ReaderStore] skip empty → ch $_currentChapterIndex: ${sw.elapsedMilliseconds}ms',
+        );
       }
 
       debugPrint(
-        '[ReaderStore] done. pages=${_currentPagination?.pages.length}, '
-        'error=$_error',
+        '[ReaderStore] openBook done: ${sw.elapsedMilliseconds}ms, '
+        'pages=${_currentPagination?.pages.length}',
       );
 
       // Clamp page index to valid range after loading.
@@ -227,12 +353,19 @@ class ReaderStore extends ChangeNotifier {
             : _currentPagination!.pages.length - 1;
       }
     } catch (e, st) {
-      debugPrint('[ReaderStore] openBook error: $e\n$st');
+      debugPrint(
+        '[ReaderStore] openBook error at ${sw.elapsedMilliseconds}ms: $e\n$st',
+      );
       _error = e.toString();
     }
 
     _isLoading = false;
     notifyListeners();
+
+    // Persist progress so updatedAt reflects this open (drives Now Reading).
+    if (_error == null) {
+      _saveProgress();
+    }
 
     // Background: compute page counts for all chapters (skip if restored
     // from persisted cache).
@@ -332,35 +465,85 @@ class ReaderStore extends ChangeNotifier {
   }
 
   /// Jump to an approximate position in the book by percent (0.0–1.0).
+  ///
+  /// The input uses position semantics:
+  /// 0.0 = first page, 1.0 = last page.
   Future<void> goToBookPercent(double percent) async {
     if (_bookData == null || chapterCount == 0) return;
     final clamped = percent.clamp(0.0, 1.0);
+    final (targetChapter, targetPageInChapter) = _targetByPositionPercent(
+      clamped,
+    );
 
-    // Determine target chapter and page fraction within it.
-    final chapterFraction = 1.0 / chapterCount;
-    final targetChapter =
-        (clamped / chapterFraction).floor().clamp(0, chapterCount - 1);
-    final remainInChapter = clamped - targetChapter * chapterFraction;
-    final pageFraction = (remainInChapter / chapterFraction).clamp(0.0, 1.0);
-
-    _currentChapterIndex = targetChapter;
-    _currentPageIndex = 0;
     _isLoading = true;
     notifyListeners();
 
     await _loadChapter(targetChapter);
 
     if (_currentPagination != null && _currentPagination!.pages.isNotEmpty) {
-      _currentPageIndex =
-          (pageFraction * _currentPagination!.pages.length).floor().clamp(
-            0,
-            _currentPagination!.pages.length - 1,
-          );
+      _currentChapterIndex = targetChapter;
+      _currentPageIndex = targetPageInChapter.clamp(
+        0,
+        _currentPagination!.pages.length - 1,
+      );
     }
 
     _isLoading = false;
     notifyListeners();
     _saveProgress();
+  }
+
+  (int chapterIndex, int pageIndexInChapter) _targetByPositionPercent(
+    double percent,
+  ) {
+    final clamped = percent.clamp(0.0, 1.0);
+    var targetChapter = 0;
+    var targetPageInChapter = 0;
+
+    if (_allPagesComputed && totalBookPages > 0) {
+      // Inverse of position percent:
+      // p = (page - 1) / (total - 1), page in [1, total].
+      final targetPage = totalBookPages == 1
+          ? 1
+          : (clamped * (totalBookPages - 1)).round() + 1;
+
+      var remaining = targetPage;
+      for (var i = 0; i < chapterCount; i++) {
+        final pages = _chapterPageCountForProgress(i);
+        if (pages <= 0) continue;
+        if (remaining <= pages) {
+          targetChapter = i;
+          targetPageInChapter = remaining - 1;
+          break;
+        }
+        remaining -= pages;
+        targetChapter = i;
+        targetPageInChapter = pages - 1;
+      }
+      return (targetChapter, targetPageInChapter);
+    }
+
+    // Fallback before whole-book page counts are ready: chapter-uniform map.
+    final chapterFraction = 1.0 / chapterCount;
+    targetChapter = (clamped / chapterFraction).floor().clamp(
+      0,
+      chapterCount - 1,
+    );
+    final remainInChapter = clamped - targetChapter * chapterFraction;
+    final pageFraction = (remainInChapter / chapterFraction).clamp(0.0, 1.0);
+
+    // Will be clamped again after pagination is loaded.
+    final estimatedPages =
+        _cache[_cacheKey(targetChapter)]?.pages.length ?? totalPagesInChapter;
+    if (estimatedPages <= 1) {
+      targetPageInChapter = 0;
+    } else {
+      targetPageInChapter = (pageFraction * (estimatedPages - 1)).floor().clamp(
+        0,
+        estimatedPages - 1,
+      );
+    }
+    return (targetChapter, targetPageInChapter);
   }
 
   // ---------------------------------------------------------------------------
@@ -383,6 +566,7 @@ class ReaderStore extends ChangeNotifier {
       _cache.clear();
       if (needsRelayout) {
         _pageCountCache.clear();
+        _widthCache = null;
         _persistedPageCountsJson = null;
         _allPagesComputed = false;
       }
@@ -420,6 +604,7 @@ class ReaderStore extends ChangeNotifier {
 
   Future<void> _loadChapter(int index, {bool prefetchOnly = false}) async {
     if (_dataSource == null) return;
+    final requestToken = prefetchOnly ? _chapterLoadToken : ++_chapterLoadToken;
 
     // Check cache.
     final cacheKey = _cacheKey(index);
@@ -431,8 +616,13 @@ class ReaderStore extends ChangeNotifier {
     }
 
     try {
+      final lsw = Stopwatch()..start();
+
       final chapter = await _dataSource!.loadChapter(index);
-      debugPrint('[ReaderStore] chapter $index loaded: ${chapter.nodes.length} nodes');
+      if (requestToken != _chapterLoadToken) return;
+      debugPrint(
+        '[ReaderStore] ch$index readJson: ${lsw.elapsedMilliseconds}ms, ${chapter.nodes.length} nodes',
+      );
 
       // Pre-decode images before pagination.
       final contentWidth =
@@ -442,13 +632,13 @@ class ReaderStore extends ChangeNotifier {
         contentWidth,
         _devicePixelRatio,
       );
-      debugPrint('[ReaderStore] decoded ${decodedImages.length} images');
+      if (requestToken != _chapterLoadToken) return;
+      debugPrint(
+        '[ReaderStore] ch$index decodeImages: ${lsw.elapsedMilliseconds}ms, ${decodedImages.length} images',
+      );
 
-      // Yield a frame so the loading indicator can animate smoothly while
-      // the synchronous paginate() runs.
-      await Future<void>.delayed(Duration.zero);
-
-      final pagination = _engine.paginate(
+      _widthCache ??= WidthCache();
+      final pagination = await _engine.paginateAsync(
         chapterIndex: index,
         nodes: chapter.nodes,
         viewportSize: _viewportSize,
@@ -456,8 +646,12 @@ class ReaderStore extends ChangeNotifier {
         decodedImages: decodedImages,
         safeAreaTop: _safeAreaTop,
         safeAreaBottom: _safeAreaBottom,
+        widthCache: _widthCache,
       );
-      debugPrint('[ReaderStore] paginated: ${pagination.pages.length} pages');
+      if (requestToken != _chapterLoadToken) return;
+      debugPrint(
+        '[ReaderStore] ch$index paginate: ${lsw.elapsedMilliseconds}ms, ${pagination.pages.length} pages',
+      );
       _cache[cacheKey] = pagination;
 
       if (!prefetchOnly) {
@@ -469,6 +663,7 @@ class ReaderStore extends ChangeNotifier {
         _prefetchAdjacentChapters(index);
       }
     } catch (e, st) {
+      if (requestToken != _chapterLoadToken) return;
       debugPrint('[ReaderStore] _loadChapter error: $e\n$st');
       if (!prefetchOnly) {
         _error = e.toString();
@@ -478,15 +673,27 @@ class ReaderStore extends ChangeNotifier {
   }
 
   /// Prefetch the chapters adjacent to [currentIndex] in the background.
+  ///
+  /// Deferred by 500ms so the first frame renders before background
+  /// pagination starts. Prefetches are sequenced (not concurrent) to avoid
+  /// unnecessary main-thread pressure.
   void _prefetchAdjacentChapters(int currentIndex) {
-    final next = currentIndex + 1;
-    if (next < chapterCount && !_cache.containsKey(_cacheKey(next))) {
-      _loadChapter(next, prefetchOnly: true).catchError((_) {});
-    }
-    final prev = currentIndex - 1;
-    if (prev >= 0 && !_cache.containsKey(_cacheKey(prev))) {
-      _loadChapter(prev, prefetchOnly: true).catchError((_) {});
-    }
+    Future<void>(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+
+      // Next chapter first (more likely to be needed).
+      final next = currentIndex + 1;
+      if (next < chapterCount && !_cache.containsKey(_cacheKey(next))) {
+        await _loadChapter(next, prefetchOnly: true).catchError((_) {});
+      }
+
+      // Yield before prefetching previous chapter.
+      await Future<void>.delayed(Duration.zero);
+      final prev = currentIndex - 1;
+      if (prev >= 0 && !_cache.containsKey(_cacheKey(prev))) {
+        await _loadChapter(prev, prefetchOnly: true).catchError((_) {});
+      }
+    });
   }
 
   /// First page of a chapter from the full-layout cache, or null.
@@ -520,6 +727,11 @@ class ReaderStore extends ChangeNotifier {
     _chapterPageCounts = List<int?>.filled(totalChapters, null);
     _allPagesComputed = false;
 
+    final pcsw = Stopwatch()..start();
+    debugPrint(
+      '[ReaderStore] _computeAllPageCounts start ($totalChapters chapters)',
+    );
+
     for (var i = 0; i < totalChapters; i++) {
       // Abort if book or layout preferences changed while computing.
       if (_bookData != snapshotBook ||
@@ -540,7 +752,8 @@ class ReaderStore extends ChangeNotifier {
         try {
           final chapter = await _dataSource!.loadChapter(i);
           // Paginate without decoding images (dimensions from Rust suffice).
-          final pagination = _engine.paginate(
+          _widthCache ??= WidthCache();
+          final pagination = await _engine.paginateAsync(
             chapterIndex: i,
             nodes: chapter.nodes,
             viewportSize: _viewportSize,
@@ -548,13 +761,15 @@ class ReaderStore extends ChangeNotifier {
             safeAreaTop: _safeAreaTop,
             safeAreaBottom: _safeAreaBottom,
             pageCountOnly: true,
+            widthCache: _widthCache,
           );
           _chapterPageCounts[i] = pagination.pages.length;
           // Cache page count only (no full pagination — images not decoded).
           _pageCountCache[cacheKey] = pagination.pages.length;
         } catch (e) {
           debugPrint(
-              '[ReaderStore] _computeAllPageCounts chapter $i error: $e');
+            '[ReaderStore] _computeAllPageCounts chapter $i error: $e',
+          );
           _chapterPageCounts[i] = 0;
         }
       }
@@ -565,7 +780,9 @@ class ReaderStore extends ChangeNotifier {
 
     _allPagesComputed = true;
     _persistedPageCountsJson = _serializePageCounts();
-    debugPrint('[ReaderStore] all page counts computed: total=$totalBookPages');
+    debugPrint(
+      '[ReaderStore] all page counts done: ${pcsw.elapsedMilliseconds}ms, total=$totalBookPages',
+    );
     notifyListeners();
     _saveProgress();
   }
@@ -674,7 +891,7 @@ class ReaderStore extends ChangeNotifier {
       ReadingProgressEntity(
         bookId: _book!.id,
         locatorJson: locator,
-        percent: bookPercent,
+        percent: bookReadPercent,
         updatedAt: DateTime.now(),
         prefsJson: jsonEncode(_preferences.toJson()),
         pageCountsJson: _persistedPageCountsJson,

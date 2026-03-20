@@ -1,7 +1,8 @@
 import '../../entities/book-entity.dart';
+import '../../entities/reading-time-entity.dart';
 
 class LibraryState {
-  const LibraryState({
+  LibraryState({
     required this.books,
     required this.filteredBooks,
     required this.categories,
@@ -13,6 +14,8 @@ class LibraryState {
     this.progressMap = const <String, double>{},
     this.progressLocatorMap = const <String, String>{},
     this.progressUpdatedMap = const <String, DateTime>{},
+    required this.readingTime,
+    this.booksReadThisYear = 0,
     this.lastImportedBookId,
   });
 
@@ -27,15 +30,22 @@ class LibraryState {
   final Map<String, double> progressMap;
   final Map<String, String> progressLocatorMap;
   final Map<String, DateTime> progressUpdatedMap;
+  final ReadingTimeEntity readingTime;
+  final int booksReadThisYear;
   final String? lastImportedBookId;
 
-  factory LibraryState.initial() => const LibraryState(
-    books: <BookEntity>[],
-    filteredBooks: <BookEntity>[],
-    categories: <String>['All', 'Reading', 'Finished'],
-    activeCategory: 'All',
-    isLoading: false,
-  );
+  factory LibraryState.initial() {
+    final now = DateTime.now();
+    return LibraryState(
+      books: const <BookEntity>[],
+      filteredBooks: const <BookEntity>[],
+      categories: const <String>['All', 'Reading', 'Finished'],
+      activeCategory: 'All',
+      isLoading: false,
+      readingTime: ReadingTimeEntity.empty(year: now.year, month: now.month),
+      booksReadThisYear: 0,
+    );
+  }
 
   LibraryState copyWith({
     List<BookEntity>? books,
@@ -49,6 +59,8 @@ class LibraryState {
     Map<String, double>? progressMap,
     Map<String, String>? progressLocatorMap,
     Map<String, DateTime>? progressUpdatedMap,
+    ReadingTimeEntity? readingTime,
+    int? booksReadThisYear,
     String? lastImportedBookId,
   }) {
     return LibraryState(
@@ -63,6 +75,8 @@ class LibraryState {
       progressMap: progressMap ?? this.progressMap,
       progressLocatorMap: progressLocatorMap ?? this.progressLocatorMap,
       progressUpdatedMap: progressUpdatedMap ?? this.progressUpdatedMap,
+      readingTime: readingTime ?? this.readingTime,
+      booksReadThisYear: booksReadThisYear ?? this.booksReadThisYear,
       lastImportedBookId: lastImportedBookId,
     );
   }

@@ -7,12 +7,14 @@ import 'render_node.dart';
 /// A single laid-out element on a page, with absolute position within the
 /// page's content area.
 class LayoutElement {
-  const LayoutElement({
+  LayoutElement({
     required this.rect,
     required this.sourceNode,
     this.textPainter,
     this.image,
     this.backgroundPaint,
+    this.deferredText,
+    this.deferredStyle,
   });
 
   /// Position and size within the page content area.
@@ -22,13 +24,32 @@ class LayoutElement {
   final RenderNode sourceNode;
 
   /// For text elements: the measured and laid-out TextPainter.
-  final TextPainter? textPainter;
+  TextPainter? textPainter;
 
   /// For image elements: the decoded image.
   final ui.Image? image;
 
   /// Background color fill (if the source node has a background_color).
   final Paint? backgroundPaint;
+
+  /// Deferred text payload for lazily creating [textPainter] when needed.
+  final String? deferredText;
+  final TextStyle? deferredStyle;
+
+  /// Whether this element contains text content (eager or deferred).
+  bool get hasText =>
+      textPainter != null || (deferredText != null && deferredStyle != null);
+
+  /// Lazily create and cache a [TextPainter] for deferred text elements.
+  TextPainter? ensurePainter() {
+    if (textPainter != null) return textPainter;
+    if (deferredText == null || deferredStyle == null) return null;
+    textPainter = TextPainter(
+      text: TextSpan(text: deferredText, style: deferredStyle),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    return textPainter;
+  }
 }
 
 /// One complete page of content.

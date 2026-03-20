@@ -13,6 +13,7 @@ import '../../services/tts/tts_service.dart';
 import '../../services/reader/reader-entry-service.dart';
 import '../../stores/highlight/highlight-store.dart';
 import '../../stores/library/library-store.dart';
+import '../../stores/reader/reader_store_manager.dart';
 import '../i18n/app-locale.dart';
 
 class AppProviders {
@@ -48,6 +49,9 @@ class AppProviders {
 
   late final LibraryStore libraryStore;
   late final HighlightStore highlightStore;
+  late final ReaderStoreManager readerStoreManager = ReaderStoreManager(
+    progressRepository: progressRepository,
+  );
 
   void registerStores({
     required LibraryStore libraryStore,

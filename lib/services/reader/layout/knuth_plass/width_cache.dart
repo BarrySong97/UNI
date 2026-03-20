@@ -13,6 +13,7 @@ import 'package:flutter/painting.dart';
 class WidthCache {
   final Map<String, double> _spaceWidths = {};
   final Map<String, double> _wordWidths = {};
+  final Map<String, double> _lineHeights = {};
 
   /// Return the width of a single space character rendered in [style].
   double spaceWidth(TextStyle style) {
@@ -45,9 +46,31 @@ class WidthCache {
     });
   }
 
+  /// Return the line height for [style].
+  ///
+  /// Unlike width measurement, line height depends on style.height, so keep a
+  /// dedicated cache key to avoid stale hits across different line-height
+  /// multipliers.
+  double lineHeight(TextStyle style) {
+    final key = _lineHeightKey(style);
+    return _lineHeights.putIfAbsent(key, () {
+      final painter = TextPainter(
+        text: TextSpan(text: ' ', style: style),
+        textDirection: ui.TextDirection.ltr,
+      )..layout();
+      final h = painter.height;
+      painter.dispose();
+      return h;
+    });
+  }
+
   /// Build a canonical string key from the style properties that affect
   /// character width measurement.
   static String _styleKey(TextStyle style) {
     return '${style.fontSize}|${style.fontWeight?.value}|${style.fontStyle?.name}|${style.fontFamily}';
+  }
+
+  static String _lineHeightKey(TextStyle style) {
+    return '${_styleKey(style)}|${style.height}|${style.leadingDistribution?.name}';
   }
 }
