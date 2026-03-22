@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../entities/book-entity.dart';
 import '../../shared/constants/common-design-tokens.dart';
 import '../../shared/constants/shelf-design-tokens.dart';
+import '../../shared/layout/responsive_layout.dart';
 import 'book-pop-in-wrapper.dart';
 import 'library-book-tile.dart';
 
@@ -85,30 +86,40 @@ class LibraryBookGrid extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    final rows = <Widget>[];
-    for (var i = 0; i < books.length; i += 2) {
-      final left = books[i];
-      final right = i + 1 < books.length ? books[i + 1] : null;
-      rows.add(
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Expanded(child: _buildItem(left, i)),
-            const SizedBox(width: CommonDesignTokens.gridSpacing),
-            Expanded(
-              child: right != null
-                  ? _buildItem(right, i + 1)
-                  : const SizedBox.shrink(),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = responsiveGridColumns(constraints.maxWidth);
+        final rows = <Widget>[];
+        for (var i = 0; i < books.length; i += columns) {
+          final rowChildren = <Widget>[];
+          for (var col = 0; col < columns; col++) {
+            if (col > 0) {
+              rowChildren.add(
+                const SizedBox(width: CommonDesignTokens.gridSpacing),
+              );
+            }
+            final index = i + col;
+            rowChildren.add(
+              Expanded(
+                child: index < books.length
+                    ? _buildItem(books[index], index)
+                    : const SizedBox.shrink(),
+              ),
+            );
+          }
+          rows.add(
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: rowChildren,
             ),
-          ],
-        ),
-      );
-      if (i + 2 < books.length) {
-        rows.add(const SizedBox(height: CommonDesignTokens.gridRowSpacing));
-      }
-    }
-
-    return Column(children: rows);
+          );
+          if (i + columns < books.length) {
+            rows.add(const SizedBox(height: CommonDesignTokens.gridRowSpacing));
+          }
+        }
+        return Column(children: rows);
+      },
+    );
   }
 
   Widget _buildItem(BookEntity book, int index) {

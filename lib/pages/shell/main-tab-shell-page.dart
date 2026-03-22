@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../components/common/ui/floating-tab-bar.dart';
 import '../../shared/constants/common-design-tokens.dart';
+import '../../shared/layout/responsive_layout.dart';
 import '../library/library-page.dart';
 import '../settings/settings-page.dart';
 import '../shelf/shelf-page.dart';
@@ -40,7 +41,10 @@ class _MainTabShellPageState extends State<MainTabShellPage> {
             left: 0,
             right: 0,
             bottom: 0,
-            child: FloatingTabBar(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: kTabBarMaxWidth),
+                child: FloatingTabBar(
               currentIndex: currentIndex,
               onTap: (index) {
                 setState(() {
@@ -62,6 +66,8 @@ class _MainTabShellPageState extends State<MainTabShellPage> {
                 ),
               ],
             ),
+          ),
+          ),
           ),
         ],
       ),

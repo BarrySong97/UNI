@@ -19,6 +19,12 @@ pub fn should_discard(tag: &str) -> bool {
     )
 }
 
+/// Elements with `position: absolute/fixed` are out of normal flow.
+/// Our flow-based reader cannot render them; they are almost always decorative.
+pub fn is_out_of_flow(style: &crate::css::StyleProps) -> bool {
+    matches!(style.position.as_deref(), Some("absolute") | Some("fixed"))
+}
+
 /// Container tags whose own semantics we ignore — we keep their children only.
 pub fn should_flatten(tag: &str) -> bool {
     matches!(

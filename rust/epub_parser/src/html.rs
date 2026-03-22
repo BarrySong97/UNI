@@ -112,6 +112,12 @@ fn walk_children_of_node(elem: ElementRef, ctx: &mut WalkCtx, out: &mut Vec<Rend
                     continue;
                 }
 
+                // Skip elements positioned out of normal flow (position: absolute/fixed).
+                // These are typically decorative images, logos, or watermarks.
+                if filter::is_out_of_flow(&style) {
+                    continue;
+                }
+
                 if filter::should_flatten(&tag) {
                     let mut sub = inherit_ctx(ctx, &style);
                     sub.ancestors.push(tag.clone());
@@ -247,7 +253,7 @@ fn walk_children_of_node(elem: ElementRef, ctx: &mut WalkCtx, out: &mut Vec<Rend
 
                     "img" => {
                         let alt = child_elem.value().attr("alt").map(|s| s.to_string());
-                        let img = resolve_img(child_elem, ctx);
+                        let img = resolve_img(child_elem, ctx, Some(&style));
                         out.push(RenderNode::Image {
                             data_base64: img.data_base64,
                             alt,
@@ -473,11 +479,16 @@ fn walk_inline_children(elem: ElementRef, ctx: &mut WalkCtx, out: &mut Vec<Rende
                     continue;
                 }
 
+                // Skip positioned-out-of-flow elements in inline context too.
+                if filter::is_out_of_flow(&style) {
+                    continue;
+                }
+
                 match tag.as_str() {
                     "br" => out.push(RenderNode::LineBreak),
                     "img" => {
                         let alt = child_elem.value().attr("alt").map(|s| s.to_string());
-                        let img = resolve_img(child_elem, ctx);
+                        let img = resolve_img(child_elem, ctx, Some(&style));
                         out.push(RenderNode::Image {
                             data_base64: img.data_base64,
                             alt,
@@ -828,7 +839,7 @@ fn url_decode(s: &str) -> String {
 }
 
 /// Resolve an `<img>` element's `src` to base64 data, dimensions, and optional width hint.
-fn resolve_img(elem: ElementRef, ctx: &WalkCtx) -> ResolvedImage {
+fn resolve_img(elem: ElementRef, ctx: &WalkCtx, style: Option<&StyleProps>) -> ResolvedImage {
     let src = match elem.value().attr("src") {
         Some(s) => s,
         None => {
@@ -883,6 +894,22 @@ fn resolve_img(elem: ElementRef, ctx: &WalkCtx) -> ResolvedImage {
             // Bare number (e.g. width="200") — treat as pixels.
             w.parse::<f32>().ok().map(|px| (px / 600.0).min(1.0))
         }
+    });
+
+    // Fallback: use CSS width property when HTML attribute is absent.
+    let width_hint = width_hint.or_else(|| {
+        style.and_then(|s| s.width.as_deref()).and_then(|w| {
+            if w == "auto" || w == "0" {
+                return None;
+            }
+            if w.ends_with('%') {
+                w.trim_end_matches('%').parse::<f32>().ok().map(|v| v / 100.0)
+            } else if w.ends_with("px") {
+                w.trim_end_matches("px").parse::<f32>().ok().map(|px| (px / 600.0).min(1.0))
+            } else {
+                w.parse::<f32>().ok().map(|px| (px / 600.0).min(1.0))
+            }
+        })
     });
 
     ResolvedImage {

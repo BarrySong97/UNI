@@ -13,6 +13,7 @@ import '../../services/reader/models/reader_preferences.dart';
 import '../../services/reader/reading_time_tracker.dart';
 import '../../services/reader/selection/cross_page_selection.dart';
 import '../../services/reader/selection/page_hit_test.dart';
+import '../../shared/layout/responsive_layout.dart';
 import '../../stores/reader/reader_store.dart';
 import '../../stores/reader/reader_store_manager.dart';
 import 'widgets/reader_canvas_painter.dart';
@@ -67,6 +68,9 @@ class _ReaderPageState extends State<ReaderPage>
   // Prevent clearing selection during selection-triggered page turns.
   bool _preserveSelectionOnPageChange = false;
 
+  // Track which page the selection is on in dual-page mode.
+  bool _selectionOnRightPage = false;
+
   // Cached page identity to detect page changes.
   int _lastChapterIndex = -1;
   int _lastPageIndex = -1;
@@ -108,13 +112,19 @@ class _ReaderPageState extends State<ReaderPage>
     _readingTimeTracker.onAppForeground();
     _readingTimeTracker.onInteraction();
 
+    final isDual = mq.size.width >= kTabletBreakpoint;
+    final viewportSize = isDual
+        ? Size(mq.size.width / 2, mq.size.height)
+        : mq.size;
+
     await _store.openBook(
       book: widget.book,
       dataSource: widget.dataSource,
-      viewportSize: mq.size,
+      viewportSize: viewportSize,
       safeAreaTop: mq.padding.top,
       safeAreaBottom: mq.padding.bottom,
       devicePixelRatio: mq.devicePixelRatio,
+      isDualPage: isDual,
     );
   }
 
@@ -228,22 +238,49 @@ class _ReaderPageState extends State<ReaderPage>
   // Coordinate transform
   // ---------------------------------------------------------------------------
 
+  /// Whether the touch is on the right page in dual-page mode.
+  bool _isTouchOnRightPage(Offset global) {
+    if (!_store.isDualPage) return false;
+    final halfWidth = MediaQuery.of(context).size.width / 2;
+    return global.dx >= halfWidth;
+  }
+
+  /// Get the PageLayout that a touch position falls on.
+  /// Returns (page, isRightPage).
+  (PageLayout?, bool) _hitPageForTouch(Offset global) {
+    if (!_store.isDualPage) {
+      return (_store.currentPageLayout, false);
+    }
+    if (_isTouchOnRightPage(global)) {
+      return (_store.secondPageLayout, true);
+    }
+    return (_store.currentPageLayout, false);
+  }
+
   /// Convert a global position to content-area coordinates.
-  Offset _toContentOffset(Offset global) {
+  /// In dual-page mode, [isRightPage] shifts the origin to the right half.
+  Offset _toContentOffset(Offset global, {bool isRightPage = false}) {
     final mq = MediaQuery.of(context);
     final prefs = _store.preferences;
+    final dx = isRightPage
+        ? global.dx - mq.size.width / 2 - prefs.pageHorizontalPaddingPx
+        : global.dx - prefs.pageHorizontalPaddingPx;
     return Offset(
-      global.dx - prefs.pageHorizontalPaddingPx,
+      dx,
       global.dy - prefs.pageVerticalPaddingPx - mq.padding.top,
     );
   }
 
   /// Convert content-area coordinates to screen coordinates.
-  Offset _toScreenOffset(Offset content) {
+  /// In dual-page mode, [isRightPage] adds the right-half offset.
+  Offset _toScreenOffset(Offset content, {bool isRightPage = false}) {
     final mq = MediaQuery.of(context);
     final prefs = _store.preferences;
+    final dx = isRightPage
+        ? content.dx + mq.size.width / 2 + prefs.pageHorizontalPaddingPx
+        : content.dx + prefs.pageHorizontalPaddingPx;
     return Offset(
-      content.dx + prefs.pageHorizontalPaddingPx,
+      dx,
       content.dy + prefs.pageVerticalPaddingPx + mq.padding.top,
     );
   }
@@ -259,11 +296,24 @@ class _ReaderPageState extends State<ReaderPage>
     _selectionAnchor = null;
     _selectionMoving = null;
     _preserveSelectionOnPageChange = false;
+    _selectionOnRightPage = false;
   }
 
   void _updateSelectionRects() {
-    final page = _store.currentPageLayout;
-    if (_crossSelection == null || page == null) {
+    if (_crossSelection == null) {
+      _selectionRects = const [];
+      return;
+    }
+
+    // In dual-page mode, try the page the selection is on.
+    final PageLayout? page;
+    if (_selectionOnRightPage && _store.isDualPage) {
+      page = _store.secondPageLayout;
+    } else {
+      page = _store.currentPageLayout;
+    }
+
+    if (page == null) {
       _selectionRects = const [];
       return;
     }
@@ -278,10 +328,13 @@ class _ReaderPageState extends State<ReaderPage>
   }
 
   void _onLongPressStart(LongPressStartDetails details) {
-    final page = _store.currentPageLayout;
+    final (page, isRight) = _hitPageForTouch(details.globalPosition);
     if (page == null) return;
 
-    final contentOffset = _toContentOffset(details.globalPosition);
+    final contentOffset = _toContentOffset(
+      details.globalPosition,
+      isRightPage: isRight,
+    );
     final hit = hitTestPage(page, contentOffset);
     if (hit == null) return;
 
@@ -289,6 +342,7 @@ class _ReaderPageState extends State<ReaderPage>
     if (wordSel == null) return;
 
     _isLongPressing = true;
+    _selectionOnRightPage = isRight;
 
     final startPos = BookPosition.fromPagePosition(
       wordSel.start,
@@ -313,10 +367,18 @@ class _ReaderPageState extends State<ReaderPage>
 
   void _onLongPressMoveUpdate(LongPressMoveUpdateDetails details) {
     if (!_isLongPressing) return;
-    final page = _store.currentPageLayout;
-    if (page == null || _crossSelection == null) return;
+    if (_crossSelection == null) return;
 
-    final contentOffset = _toContentOffset(details.globalPosition);
+    final (page, isRight) = _hitPageForTouch(details.globalPosition);
+    if (page == null) return;
+
+    // Update which page the selection is on if user drags to the other page.
+    _selectionOnRightPage = isRight;
+
+    final contentOffset = _toContentOffset(
+      details.globalPosition,
+      isRightPage: isRight,
+    );
     final hit = hitTestPage(page, contentOffset);
     if (hit == null) return;
 
@@ -344,9 +406,13 @@ class _ReaderPageState extends State<ReaderPage>
   }
 
   void _onHandleDrag(DragUpdateDetails details, {required bool isStart}) {
-    final page = _store.currentPageLayout;
-    if (page == null || _crossSelection == null) return;
+    if (_crossSelection == null) return;
     if (_selectionAnchor == null || _selectionMoving == null) return;
+
+    final (page, isRight) = _hitPageForTouch(details.globalPosition);
+    if (page == null) return;
+
+    _selectionOnRightPage = isRight;
 
     // The anchor is the handle NOT being dragged.
     final BookPosition anchor;
@@ -357,7 +423,10 @@ class _ReaderPageState extends State<ReaderPage>
     }
     _selectionAnchor = anchor;
 
-    final contentOffset = _toContentOffset(details.globalPosition);
+    final contentOffset = _toContentOffset(
+      details.globalPosition,
+      isRightPage: isRight,
+    );
     final hit = hitTestPage(page, contentOffset);
     if (hit == null) return;
 
@@ -713,12 +782,12 @@ class _ReaderPageState extends State<ReaderPage>
 
     if (_dragOffset < -screenWidth * distanceThreshold ||
         velocity < -velocityThreshold) {
-      if (!_store.isLastPageOfBook && _store.nextPageLayout != null) {
+      if (!_store.isLastPageOfBook) {
         goNext = true;
       }
     } else if (_dragOffset > screenWidth * distanceThreshold ||
         velocity > velocityThreshold) {
-      if (!_store.isFirstPageOfBook && _store.previousPageLayout != null) {
+      if (!_store.isFirstPageOfBook) {
         goPrev = true;
       }
     }
@@ -881,9 +950,16 @@ class _ReaderPageState extends State<ReaderPage>
       );
     }
 
+    if (_store.isDualPage) {
+      return _buildDualPageReader(prefs, page);
+    }
+    return _buildSinglePageReader(prefs, page);
+  }
+
+  Widget _buildSinglePageReader(ReaderPreferences prefs, PageLayout page) {
     final mediaPadding = MediaQuery.of(context).padding;
     final screenWidth = MediaQuery.of(context).size.width;
-    // Determine which adjacent page to show during drag/animation.
+
     final PageLayout? adjacentPage;
     if (_dragOffset < 0) {
       adjacentPage = _store.nextPageLayout;
@@ -893,19 +969,17 @@ class _ReaderPageState extends State<ReaderPage>
       adjacentPage = null;
     }
 
-    // Selection handle color.
     const handleColor = Color(0xFF3B82F6);
 
     return Stack(
       clipBehavior: Clip.hardEdge,
       children: [
-        // Background fill to prevent flicker between pages.
         ColoredBox(
           color: prefs.theme.backgroundColor,
           child: const SizedBox.expand(),
         ),
 
-        // Adjacent page (always in tree; positioned off-screen when idle).
+        // Adjacent page.
         Positioned.fill(
           child: Transform.translate(
             offset: Offset(
@@ -932,7 +1006,7 @@ class _ReaderPageState extends State<ReaderPage>
           ),
         ),
 
-        // Current page (translates with drag).
+        // Current page.
         Positioned.fill(
           child: GestureDetector(
             onTapUp: _onTapUp,
@@ -1014,6 +1088,168 @@ class _ReaderPageState extends State<ReaderPage>
     );
   }
 
+  Widget _buildDualPageReader(ReaderPreferences prefs, PageLayout leftPage) {
+    final mediaPadding = MediaQuery.of(context).padding;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final rightPage = _store.secondPageLayout;
+
+    // Adjacent spread for swipe preview.
+    PageLayout? adjLeft;
+    PageLayout? adjRight;
+    if (_dragOffset < 0) {
+      adjLeft = _store.nextSpreadLeftPage;
+      adjRight = _store.nextSpreadRightPage;
+    } else if (_dragOffset > 0) {
+      adjLeft = _store.prevSpreadLeftPage;
+      adjRight = _store.prevSpreadRightPage;
+    }
+
+    const handleColor = Color(0xFF3B82F6);
+
+    Widget buildPagePaint(PageLayout? pg, {List<Rect>? selRects}) {
+      if (pg == null) {
+        return ColoredBox(color: prefs.theme.backgroundColor);
+      }
+      return RepaintBoundary(
+        child: CustomPaint(
+          painter: ReaderCanvasPainter(
+            page: pg,
+            preferences: prefs,
+            safeAreaTop: mediaPadding.top,
+            safeAreaBottom: mediaPadding.bottom,
+            selectionRects: selRects,
+          ),
+          size: Size.infinite,
+        ),
+      );
+    }
+
+    // Compute selection rects per page for dual mode.
+    List<Rect>? leftSelRects;
+    List<Rect>? rightSelRects;
+    if (_crossSelection != null && _selectionRects.isNotEmpty) {
+      if (!_selectionOnRightPage) {
+        leftSelRects = _selectionRects;
+      } else {
+        rightSelRects = _selectionRects;
+      }
+    }
+
+    return Stack(
+      clipBehavior: Clip.hardEdge,
+      children: [
+        // Background.
+        ColoredBox(
+          color: prefs.theme.backgroundColor,
+          child: const SizedBox.expand(),
+        ),
+
+        // Adjacent spread (off-screen when idle).
+        Positioned.fill(
+          child: Transform.translate(
+            offset: Offset(
+              _dragOffset == 0
+                  ? screenWidth
+                  : (_dragOffset < 0
+                        ? _dragOffset + screenWidth
+                        : _dragOffset - screenWidth),
+              0,
+            ),
+            child: (adjLeft != null || adjRight != null)
+                ? Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(child: buildPagePaint(adjLeft)),
+                      Expanded(child: buildPagePaint(adjRight)),
+                    ],
+                  )
+                : const SizedBox.expand(),
+          ),
+        ),
+
+        // Current spread (two pages side by side).
+        Positioned.fill(
+          child: GestureDetector(
+            onTapUp: _onTapUp,
+            onHorizontalDragStart: _onDragStart,
+            onHorizontalDragUpdate: _onDragUpdate,
+            onHorizontalDragEnd: _onDragEnd,
+            onLongPressStart: _onLongPressStart,
+            onLongPressMoveUpdate: _onLongPressMoveUpdate,
+            onLongPressEnd: _onLongPressEnd,
+            child: Transform.translate(
+              offset: Offset(_dragOffset, 0),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: buildPagePaint(leftPage, selRects: leftSelRects),
+                  ),
+                  Expanded(
+                    child: buildPagePaint(rightPage, selRects: rightSelRects),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+
+
+        // Selection handles + tooltip.
+        if (_crossSelection != null &&
+            _selectionRects.isNotEmpty &&
+            !_isLongPressing) ...[
+          ..._buildSelectionHandles(handleColor),
+          _buildSelectionTooltip(),
+        ],
+
+        // Chapter title at top (left page).
+        Positioned(
+          left: prefs.pageHorizontalPaddingPx,
+          top: mediaPadding.top + 8,
+          child: Text(
+            _chapterTitle,
+            style: TextStyle(
+              color: prefs.theme.textColor.withValues(alpha: 0.4),
+              fontSize: 11,
+            ),
+          ),
+        ),
+
+        // Left page indicator (bottom-left).
+        Positioned(
+          left: prefs.pageHorizontalPaddingPx,
+          bottom: mediaPadding.bottom + 8,
+          child: Text(
+            _store.totalBookPages > 0
+                ? '${_store.currentBookPage} / ${_store.totalBookPages}'
+                : '${_store.currentPageIndex + 1} / ${_store.totalPagesInChapter}',
+            style: TextStyle(
+              color: prefs.theme.textColor.withValues(alpha: 0.4),
+              fontSize: 11,
+            ),
+          ),
+        ),
+
+        // Right page indicator (bottom-right).
+        if (rightPage != null)
+          Positioned(
+            right: prefs.pageHorizontalPaddingPx,
+            bottom: mediaPadding.bottom + 8,
+            child: Text(
+              _store.totalBookPages > 0
+                  ? '${_store.secondBookPage} / ${_store.totalBookPages}'
+                  : '${_store.currentPageIndex + 2} / ${_store.totalPagesInChapter}',
+              style: TextStyle(
+                color: prefs.theme.textColor.withValues(alpha: 0.4),
+                fontSize: 11,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
   /// Build selection handle widgets.
   ///
   /// Only shows handles whose anchor falls on the current page. For off-page
@@ -1021,11 +1257,17 @@ class _ReaderPageState extends State<ReaderPage>
   List<Widget> _buildSelectionHandles(Color color) {
     if (_crossSelection == null || _selectionRects.isEmpty) return const [];
 
-    final page = _store.currentPageLayout;
-    if (page == null) return const [];
+    // Determine which page the selection is on.
+    final PageLayout? selPage;
+    if (_selectionOnRightPage && _store.isDualPage) {
+      selPage = _store.secondPageLayout;
+    } else {
+      selPage = _store.currentPageLayout;
+    }
+    if (selPage == null) return const [];
 
-    final ch = page.chapterIndex;
-    final pg = page.pageIndexInChapter;
+    final ch = selPage.chapterIndex;
+    final pg = selPage.pageIndexInChapter;
 
     final startOnPage =
         _crossSelection!.start.chapterIndex == ch &&
@@ -1036,10 +1278,14 @@ class _ReaderPageState extends State<ReaderPage>
 
     const hitSize = ReaderSelectionHandle.hitSize;
     final handles = <Widget>[];
+    final isRight = _selectionOnRightPage;
 
     if (startOnPage) {
       final firstRect = _selectionRects.first;
-      final startScreen = _toScreenOffset(firstRect.bottomLeft);
+      final startScreen = _toScreenOffset(
+        firstRect.bottomLeft,
+        isRightPage: isRight,
+      );
       handles.add(
         Positioned(
           left: startScreen.dx - hitSize / 2,
@@ -1053,13 +1299,15 @@ class _ReaderPageState extends State<ReaderPage>
         ),
       );
     } else {
-      // Selection continues from a previous page — left edge indicator.
       handles.add(_buildEdgeIndicator(isLeft: true, color: color));
     }
 
     if (endOnPage) {
       final lastRect = _selectionRects.last;
-      final endScreen = _toScreenOffset(lastRect.bottomRight);
+      final endScreen = _toScreenOffset(
+        lastRect.bottomRight,
+        isRightPage: isRight,
+      );
       handles.add(
         Positioned(
           left: endScreen.dx - hitSize / 2,
@@ -1073,7 +1321,6 @@ class _ReaderPageState extends State<ReaderPage>
         ),
       );
     } else {
-      // Selection continues to a later page — right edge indicator.
       handles.add(_buildEdgeIndicator(isLeft: false, color: color));
     }
 
@@ -1101,20 +1348,30 @@ class _ReaderPageState extends State<ReaderPage>
     final lastRect = _selectionRects.last;
     final screenWidth = MediaQuery.of(context).size.width;
     final safeTop = MediaQuery.of(context).padding.top;
+    final isRight = _selectionOnRightPage;
 
     // Horizontal center of the selection.
     final selCenterX = (firstRect.left + lastRect.right) / 2;
-    final screenCenterX = _toScreenOffset(Offset(selCenterX, 0)).dx;
+    final screenCenterX = _toScreenOffset(
+      Offset(selCenterX, 0),
+      isRightPage: isRight,
+    ).dx;
 
     // Vertical: prefer above the first rect; fall back to below last rect.
     const tooltipHeight = 40.0;
     const gap = 8.0;
-    final aboveY = _toScreenOffset(firstRect.topLeft).dy - gap - tooltipHeight;
-    final belowY = _toScreenOffset(lastRect.bottomLeft).dy + gap;
+    final aboveY = _toScreenOffset(
+      firstRect.topLeft,
+      isRightPage: isRight,
+    ).dy - gap - tooltipHeight;
+    final belowY = _toScreenOffset(
+      lastRect.bottomLeft,
+      isRightPage: isRight,
+    ).dy + gap;
     final tooltipY = aboveY >= safeTop ? aboveY : belowY;
 
     // Estimate tooltip width to clamp horizontal position.
-    const estimatedWidth = 370.0;
+    const estimatedWidth = 300.0;
     final tooltipLeft = (screenCenterX - estimatedWidth / 2).clamp(
       8.0,
       screenWidth - estimatedWidth - 8.0,
@@ -1228,13 +1485,6 @@ class _ReaderPageState extends State<ReaderPage>
                     widget.book.language,
                   );
                 }
-              },
-            ),
-            Container(width: 1, height: 20, color: Colors.white24),
-            _tooltipButton(
-              'Mark',
-              onPressed: () {
-                // TODO: implement mark
               },
             ),
           ],

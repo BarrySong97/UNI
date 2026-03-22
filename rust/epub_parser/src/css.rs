@@ -27,6 +27,10 @@ pub struct StyleProps {
     pub vertical_align: Option<VerticalAlign>,
     pub list_style_type: Option<ListStyle>,
     pub display: Option<String>,
+    pub position: Option<String>,
+    pub float: Option<String>,
+    pub width: Option<String>,
+    pub height: Option<String>,
 }
 
 /// Parse a CSS string and extract relevant properties per selector.
@@ -255,6 +259,18 @@ pub fn parse_declarations(decls: &str) -> StyleProps {
                         }
                     }
                 }
+            }
+            "position" => {
+                props.position = Some(val.to_string());
+            }
+            "float" => {
+                props.float = Some(val.to_string());
+            }
+            "width" => {
+                props.width = Some(val.to_string());
+            }
+            "height" => {
+                props.height = Some(val.to_string());
             }
             _ => {}
         }
@@ -668,5 +684,17 @@ pub fn merge_props(base: &mut StyleProps, overlay: &StyleProps) {
     }
     if overlay.display.is_some() {
         base.display = overlay.display.clone();
+    }
+    if overlay.position.is_some() {
+        base.position = overlay.position.clone();
+    }
+    if overlay.float.is_some() {
+        base.float = overlay.float.clone();
+    }
+    if overlay.width.is_some() {
+        base.width = overlay.width.clone();
+    }
+    if overlay.height.is_some() {
+        base.height = overlay.height.clone();
     }
 }

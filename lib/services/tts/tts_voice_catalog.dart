@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -123,6 +124,7 @@ class TtsVoiceCatalog extends ChangeNotifier {
   String? get error => _error;
 
   /// Initialize the catalog: load from cache first, then refresh if stale.
+  /// Falls back to bundled asset if both cache and network are unavailable.
   Future<void> initialize() async {
     final cacheFile = await _cacheFile();
 
@@ -151,6 +153,11 @@ class TtsVoiceCatalog extends ChangeNotifier {
 
     // No valid cache, fetch from network.
     await _fetchAndCache();
+
+    // If network also failed, fall back to bundled asset.
+    if (_voices.isEmpty) {
+      await _loadBundledFallback();
+    }
   }
 
   /// Force refresh the catalog from network.
@@ -209,6 +216,20 @@ class TtsVoiceCatalog extends ChangeNotifier {
 
     _isLoading = false;
     notifyListeners();
+  }
+
+  Future<void> _loadBundledFallback() async {
+    try {
+      final jsonStr = await rootBundle.loadString('assets/voices.json');
+      final data = jsonDecode(jsonStr) as Map<String, dynamic>;
+      _parseVoicesJson(data);
+      _error = null;
+      notifyListeners();
+      debugPrint('[TtsVoiceCatalog] Loaded bundled fallback '
+          '(${_voices.length} voices)');
+    } catch (e) {
+      debugPrint('[TtsVoiceCatalog] Bundled fallback load error: $e');
+    }
   }
 
   void _parseVoicesJson(Map<String, dynamic> json) {

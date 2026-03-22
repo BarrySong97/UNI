@@ -7,6 +7,7 @@ import '../../components/library/library-book-grid.dart';
 import '../../components/library/library-header.dart';
 import '../../services/library/book-profile-entry-service.dart';
 import '../../shared/constants/common-design-tokens.dart';
+import '../../shared/layout/responsive_layout.dart';
 
 class LibraryPage extends StatefulWidget {
   const LibraryPage({super.key});
@@ -61,7 +62,9 @@ class _LibraryPageState extends State<LibraryPage> {
                     top: 12,
                     bottom: 120,
                   ),
-                  child: Column(
+                  child: ResponsiveContentWrapper(
+                    maxWidth: kWideContentMaxWidth,
+                    child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
                       LibraryHeader(
@@ -82,6 +85,7 @@ class _LibraryPageState extends State<LibraryPage> {
                         lastImportedBookId: lastImportedBookId,
                       ),
                     ],
+                  ),
                   ),
                 ),
               ),

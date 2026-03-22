@@ -7,6 +7,7 @@ import '../../app/providers/app-providers.dart';
 import '../../entities/statistics-entity.dart';
 import '../../shared/constants/common-design-tokens.dart';
 import '../../shared/constants/statistics-design-tokens.dart';
+import '../../shared/layout/responsive_layout.dart';
 import '../../stores/statistics/statistics-store.dart';
 import 'statistics-types.dart';
 
@@ -69,8 +70,6 @@ class _StatisticsPageState extends State<StatisticsPage> {
               child: Column(
                 children: <Widget>[
                   _buildHeader(context),
-                  const SizedBox(height: 22),
-                  _buildControls(context),
                   const SizedBox(height: 22),
                   Expanded(child: _buildBody()),
                 ],
@@ -179,11 +178,24 @@ class _StatisticsPageState extends State<StatisticsPage> {
       );
     }
 
+    final tabContent = _store.selectedTab == StatisticsTab.readingTime
+        ? _buildReadingTimeView()
+        : _buildBooksReadView();
+
     return SingleChildScrollView(
       padding: const EdgeInsets.only(bottom: 32),
-      child: _store.selectedTab == StatisticsTab.readingTime
-          ? _buildReadingTimeView()
-          : _buildBooksReadView(),
+      child: ResponsiveContentWrapper(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            _buildHeatmapCard(),
+            const SizedBox(height: 18),
+            _buildControls(context),
+            const SizedBox(height: 22),
+            tabContent,
+          ],
+        ),
+      ),
     );
   }
 
@@ -232,15 +244,45 @@ class _StatisticsPageState extends State<StatisticsPage> {
                 )
               : _DailyMinutesProgressChart(dailyStats: data.dailyStats),
         ),
-        const SizedBox(height: 18),
-        _StatisticsSectionCard(
-          title: 'Reading Heatmap',
-          trailingWidget: _HeatmapLegend(
-            maxSeconds: _maxDailySeconds(data.dailyStats),
-          ),
-          child: _HeatmapChart(dailyStats: data.dailyStats),
-        ),
       ],
+    );
+  }
+
+  Widget _buildHeatmapCard() {
+    final heatmapStats = _store.heatmapDailyStats;
+    if (heatmapStats == null || heatmapStats.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(30),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: StatisticsDesignTokens.softShadow,
+            blurRadius: 24,
+            offset: Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Text(
+            'Reading Heatmap',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: StatisticsDesignTokens.strongText,
+            ),
+          ),
+          const SizedBox(height: 10),
+          _HeatmapLegend(maxSeconds: _maxDailySeconds(heatmapStats)),
+          const SizedBox(height: 18),
+          _HeatmapChart(dailyStats: heatmapStats),
+        ],
+      ),
     );
   }
 
@@ -418,7 +460,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
                         return GestureDetector(
                           onTap: () => Navigator.of(context).pop(candidate),
                           child: Container(
-                            width: (MediaQuery.of(context).size.width - 72) / 3,
+                            width: (math.min(MediaQuery.of(context).size.width, kContentMaxWidth) - 72) / 3,
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             decoration: BoxDecoration(
                               color: isSelected
@@ -451,7 +493,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
   String _periodLabel() {
     switch (_store.selectedPeriodPreset) {
       case StatisticsPeriodPreset.thisMonth:
-        return 'This Month';
+        return _monthShortLabel(DateTime.now().month);
       case StatisticsPeriodPreset.thisYear:
         return 'This Year';
       case StatisticsPeriodPreset.pickedMonth:
@@ -857,79 +899,31 @@ class _StatisticsTabSwitchButton extends StatelessWidget {
 class _DailyMinutesProgressChart extends StatelessWidget {
   const _DailyMinutesProgressChart({required this.dailyStats});
 
-  static const double _chartHeight = 180;
+  static const double _chartHeight = 148;
   static const double _minimumVisibleFillHeight = 2;
-  static const double _labelRowHeight = 20;
-  static const double _labelSpacing = 12;
   static const int _secondsPerDay = 24 * 60 * 60;
 
   final List<DailyReadingStat> dailyStats;
 
   @override
   Widget build(BuildContext context) {
-    final labelledDays = <int>{
-      1,
-      8,
-      15,
-      22,
-      if (dailyStats.isNotEmpty) dailyStats.last.date.day,
-    };
-
     return SizedBox(
       key: const ValueKey<String>('daily-minutes-chart'),
       height: _chartHeight,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final trackHeight = math.max(
-            0.0,
-            constraints.maxHeight - _labelRowHeight - _labelSpacing,
-          );
-
-          return Column(
-            children: <Widget>[
-              SizedBox(
-                height: trackHeight,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: List<Widget>.generate(dailyStats.length, (index) {
-                    final stat = dailyStats[index];
-                    return Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 1.5),
-                        child: _DailyMinutesTrack(
-                          stat: stat,
-                          trackHeight: trackHeight,
-                        ),
-                      ),
-                    );
-                  }),
-                ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: List<Widget>.generate(dailyStats.length, (index) {
+          final stat = dailyStats[index];
+          return Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 1.5),
+              child: _DailyMinutesTrack(
+                stat: stat,
+                trackHeight: _chartHeight,
               ),
-              const SizedBox(height: _labelSpacing),
-              SizedBox(
-                height: _labelRowHeight,
-                child: Row(
-                  children: List<Widget>.generate(dailyStats.length, (index) {
-                    final stat = dailyStats[index];
-                    return Expanded(
-                      child: Center(
-                        child: Text(
-                          labelledDays.contains(stat.date.day)
-                              ? '${stat.date.day}'
-                              : '',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: CommonDesignTokens.textSecondary,
-                          ),
-                        ),
-                      ),
-                    );
-                  }),
-                ),
-              ),
-            ],
+            ),
           );
-        },
+        }),
       ),
     );
   }
@@ -962,7 +956,7 @@ class _DailyMinutesTrack extends StatelessWidget {
     final dateKey = _statisticsDateKey(stat.date);
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(3),
       child: Container(
         key: ValueKey<String>('daily-minutes-track-$dateKey'),
         color: StatisticsDesignTokens.heatmapEmpty,
@@ -979,7 +973,7 @@ class _DailyMinutesTrack extends StatelessWidget {
                   height: fillHeight,
                   decoration: BoxDecoration(
                     color: StatisticsDesignTokens.heroBrown,
-                    borderRadius: BorderRadius.circular(6),
+                    borderRadius: BorderRadius.circular(3),
                   ),
                 ),
               ),
@@ -1201,31 +1195,47 @@ class _HeatmapChart extends StatelessWidget {
           builder: (context, constraints) {
             final totalGaps = math.max(weekColumns - 1, 0) * 4.0;
             final cellSize = ((constraints.maxWidth - totalGaps) / weekColumns)
-                .clamp(4.0, 16.0)
+                .clamp(10.0, 16.0)
                 .toDouble();
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: List<Widget>.generate(weekColumns, (column) {
-                return Padding(
-                  padding: EdgeInsets.only(
-                    right: column == weekColumns - 1 ? 0 : 4,
-                  ),
-                  child: Column(
-                    children: List<Widget>.generate(7, (row) {
-                      final stat = cells[column * 7 + row];
-                      return Container(
-                        width: cellSize,
-                        height: cellSize,
-                        margin: EdgeInsets.only(bottom: row == 6 ? 0 : 4),
-                        decoration: BoxDecoration(
-                          color: _heatmapColor(stat?.seconds ?? 0, maxSeconds),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      );
-                    }),
-                  ),
-                );
-              }),
+            final neededWidth = weekColumns * cellSize + totalGaps;
+            final needsScroll = neededWidth > constraints.maxWidth;
+
+            Widget buildColumns() {
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: List<Widget>.generate(weekColumns, (column) {
+                  return Padding(
+                    padding: EdgeInsets.only(
+                      right: column == weekColumns - 1 ? 0 : 4,
+                    ),
+                    child: Column(
+                      children: List<Widget>.generate(7, (row) {
+                        final stat = cells[column * 7 + row];
+                        return Container(
+                          width: cellSize,
+                          height: cellSize,
+                          margin: EdgeInsets.only(bottom: row == 6 ? 0 : 4),
+                          decoration: BoxDecoration(
+                            color:
+                                _heatmapColor(stat?.seconds ?? 0, maxSeconds),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        );
+                      }),
+                    ),
+                  );
+                }),
+              );
+            }
+
+            if (!needsScroll) {
+              return buildColumns();
+            }
+            return SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              reverse: true,
+              child: buildColumns(),
             );
           },
         ),

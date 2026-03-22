@@ -257,7 +257,7 @@ class _TtsSettingsPageState extends State<TtsSettingsPage> {
       onTap: () => _showVoicePicker(languageCode),
       behavior: HitTestBehavior.opaque,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: SizedBox(
           height: FormDesignTokens.fieldRowHeight,
           child: Row(
@@ -438,7 +438,7 @@ class _TtsSettingsPageState extends State<TtsSettingsPage> {
       onTap: _showAddLanguagePicker,
       behavior: HitTestBehavior.opaque,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: SizedBox(
           height: FormDesignTokens.fieldRowHeight,
           child: Row(

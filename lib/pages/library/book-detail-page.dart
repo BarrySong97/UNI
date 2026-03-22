@@ -13,6 +13,7 @@ import '../../entities/reading-progress-entity.dart';
 import '../../services/library/book-profile-color-service.dart';
 import '../../shared/constants/common-design-tokens.dart';
 import '../../shared/constants/library-design-tokens.dart';
+import '../../shared/layout/responsive_layout.dart';
 import '../../shared/ui/loading-view.dart';
 
 class BookDetailPage extends StatefulWidget {
@@ -544,7 +545,8 @@ class _BookDetailPageState extends State<BookDetailPage> {
                           Container(
                             color: CommonDesignTokens.pageBackground,
                             padding: const EdgeInsets.symmetric(horizontal: 20),
-                            child: Column(
+                            child: ResponsiveContentWrapper(
+                              child: Column(
                               children: <Widget>[
                                 _buildStatsRow(
                                   progressPercent: progressPercent,
@@ -581,6 +583,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                                 ),
                                 const SizedBox(height: 32),
                               ],
+                            ),
                             ),
                           ),
                         ],

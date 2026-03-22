@@ -33,6 +33,7 @@ class StatisticsStore extends ChangeNotifier {
   String? _errorMessage;
   ReadingTimeStatisticsData? _readingTimeData;
   BooksReadStatisticsData? _booksReadData;
+  List<DailyReadingStat>? _heatmapDailyStats;
 
   StatisticsTab get selectedTab => _selectedTab;
   StatisticsPeriodPreset get selectedPeriodPreset => _selectedPeriodPreset;
@@ -41,6 +42,7 @@ class StatisticsStore extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   ReadingTimeStatisticsData? get readingTimeData => _readingTimeData;
   BooksReadStatisticsData? get booksReadData => _booksReadData;
+  List<DailyReadingStat>? get heatmapDailyStats => _heatmapDailyStats;
 
   StatisticsTimeBlock get timeBlock =>
       resolveTimeBlock(_selectedPeriodPreset, _pickedMonth, _now());
@@ -105,6 +107,7 @@ class StatisticsStore extends ChangeNotifier {
     final block = timeBlock;
 
     try {
+      final now = _now();
       final results = await Future.wait<Object>(<Future<Object>>[
         _database.getReadingTimeStatisticsInRange(
           startInclusive: block.startInclusive,
@@ -116,9 +119,15 @@ class StatisticsStore extends ChangeNotifier {
           progressThreshold: _progressThreshold,
           readingTimeThresholdSeconds: _readingTimeThresholdSeconds,
         ),
+        _database.getReadingTimeStatisticsInRange(
+          startInclusive: DateTime(now.year - 1, now.month, now.day),
+          endExclusive: DateTime(now.year, now.month, now.day + 1),
+        ),
       ]);
       _readingTimeData = results[0] as ReadingTimeStatisticsData;
       _booksReadData = results[1] as BooksReadStatisticsData;
+      _heatmapDailyStats =
+          (results[2] as ReadingTimeStatisticsData).dailyStats;
       _isLoading = false;
       notifyListeners();
     } catch (error) {
