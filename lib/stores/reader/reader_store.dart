@@ -11,6 +11,7 @@ import '../../services/reader/layout/reader_layout_engine.dart';
 import '../../services/reader/models/page_layout.dart';
 import '../../services/reader/models/parsed_chapter.dart';
 import '../../services/reader/models/reader_preferences.dart';
+import 'page_navigation_strategy.dart';
 
 /// Manages reader state: pagination, navigation, preferences, and progress.
 class ReaderStore extends ChangeNotifier {
@@ -42,6 +43,7 @@ class ReaderStore extends ChangeNotifier {
   double _safeAreaBottom = 0.0;
   double _devicePixelRatio = 1.0;
   bool _isDualPage = false;
+  PageNavigationStrategy _strategy = const SinglePageStrategy();
 
   /// Cache: cacheKey → ChapterPagination (full layout with images).
   final Map<int, ChapterPagination> _cache = {};
@@ -142,112 +144,94 @@ class ReaderStore extends ChangeNotifier {
   /// Whether the current spread contains the absolute last page of the book.
   bool get isLastPageOfBook {
     if (_currentPagination == null) return true;
-    final lastPageIdx = _currentPagination!.pages.length - 1;
     final isLastChapter = _currentChapterIndex >= chapterCount - 1;
-    if (_isDualPage) {
-      // In dual mode the spread covers currentPageIndex and currentPageIndex+1.
-      return isLastChapter &&
-          (_currentPageIndex >= lastPageIdx ||
-              _currentPageIndex + 1 >= lastPageIdx);
-    }
-    return isLastChapter && _currentPageIndex >= lastPageIdx;
+    return isLastChapter &&
+        _strategy.coversLastPage(
+          _currentPageIndex,
+          _currentPagination!.pages.length,
+        );
   }
 
   /// The page layout for the page after the current one (same or next chapter).
   /// Returns null if at the last page of the book or adjacent chapter not cached.
+  /// Skips absorbed chapters so the correct next page is shown during swipe
+  /// preview.
   PageLayout? get nextPageLayout {
     if (_currentPagination == null) return null;
     final nextIdx = _currentPageIndex + 1;
     if (nextIdx < _currentPagination!.pages.length) {
       return _currentPagination!.pages[nextIdx];
     }
-    return _firstPageOfCachedChapter(_currentChapterIndex + 1);
+    // Cross-chapter: skip absorbed chapters to find the actual next chapter.
+    final nextCh = _nextVisibleChapterIndex(_currentChapterIndex);
+    if (nextCh == null) return null;
+    return _firstPageOfCachedChapter(nextCh);
   }
 
   /// The page layout for the page before the current one (same or prev chapter).
   /// Returns null if at the first page of the book or adjacent chapter not cached.
+  /// Skips absorbed chapters so the correct previous page is shown during swipe
+  /// preview.
   PageLayout? get previousPageLayout {
     if (_currentPagination == null) return null;
     if (_currentPageIndex > 0) {
       return _currentPagination!.pages[_currentPageIndex - 1];
     }
-    return _lastPageOfCachedChapter(_currentChapterIndex - 1);
+    // Cross-chapter: skip absorbed chapters to find the actual prev chapter.
+    final prevCh = _prevVisibleChapterIndex(_currentChapterIndex);
+    if (prevCh == null) return null;
+    return _lastPageOfCachedChapter(prevCh);
   }
 
-  /// The right page of the current spread (dual-page mode only).
+  /// The right page of the current spread (null in single-page mode).
   /// Never crosses chapter boundaries — short chapters (title pages) are
   /// merged with the next chapter at pagination time.
   PageLayout? get secondPageLayout {
-    if (!_isDualPage || _currentPagination == null) return null;
-    final nextIdx = _currentPageIndex + 1;
-    if (nextIdx < _currentPagination!.pages.length) {
-      return _currentPagination!.pages[nextIdx];
-    }
-    return null;
+    if (_currentPagination == null) return null;
+    return _strategy.secondPage(
+      _currentPagination!.pages,
+      _currentPageIndex,
+    );
   }
 
-  /// Left page of the next spread (for swipe preview in dual-page mode).
+  /// Left page of the next spread (for swipe preview).
   PageLayout? get nextSpreadLeftPage {
-    if (!_isDualPage) return nextPageLayout;
     if (_currentPagination == null) return null;
-    final nextLeftIdx = _currentPageIndex + 2;
-    if (nextLeftIdx < _currentPagination!.pages.length) {
-      return _currentPagination!.pages[nextLeftIdx];
-    }
-    return _firstPageOfNextVisibleChapter();
+    return _strategy.nextPreviewLeft(
+      pages: _currentPagination!.pages,
+      currentIndex: _currentPageIndex,
+      nextChapterPages: _nextVisibleChapterPages,
+    );
   }
 
-  /// Right page of the next spread (for swipe preview in dual-page mode).
+  /// Right page of the next spread (for swipe preview; null in single mode).
   PageLayout? get nextSpreadRightPage {
-    if (!_isDualPage) return null;
     if (_currentPagination == null) return null;
-    final nextLeftIdx = _currentPageIndex + 2;
-    if (nextLeftIdx < _currentPagination!.pages.length) {
-      final nextRightIdx = nextLeftIdx + 1;
-      if (nextRightIdx < _currentPagination!.pages.length) {
-        return _currentPagination!.pages[nextRightIdx];
-      }
-      return null;
-    }
-    // Next spread is from next chapter — return page 1 if available.
-    final nextCh = _nextVisibleChapterIndex(_currentChapterIndex);
-    if (nextCh == null) return null;
-    final pagination = _cache[_cacheKey(nextCh)];
-    if (pagination == null || pagination.pages.length < 2) return null;
-    return pagination.pages[1];
+    return _strategy.nextPreviewRight(
+      pages: _currentPagination!.pages,
+      currentIndex: _currentPageIndex,
+      nextChapterPages: _nextVisibleChapterPages,
+    );
   }
 
-  /// Left page of the previous spread (for swipe preview in dual-page mode).
+  /// Left page of the previous spread (for swipe preview).
   PageLayout? get prevSpreadLeftPage {
-    if (!_isDualPage) return previousPageLayout;
     if (_currentPagination == null) return null;
-    if (_currentPageIndex >= 2) {
-      return _currentPagination!.pages[_currentPageIndex - 2];
-    }
-    // At first spread — previous spread is from the previous chapter.
-    final prevCh = _prevVisibleChapterIndex(_currentChapterIndex);
-    if (prevCh == null) return null;
-    final pagination = _cache[_cacheKey(prevCh)];
-    if (pagination == null || pagination.pages.isEmpty) return null;
-    final lastIdx = pagination.pages.length - 1;
-    final leftIdx = lastIdx.isOdd ? lastIdx - 1 : lastIdx;
-    return pagination.pages[leftIdx];
+    return _strategy.prevPreviewLeft(
+      pages: _currentPagination!.pages,
+      currentIndex: _currentPageIndex,
+      prevChapterPages: _prevVisibleChapterPages,
+    );
   }
 
-  /// Right page of the previous spread (for swipe preview in dual-page mode).
+  /// Right page of the previous spread (for swipe preview; null in single mode).
   PageLayout? get prevSpreadRightPage {
-    if (!_isDualPage) return null;
     if (_currentPagination == null) return null;
-    if (_currentPageIndex >= 2) {
-      return _currentPagination!.pages[_currentPageIndex - 1];
-    }
-    final prevCh = _prevVisibleChapterIndex(_currentChapterIndex);
-    if (prevCh == null) return null;
-    final pagination = _cache[_cacheKey(prevCh)];
-    if (pagination == null || pagination.pages.isEmpty) return null;
-    final lastIdx = pagination.pages.length - 1;
-    if (lastIdx.isOdd) return pagination.pages[lastIdx];
-    return null;
+    return _strategy.prevPreviewRight(
+      pages: _currentPagination!.pages,
+      currentIndex: _currentPageIndex,
+      prevChapterPages: _prevVisibleChapterPages,
+    );
   }
 
   /// Retrieve a cached [PageLayout] by chapter and page index.
@@ -305,8 +289,8 @@ class ReaderStore extends ChangeNotifier {
   /// The book page number for the right page of the current spread (1-based).
   /// Returns 0 if no second page or page counts not yet computed.
   int get secondBookPage {
-    if (!_isDualPage || !_allPagesComputed || secondPageLayout == null) return 0;
-    return currentBookPage + 1;
+    if (!_allPagesComputed) return 0;
+    return _strategy.secondBookPage(currentBookPage, secondPageLayout != null);
   }
 
   /// Position-based progress:
@@ -397,6 +381,9 @@ class ReaderStore extends ChangeNotifier {
     _safeAreaBottom = safeAreaBottom;
     _devicePixelRatio = devicePixelRatio;
     _isDualPage = isDualPage;
+    _strategy = isDualPage
+        ? const DualPageStrategy()
+        : const SinglePageStrategy();
     _cache.clear();
     _absorbedChapters.clear();
     _pageCountCache.clear();
@@ -455,9 +442,13 @@ class ReaderStore extends ChangeNotifier {
             : _currentPagination!.pages.length - 1;
       }
 
-      // In dual-page mode, ensure the left page is always even-indexed.
-      if (_isDualPage && _currentPageIndex.isOdd) {
-        _currentPageIndex = (_currentPageIndex - 1).clamp(0, _currentPageIndex);
+      // Align page index for the current display mode (e.g. even index for
+      // dual-page spreads).
+      if (_currentPagination != null && _currentPagination!.pages.isNotEmpty) {
+        _currentPageIndex = _strategy.alignPageIndex(
+          _currentPageIndex,
+          _currentPagination!.pages.length - 1,
+        );
       }
     } catch (e, st) {
       debugPrint(
@@ -510,11 +501,32 @@ class ReaderStore extends ChangeNotifier {
   void nextPage() {
     if (_currentPagination == null) return;
 
-    final step = _isDualPage ? 2 : 1;
+    final step = _strategy.pageStep;
     final lastIdx = _currentPagination!.pages.length - 1;
 
     if (_currentPageIndex + step <= lastIdx) {
       _currentPageIndex += step;
+      notifyListeners();
+      _saveProgress();
+      // Proactively prefetch the next chapter when approaching the end of
+      // the current chapter (within the last spread/page).
+      if (_strategy.coversLastPage(_currentPageIndex,
+              _currentPagination!.pages.length)) {
+        _ensureNextChapterPrefetched();
+      }
+    } else {
+      _goToNextNonEmptyChapter();
+    }
+  }
+
+  /// Move forward by exactly one page, ignoring display mode step size.
+  /// Used for selection-triggered page turns where single-step is always
+  /// correct regardless of single/dual page mode.
+  void nextSinglePage() {
+    if (_currentPagination == null) return;
+    final lastIdx = _currentPagination!.pages.length - 1;
+    if (_currentPageIndex + 1 <= lastIdx) {
+      _currentPageIndex += 1;
       notifyListeners();
       _saveProgress();
     } else {
@@ -531,6 +543,22 @@ class ReaderStore extends ChangeNotifier {
     while (next < chapterCount) {
       _currentChapterIndex = next;
       _currentPageIndex = 0;
+
+      // Fast path: if the chapter is already cached, switch SYNCHRONOUSLY
+      // to avoid any visual flash. The async _loadChapter would introduce
+      // a microtask delay even for cache hits, causing one frame where
+      // _currentPagination still points to the old chapter.
+      final cachedPagination = _cache[_cacheKey(next)];
+      if (cachedPagination != null && cachedPagination.pages.isNotEmpty) {
+        _currentPagination = cachedPagination;
+        _isLoading = false;
+        notifyListeners();
+        _saveProgress();
+        _prefetchAdjacentChapters(next);
+        return;
+      }
+
+      // Slow path: chapter not cached — show loading and load async.
       _isLoading = true;
       notifyListeners();
 
@@ -553,13 +581,25 @@ class ReaderStore extends ChangeNotifier {
   }
 
   void previousPage() {
-    final step = _isDualPage ? 2 : 1;
+    final step = _strategy.pageStep;
     if (_currentPageIndex >= step) {
       _currentPageIndex -= step;
       notifyListeners();
       _saveProgress();
     } else if (_currentChapterIndex > 0) {
       // Go to last spread of previous chapter.
+      goToChapter(_currentChapterIndex - 1, lastPage: true);
+    }
+  }
+
+  /// Move backward by exactly one page, ignoring display mode step size.
+  /// Used for selection-triggered page turns.
+  void previousSinglePage() {
+    if (_currentPageIndex >= 1) {
+      _currentPageIndex -= 1;
+      notifyListeners();
+      _saveProgress();
+    } else if (_currentChapterIndex > 0) {
       goToChapter(_currentChapterIndex - 1, lastPage: true);
     }
   }
@@ -574,18 +614,42 @@ class ReaderStore extends ChangeNotifier {
     _currentChapterIndex = target;
     _currentPageIndex = 0;
 
+    // Fast path: if cached, switch synchronously to avoid visual flash.
+    final cachedPagination = _cache[_cacheKey(target)];
+    if (cachedPagination != null) {
+      _currentPagination = cachedPagination;
+      if (lastPage && cachedPagination.pages.isNotEmpty) {
+        _currentPageIndex = cachedPagination.pages.length - 1;
+      }
+      if (cachedPagination.pages.isNotEmpty) {
+        _currentPageIndex = _strategy.alignPageIndex(
+          _currentPageIndex,
+          cachedPagination.pages.length - 1,
+        );
+      }
+      _isLoading = false;
+      notifyListeners();
+      _saveProgress();
+      _prefetchAdjacentChapters(target);
+      return;
+    }
+
+    // Slow path: chapter not cached — show loading and load async.
     _isLoading = true;
     notifyListeners();
 
-    await _loadChapter(index);
+    await _loadChapter(target);
 
     if (lastPage && _currentPagination != null) {
       _currentPageIndex = _currentPagination!.pages.length - 1;
     }
 
-    // In dual-page mode, ensure the left page is always even-indexed.
-    if (_isDualPage && _currentPageIndex.isOdd) {
-      _currentPageIndex = (_currentPageIndex - 1).clamp(0, _currentPageIndex);
+    // Align page index for the current display mode.
+    if (_currentPagination != null && _currentPagination!.pages.isNotEmpty) {
+      _currentPageIndex = _strategy.alignPageIndex(
+        _currentPageIndex,
+        _currentPagination!.pages.length - 1,
+      );
     }
 
     _isLoading = false;
@@ -604,6 +668,27 @@ class ReaderStore extends ChangeNotifier {
       clamped,
     );
 
+    // Fast path: if cached, switch synchronously to avoid visual flash.
+    final cachedPagination = _cache[_cacheKey(targetChapter)];
+    if (cachedPagination != null && cachedPagination.pages.isNotEmpty) {
+      _currentChapterIndex = targetChapter;
+      _currentPageIndex = targetPageInChapter.clamp(
+        0,
+        cachedPagination.pages.length - 1,
+      );
+      _currentPageIndex = _strategy.alignPageIndex(
+        _currentPageIndex,
+        cachedPagination.pages.length - 1,
+      );
+      _currentPagination = cachedPagination;
+      _isLoading = false;
+      notifyListeners();
+      _saveProgress();
+      _prefetchAdjacentChapters(targetChapter);
+      return;
+    }
+
+    // Slow path: chapter not cached — show loading and load async.
     _isLoading = true;
     notifyListeners();
 
@@ -615,11 +700,11 @@ class ReaderStore extends ChangeNotifier {
         0,
         _currentPagination!.pages.length - 1,
       );
-      // In dual-page mode, align to even page index.
-      if (_isDualPage && _currentPageIndex.isOdd) {
-        _currentPageIndex =
-            (_currentPageIndex - 1).clamp(0, _currentPageIndex);
-      }
+      // Align page index for the current display mode.
+      _currentPageIndex = _strategy.alignPageIndex(
+        _currentPageIndex,
+        _currentPagination!.pages.length - 1,
+      );
     }
 
     _isLoading = false;
@@ -854,23 +939,37 @@ class ReaderStore extends ChangeNotifier {
 
   /// Prefetch the chapters adjacent to [currentIndex] in the background.
   ///
+  /// Uses [_nextVisibleChapterIndex] / [_prevVisibleChapterIndex] to skip
+  /// absorbed chapters so the correct chapter is ready when the user
+  /// navigates past a chapter boundary.
+  ///
   /// Next chapter is loaded immediately; previous chapter is deferred by 500ms
   /// to avoid competing with the first frame render.
   void _prefetchAdjacentChapters(int currentIndex) {
     Future<void>(() async {
-      // Next chapter — load immediately.
-      final next = currentIndex + 1;
-      if (next < chapterCount && !_cache.containsKey(_cacheKey(next))) {
+      // Next visible chapter (skipping absorbed ones) — load immediately.
+      final next = _nextVisibleChapterIndex(currentIndex);
+      if (next != null && !_cache.containsKey(_cacheKey(next))) {
         await _loadChapter(next, prefetchOnly: true).catchError((_) {});
       }
 
-      // Previous chapter — deferred.
+      // Previous visible chapter — deferred.
       await Future<void>.delayed(const Duration(milliseconds: 500));
-      final prev = currentIndex - 1;
-      if (prev >= 0 && !_cache.containsKey(_cacheKey(prev))) {
+      final prev = _prevVisibleChapterIndex(currentIndex);
+      if (prev != null && !_cache.containsKey(_cacheKey(prev))) {
         await _loadChapter(prev, prefetchOnly: true).catchError((_) {});
       }
     });
+  }
+
+  /// Ensure the next visible chapter is prefetched when the user is near
+  /// the end of the current chapter. This is called proactively from
+  /// [nextPage] so that cross-chapter transitions are instant.
+  void _ensureNextChapterPrefetched() {
+    final next = _nextVisibleChapterIndex(_currentChapterIndex);
+    if (next != null && !_cache.containsKey(_cacheKey(next))) {
+      _loadChapter(next, prefetchOnly: true).catchError((_) {});
+    }
   }
 
   /// Next chapter index that is not absorbed, or null.
@@ -891,11 +990,18 @@ class ReaderStore extends ChangeNotifier {
     return i >= 0 ? i : null;
   }
 
-  /// First page of the next non-absorbed chapter from cache, or null.
-  PageLayout? _firstPageOfNextVisibleChapter() {
+  /// Pages of the next non-absorbed chapter from cache, or null.
+  List<PageLayout>? _nextVisibleChapterPages() {
     final nextCh = _nextVisibleChapterIndex(_currentChapterIndex);
     if (nextCh == null) return null;
-    return _firstPageOfCachedChapter(nextCh);
+    return _cache[_cacheKey(nextCh)]?.pages;
+  }
+
+  /// Pages of the previous non-absorbed chapter from cache, or null.
+  List<PageLayout>? _prevVisibleChapterPages() {
+    final prevCh = _prevVisibleChapterIndex(_currentChapterIndex);
+    if (prevCh == null) return null;
+    return _cache[_cacheKey(prevCh)]?.pages;
   }
 
   /// First page of a chapter from the full-layout cache, or null.

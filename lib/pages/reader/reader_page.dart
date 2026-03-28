@@ -16,6 +16,7 @@ import '../../services/reader/selection/page_hit_test.dart';
 import '../../shared/layout/responsive_layout.dart';
 import '../../stores/reader/reader_store.dart';
 import '../../stores/reader/reader_store_manager.dart';
+import 'reader_coordinate_helper.dart';
 import 'widgets/reader_canvas_painter.dart';
 import 'widgets/reader_controls_overlay.dart';
 import 'widgets/reader_explain_sheet.dart';
@@ -55,6 +56,18 @@ class _ReaderPageState extends State<ReaderPage>
   int _animDirection = 0; // -1 = next, 1 = prev, 0 = snap back
   Animation<double>? _curvedDragAnim;
 
+  // Snapshot of adjacent pages captured at drag start. Using snapshots
+  // prevents visual "pop-in" or flickering during the swipe animation
+  // (e.g. if a background prefetch completes mid-gesture and changes what
+  // nextPageLayout/nextSpreadLeftPage would return).
+  PageLayout? _adjNextLeft;
+  PageLayout? _adjNextRight;
+  PageLayout? _adjPrevLeft;
+  PageLayout? _adjPrevRight;
+  PageLayout? _snapCurrentLeft;
+  PageLayout? _snapCurrentRight;
+  bool _isSwapWarmupFrame = false;
+
   // -- Text selection state --
   CrossPageSelection? _crossSelection;
   List<Rect> _selectionRects = const [];
@@ -70,6 +83,13 @@ class _ReaderPageState extends State<ReaderPage>
 
   // Track which page the selection is on in dual-page mode.
   bool _selectionOnRightPage = false;
+
+  // Flag: the running animation is a selection-triggered page turn
+  // (always steps by 1, ignoring dual-page spread step).
+  bool _isSelectionPageTurn = false;
+
+  // Coordinate helper: abstracts single/dual page coordinate transforms.
+  ReaderCoordinateHelper? _coordHelper;
 
   // Cached page identity to detect page changes.
   int _lastChapterIndex = -1;
@@ -220,70 +240,101 @@ class _ReaderPageState extends State<ReaderPage>
   void _onAnimStatus(AnimationStatus status) {
     if (status != AnimationStatus.completed) return;
     final direction = _animDirection;
-    _isAnimating = false;
-    _dragOffset = 0.0;
+    final isSelectionTurn = _isSelectionPageTurn;
+
+    // Snap-back (no page turn): reset immediately.
+    if (direction == 0) {
+      _isAnimating = false;
+      _dragOffset = 0.0;
+      _animDirection = 0;
+      _curvedDragAnim = null;
+      _isSwapWarmupFrame = false;
+      _isSelectionPageTurn = false;
+      _adjNextLeft = null;
+      _adjNextRight = null;
+      _adjPrevLeft = null;
+      _adjPrevRight = null;
+      _snapCurrentLeft = null;
+      _snapCurrentRight = null;
+      setState(() {});
+      return;
+    }
+
+    // --- Two-frame page swap ---
+    //
+    // Changing the page content AND resetting _dragOffset to 0 in the same
+    // frame causes the RepaintBoundary compositing layer to simultaneously
+    // discard its old content, paint new content, and move on-screen. On some
+    // devices this produces a one-frame flash or "merge" artifact (especially
+    // between image-only and text-only pages).
+    //
+    // Instead we split the transition across two frames:
+    //
+    // Frame 1 (this tick): advance the page in the store but keep _dragOffset
+    //   at the animation-end value. The adjacent-page snapshot stays visible
+    //   at its final on-screen position; the current-page slot shows the NEW
+    //   page off-screen (painting it into the RepaintBoundary cache).
+    //
+    // Frame 2 (postFrameCallback): reset _dragOffset to 0 and clear snapshots.
+    //   The RepaintBoundary already holds the new page's painting, so only the
+    //   transform offset changes — no repaint, no compositing artifact.
+
+    final screenWidth = MediaQuery.of(context).size.width;
+    _dragOffset = direction < 0 ? -screenWidth : screenWidth;
     _animDirection = 0;
     _curvedDragAnim = null;
+    _isSwapWarmupFrame = true;
+    _isSelectionPageTurn = false;
+    // Keep _isAnimating = true to block taps/gestures during the one-frame gap.
+    // Keep _dragOffset at its animation-end value.
+    // Keep adjacent-page snapshots alive.
 
     if (direction < 0) {
-      _store.nextPage();
+      isSelectionTurn ? _store.nextSinglePage() : _store.nextPage();
     } else if (direction > 0) {
-      _store.previousPage();
-    } else {
-      setState(() {});
+      isSelectionTurn ? _store.previousSinglePage() : _store.previousPage();
     }
+
+    // Complete the transition on the next frame.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      // If a new gesture started during the gap (e.g. _onDragStart cleared
+      // _isAnimating and reset _dragOffset), skip — the transition was
+      // already completed early.
+      if (!_isAnimating) return;
+      _isAnimating = false;
+      _dragOffset = 0.0;
+      _isSwapWarmupFrame = false;
+      _adjNextLeft = null;
+      _adjNextRight = null;
+      _adjPrevLeft = null;
+      _adjPrevRight = null;
+      _snapCurrentLeft = null;
+      _snapCurrentRight = null;
+      setState(() {});
+    });
   }
 
   // ---------------------------------------------------------------------------
-  // Coordinate transform
+  // Coordinate transform (delegated to ReaderCoordinateHelper)
   // ---------------------------------------------------------------------------
-
-  /// Whether the touch is on the right page in dual-page mode.
-  bool _isTouchOnRightPage(Offset global) {
-    if (!_store.isDualPage) return false;
-    final halfWidth = MediaQuery.of(context).size.width / 2;
-    return global.dx >= halfWidth;
-  }
 
   /// Get the PageLayout that a touch position falls on.
   /// Returns (page, isRightPage).
-  (PageLayout?, bool) _hitPageForTouch(Offset global) {
-    if (!_store.isDualPage) {
-      return (_store.currentPageLayout, false);
-    }
-    if (_isTouchOnRightPage(global)) {
-      return (_store.secondPageLayout, true);
-    }
-    return (_store.currentPageLayout, false);
-  }
+  (PageLayout?, bool) _hitPageForTouch(Offset global) =>
+      _coordHelper!.hitPageForTouch(
+        global,
+        _store.currentPageLayout,
+        _store.secondPageLayout,
+      );
 
   /// Convert a global position to content-area coordinates.
-  /// In dual-page mode, [isRightPage] shifts the origin to the right half.
-  Offset _toContentOffset(Offset global, {bool isRightPage = false}) {
-    final mq = MediaQuery.of(context);
-    final prefs = _store.preferences;
-    final dx = isRightPage
-        ? global.dx - mq.size.width / 2 - prefs.pageHorizontalPaddingPx
-        : global.dx - prefs.pageHorizontalPaddingPx;
-    return Offset(
-      dx,
-      global.dy - prefs.pageVerticalPaddingPx - mq.padding.top,
-    );
-  }
+  Offset _toContentOffset(Offset global, {bool isRightPage = false}) =>
+      _coordHelper!.toContentOffset(global, isRightPage: isRightPage);
 
   /// Convert content-area coordinates to screen coordinates.
-  /// In dual-page mode, [isRightPage] adds the right-half offset.
-  Offset _toScreenOffset(Offset content, {bool isRightPage = false}) {
-    final mq = MediaQuery.of(context);
-    final prefs = _store.preferences;
-    final dx = isRightPage
-        ? content.dx + mq.size.width / 2 + prefs.pageHorizontalPaddingPx
-        : content.dx + prefs.pageHorizontalPaddingPx;
-    return Offset(
-      dx,
-      content.dy + prefs.pageVerticalPaddingPx + mq.padding.top,
-    );
-  }
+  Offset _toScreenOffset(Offset content, {bool isRightPage = false}) =>
+      _coordHelper!.toScreenOffset(content, isRightPage: isRightPage);
 
   // ---------------------------------------------------------------------------
   // Text selection
@@ -647,9 +698,13 @@ class _ReaderPageState extends State<ReaderPage>
       newMoving,
     );
 
-    // Animate page turn.
+    // Animate page turn (always single-step for selection).
+    // Snapshot adjacent pages so the preview stays stable during animation.
+    _snapshotAdjacentPages();
+
     final screenWidth = MediaQuery.of(context).size.width;
     _isAnimating = true;
+    _isSelectionPageTurn = true;
 
     if (direction > 0) {
       _animDirection = -1; // next page: slide left
@@ -717,16 +772,47 @@ class _ReaderPageState extends State<ReaderPage>
       return;
     }
 
+    // Ignore taps while a page-turn animation is in progress to prevent
+    // double-advancing (tap fires nextPage() + animation completion fires it
+    // again).
+    if (_isAnimating) return;
+
     final screenWidth = MediaQuery.of(context).size.width;
     final x = details.globalPosition.dx;
 
     if (x < screenWidth * 0.3) {
-      _store.previousPage();
+      _startTapPageTurn(isNext: false);
     } else if (x > screenWidth * 0.7) {
-      _store.nextPage();
+      _startTapPageTurn(isNext: true);
     } else {
       _store.toggleControls();
     }
+  }
+
+  void _startTapPageTurn({required bool isNext}) {
+    if (_isAnimating) return;
+    if (isNext && _store.isLastPageOfBook) return;
+    if (!isNext && _store.isFirstPageOfBook) return;
+
+    // Reuse the swipe animation path to avoid one-frame flicker between
+    // radically different page types (e.g. image-only ↔ text-only).
+    _snapshotAdjacentPages();
+
+    final screenWidth = MediaQuery.of(context).size.width;
+    _dragOffset = 0.0;
+    _isAnimating = true;
+    _isSelectionPageTurn = false;
+    _animDirection = isNext ? -1 : 1;
+    _pageAnimController.duration = const Duration(milliseconds: 180);
+
+    final tween = Tween<double>(
+      begin: 0.0,
+      end: isNext ? -screenWidth : screenWidth,
+    );
+    _curvedDragAnim = tween.animate(
+      CurvedAnimation(parent: _pageAnimController, curve: Curves.easeInOut),
+    );
+    _pageAnimController.forward(from: 0.0);
   }
 
   // ---------------------------------------------------------------------------
@@ -739,17 +825,63 @@ class _ReaderPageState extends State<ReaderPage>
 
     if (_isAnimating) {
       _pageAnimController.stop();
+      final isSelectionTurn = _isSelectionPageTurn;
+      _isSelectionPageTurn = false;
+      _isSwapWarmupFrame = false;
       if (_animDirection < 0) {
-        _store.nextPage();
+        isSelectionTurn ? _store.nextSinglePage() : _store.nextPage();
       } else if (_animDirection > 0) {
-        _store.previousPage();
+        isSelectionTurn ? _store.previousSinglePage() : _store.previousPage();
       }
       _isAnimating = false;
       _animDirection = 0;
       _curvedDragAnim = null;
     }
     _dragOffset = 0.0;
+
+    // Snapshot adjacent pages so the preview stays stable throughout the
+    // entire drag + animation cycle (prevents flicker from background
+    // prefetch completing mid-gesture).
+    _snapshotAdjacentPages();
+
     if (_store.showControls) _store.hideControls();
+  }
+
+  /// Capture a snapshot of adjacent page layouts for use during the swipe
+  /// gesture. The same snapshots are used for the entire drag + animation
+  /// to prevent visual content changes mid-transition.
+  void _snapshotAdjacentPages() {
+    _snapCurrentLeft = _store.currentPageLayout;
+    _snapCurrentRight = _store.secondPageLayout;
+    if (_store.isDualPage) {
+      _adjNextLeft = _store.nextSpreadLeftPage;
+      _adjNextRight = _store.nextSpreadRightPage;
+      _adjPrevLeft = _store.prevSpreadLeftPage;
+      _adjPrevRight = _store.prevSpreadRightPage;
+    } else {
+      _adjNextLeft = _store.nextPageLayout;
+      _adjNextRight = null;
+      _adjPrevLeft = _store.previousPageLayout;
+      _adjPrevRight = null;
+    }
+    // Eagerly create TextPainters for adjacent pages so they are ready before
+    // the first paint call. This prevents any lazy-creation delay during
+    // animation or page-swap frames.
+    _warmUpPainters(_adjNextLeft);
+    _warmUpPainters(_adjNextRight);
+    _warmUpPainters(_adjPrevLeft);
+    _warmUpPainters(_adjPrevRight);
+    _warmUpPainters(_snapCurrentLeft);
+    _warmUpPainters(_snapCurrentRight);
+  }
+
+  /// Pre-create all deferred TextPainters for [page] so paint() doesn't
+  /// need to create them lazily.
+  void _warmUpPainters(PageLayout? page) {
+    if (page == null) return;
+    for (final element in page.elements) {
+      element.ensurePainter();
+    }
   }
 
   void _onDragUpdate(DragUpdateDetails details) {
@@ -832,8 +964,25 @@ class _ReaderPageState extends State<ReaderPage>
   @override
   Widget build(BuildContext context) {
     final prefs = _store.preferences;
+    final mq = MediaQuery.of(context);
 
-    final initialLoading = _store.book == null || _store.isLoading;
+    // Update coordinate helper with latest screen dimensions and preferences.
+    _coordHelper = _store.isDualPage
+        ? DualPageCoordinateHelper(
+            screenWidth: mq.size.width,
+            horizontalPadding: prefs.pageHorizontalPaddingPx,
+            verticalPadding: prefs.pageVerticalPaddingPx,
+            safeAreaTop: mq.padding.top,
+          )
+        : SinglePageCoordinateHelper(
+            horizontalPadding: prefs.pageHorizontalPaddingPx,
+            verticalPadding: prefs.pageVerticalPaddingPx,
+            safeAreaTop: mq.padding.top,
+          );
+
+    final hasActiveSwipeTransition = _isAnimating || _dragOffset != 0.0;
+    final initialLoading =
+        _store.book == null || (_store.isLoading && !hasActiveSwipeTransition);
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: prefs.theme.isDark
@@ -960,14 +1109,21 @@ class _ReaderPageState extends State<ReaderPage>
     final mediaPadding = MediaQuery.of(context).padding;
     final screenWidth = MediaQuery.of(context).size.width;
 
-    final PageLayout? adjacentPage;
+    // Use snapshotted adjacent pages to prevent mid-swipe content changes.
+    PageLayout? adjacentPage;
     if (_dragOffset < 0) {
-      adjacentPage = _store.nextPageLayout;
+      adjacentPage = _adjNextLeft;
     } else if (_dragOffset > 0) {
-      adjacentPage = _store.previousPageLayout;
+      adjacentPage = _adjPrevLeft;
     } else {
       adjacentPage = null;
     }
+    if (adjacentPage == null && _dragOffset != 0.0) {
+      adjacentPage = _snapCurrentLeft ?? page;
+    }
+    final displayPage = _dragOffset == 0.0
+        ? page
+        : (_isSwapWarmupFrame ? page : (_snapCurrentLeft ?? page));
 
     const handleColor = Color(0xFF3B82F6);
 
@@ -1021,7 +1177,7 @@ class _ReaderPageState extends State<ReaderPage>
               child: RepaintBoundary(
                 child: CustomPaint(
                   painter: ReaderCanvasPainter(
-                    page: page,
+                    page: displayPage,
                     preferences: prefs,
                     safeAreaTop: mediaPadding.top,
                     safeAreaBottom: mediaPadding.bottom,
@@ -1092,16 +1248,26 @@ class _ReaderPageState extends State<ReaderPage>
     final mediaPadding = MediaQuery.of(context).padding;
     final screenWidth = MediaQuery.of(context).size.width;
     final rightPage = _store.secondPageLayout;
+    final displayLeftPage = _dragOffset == 0.0
+        ? leftPage
+        : (_isSwapWarmupFrame ? leftPage : (_snapCurrentLeft ?? leftPage));
+    final displayRightPage = _dragOffset == 0.0
+        ? rightPage
+        : (_isSwapWarmupFrame ? rightPage : _snapCurrentRight);
 
-    // Adjacent spread for swipe preview.
+    // Use snapshotted adjacent spread to prevent mid-swipe content changes.
     PageLayout? adjLeft;
     PageLayout? adjRight;
     if (_dragOffset < 0) {
-      adjLeft = _store.nextSpreadLeftPage;
-      adjRight = _store.nextSpreadRightPage;
+      adjLeft = _adjNextLeft;
+      adjRight = _adjNextRight;
     } else if (_dragOffset > 0) {
-      adjLeft = _store.prevSpreadLeftPage;
-      adjRight = _store.prevSpreadRightPage;
+      adjLeft = _adjPrevLeft;
+      adjRight = _adjPrevRight;
+    }
+    if (_dragOffset != 0.0) {
+      adjLeft ??= _snapCurrentLeft ?? leftPage;
+      adjRight ??= _snapCurrentRight;
     }
 
     const handleColor = Color(0xFF3B82F6);
@@ -1183,17 +1349,22 @@ class _ReaderPageState extends State<ReaderPage>
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Expanded(
-                    child: buildPagePaint(leftPage, selRects: leftSelRects),
+                    child: buildPagePaint(
+                      displayLeftPage,
+                      selRects: leftSelRects,
+                    ),
                   ),
                   Expanded(
-                    child: buildPagePaint(rightPage, selRects: rightSelRects),
+                    child: buildPagePaint(
+                      displayRightPage,
+                      selRects: rightSelRects,
+                    ),
                   ),
                 ],
               ),
             ),
           ),
         ),
-
 
         // Selection handles + tooltip.
         if (_crossSelection != null &&
@@ -1360,14 +1531,12 @@ class _ReaderPageState extends State<ReaderPage>
     // Vertical: prefer above the first rect; fall back to below last rect.
     const tooltipHeight = 40.0;
     const gap = 8.0;
-    final aboveY = _toScreenOffset(
-      firstRect.topLeft,
-      isRightPage: isRight,
-    ).dy - gap - tooltipHeight;
-    final belowY = _toScreenOffset(
-      lastRect.bottomLeft,
-      isRightPage: isRight,
-    ).dy + gap;
+    final aboveY =
+        _toScreenOffset(firstRect.topLeft, isRightPage: isRight).dy -
+        gap -
+        tooltipHeight;
+    final belowY =
+        _toScreenOffset(lastRect.bottomLeft, isRightPage: isRight).dy + gap;
     final tooltipY = aboveY >= safeTop ? aboveY : belowY;
 
     // Estimate tooltip width to clamp horizontal position.
