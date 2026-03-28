@@ -88,8 +88,10 @@ lib/
   stores/reader/
     reader_store.dart               # ChangeNotifier: pagination, navigation, progress
     reader_store_manager.dart       # LRU cache of ReaderStore instances per book ID
+    page_navigation_strategy.dart   # Strategy pattern: phone (single-page) vs tablet (dual-page) navigation
   pages/reader/
     reader_page.dart                # Main page: CustomPaint + GestureDetector
+    reader_coordinate_helper.dart   # Coordinate transforms: phone vs tablet screen↔content mapping
     widgets/
       reader_canvas_painter.dart    # CustomPainter rendering PageLayout
       reader_controls_overlay.dart  # Bottom icon toolbar + inline panel toggle (AnimatedSize)
@@ -174,7 +176,8 @@ Invalidated by: font size/family change, line height change, page margin change,
 
 - Content area avoids system status bar and bottom gesture area (safe area insets)
 - Horizontal swipe page turning: drag left/right to preview next/previous page with follow-the-finger animation; on release, completes page turn (>25% screen width or velocity >500px/s) or snaps back. Rubber-band effect at first/last page of book. Adjacent chapters prefetched for smooth cross-chapter swipe.
-- Tap left 30% = previous page, right 30% = next page, center 40% = toggle controls (tap and swipe coexist)
+- Swipe transition stability: during drag + settle animation, both current spread and adjacent spread use frozen page snapshots (instead of live store pages). This prevents one-frame blank/overlap artifacts when content type changes abruptly (e.g. image-only page ↔ text-only page). At animation completion, drag offset snaps to exact ±screen width before page-state swap, then resets on the next frame.
+- Tap left 30% = previous page, right 30% = next page, center 40% = toggle controls (tap and swipe coexist). Tap navigation reuses the swipe animation path (snapshotted pages + two-frame swap) to avoid one-frame flicker when switching between very different page types (e.g. image-only ↔ text-only).
 - Text selection via long-press: long-press to select a word, drag to extend. After release, two draggable handles appear for fine adjustment. Tap anywhere to clear selection. Selection is cleared on non-selection page navigation.
 - Cross-page selection: dragging a handle to the screen edge (40px zone) for 300ms triggers an animated page turn. The selection extends onto the new page with the anchor end preserved. A thin edge indicator shows when selection continues beyond the visible page. Supports multi-page and cross-chapter selection. Text extraction concatenates across all pages in the selection range.
 - AI Explain: selecting text shows a tooltip with "Explain" button. Tapping it opens a bottom sheet that calls an OpenAI-compatible LLM to explain the passage. For single words/phrases: shows the word in large bold text with the containing sentence (word highlighted in bold). For longer selections: shows an italic text preview. Below is the AI explanation rendered as Markdown (no chat input). Prompt detail levels: Brief (1-2 sentences), Balanced (short paragraph, default), Detailed (thorough but focused). Uses `ExplainAiService` backed by Genkit + OpenAI plugin. API credentials configured in Settings page via `AiSettingsService` (SharedPreferences). Each tap on Explain increments per-book `explain_count` in `book_stats` table.
