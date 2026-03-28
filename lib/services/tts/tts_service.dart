@@ -33,6 +33,7 @@ class TtsService extends ChangeNotifier {
   static const String _keySpeed = 'tts_speed';
   static const String _keyVolume = 'tts_volume';
   static const String _keyVoiceMap = 'tts_voice_map';
+  static const String _keyDefaultEnglishAccent = 'tts_default_english_accent';
 
   // Legacy keys (for migration).
   static const String _keyLegacyUsSpeakerId = 'tts_us_speaker_id';
@@ -49,12 +50,14 @@ class TtsService extends ChangeNotifier {
 
   double _speed = defaultSpeed;
   double _volume = defaultVolume;
+  String _defaultEnglishAccent = defaultLanguage;
 
   /// Per-language voice selections: languageCode -> VoiceSelection.
   final Map<String, VoiceSelection> _voiceMap = {};
 
   double get speed => _speed;
   double get volume => _volume;
+  String get defaultEnglishAccent => _defaultEnglishAccent;
   Map<String, VoiceSelection> get voiceMap =>
       Map.unmodifiable(_voiceMap);
   bool get isSpeaking => _engine.isSpeaking;
@@ -107,6 +110,8 @@ class TtsService extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     _speed = prefs.getDouble(_keySpeed) ?? defaultSpeed;
     _volume = prefs.getDouble(_keyVolume) ?? defaultVolume;
+    _defaultEnglishAccent =
+        prefs.getString(_keyDefaultEnglishAccent) ?? defaultLanguage;
 
     // Load voice map or migrate from legacy settings.
     final voiceMapJson = prefs.getString(_keyVoiceMap);
@@ -114,6 +119,15 @@ class TtsService extends ChangeNotifier {
       _loadVoiceMap(voiceMapJson);
     } else {
       await _migrateLegacySettings(prefs);
+    }
+
+    // Ensure en_GB is always present (for users who saved before it was default).
+    if (!_voiceMap.containsKey('en_GB')) {
+      _voiceMap['en_GB'] = VoiceSelection(
+        voiceKey: TtsBuiltinModels.ukModel.id,
+        speakerId: 0,
+      );
+      await _saveVoiceMap(prefs);
     }
 
     notifyListeners();
@@ -134,7 +148,6 @@ class TtsService extends ChangeNotifier {
   }
 
   Future<void> _migrateLegacySettings(SharedPreferences prefs) async {
-    final legacyAccent = prefs.getString(_keyLegacyReadAloudAccent);
     final legacyUsSpeakerId = prefs.getInt(_keyLegacyUsSpeakerId) ?? 0;
     final legacyUkSpeakerId = prefs.getInt(_keyLegacyUkSpeakerId) ?? 0;
 
@@ -144,13 +157,11 @@ class TtsService extends ChangeNotifier {
       speakerId: legacyUsSpeakerId,
     );
 
-    // If UK was configured or used as accent, add en_GB too.
-    if (legacyAccent == 'uk' || _modelManager.isModelIdReady(TtsBuiltinModels.ukModel.id)) {
-      _voiceMap['en_GB'] = VoiceSelection(
-        voiceKey: TtsBuiltinModels.ukModel.id,
-        speakerId: legacyUkSpeakerId,
-      );
-    }
+    // Always include en_GB as well.
+    _voiceMap['en_GB'] = VoiceSelection(
+      voiceKey: TtsBuiltinModels.ukModel.id,
+      speakerId: legacyUkSpeakerId,
+    );
 
     // Save migrated settings.
     await _saveVoiceMap(prefs);
@@ -183,6 +194,14 @@ class TtsService extends ChangeNotifier {
 
     final prefs = await SharedPreferences.getInstance();
     await _saveVoiceMap(prefs);
+    notifyListeners();
+  }
+
+  /// Set the default English accent (e.g. 'en_US' or 'en_GB').
+  Future<void> setDefaultEnglishAccent(String languageCode) async {
+    _defaultEnglishAccent = languageCode;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyDefaultEnglishAccent, languageCode);
     notifyListeners();
   }
 
@@ -258,7 +277,9 @@ class TtsService extends ChangeNotifier {
 
   /// Resolve a book's dc:language tag to a configured TTS language code.
   String resolveBookLanguage(String? bookLanguage) {
-    if (bookLanguage == null || bookLanguage.isEmpty) return defaultLanguage;
+    if (bookLanguage == null || bookLanguage.isEmpty) {
+      return _defaultEnglishAccent;
+    }
 
     // Normalize: "en-US" -> "en_US", "en" -> "en"
     final normalized = bookLanguage.replaceAll('-', '_');
@@ -266,13 +287,15 @@ class TtsService extends ChangeNotifier {
     // Exact match.
     if (_voiceMap.containsKey(normalized)) return normalized;
 
-    // Family match: "en" matches "en_US" or "en_GB".
+    // Family match: use default accent preference for English.
     final family = normalized.split('_').first;
+    if (family == 'en') return _defaultEnglishAccent;
+
     for (final lang in _voiceMap.keys) {
       if (lang.startsWith('${family}_')) return lang;
     }
 
-    return defaultLanguage;
+    return _defaultEnglishAccent;
   }
 
   Future<void> stop() async {

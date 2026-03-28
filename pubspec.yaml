@@ -62,6 +62,7 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.3
   integration_test:
     sdk: flutter
 
@@ -78,6 +79,7 @@ flutter:
 
   # To add assets to your application, add an assets section, like this:
   assets:
+    - assets/icon/app_icon.png
     - assets/test/
     - assets/us_gold.json
     - assets/us_silver.json
@@ -110,3 +112,16 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  web:
+    generate: true
+  macos:
+    generate: true
+  windows:
+    generate: true
+  linux:
+    generate: true
+  image_path: "assets/icon/app_icon.png"

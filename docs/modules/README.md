@@ -8,10 +8,12 @@
 - [highlight](./highlight.md)
 - [import](./import.md)
 - [shell-navigation](./shell-navigation.md)
+- [onboarding](./onboarding.md)
 
 ## 阅读顺序建议
 1. `shell-navigation`
-2. `library`
-3. `import`
-4. `reader`
-5. `highlight`
+2. `onboarding`
+3. `library`
+4. `import`
+5. `reader`
+6. `highlight`

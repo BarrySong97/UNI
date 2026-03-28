@@ -1,10 +1,7 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 /// Gender of a TTS voice.
 enum VoiceGender { male, female, unknown }
@@ -108,11 +105,8 @@ class TtsLanguageGroup {
   String get displayLabel => '$languageName ($countryName)';
 }
 
-/// Fetches, parses, and caches the piper voice catalog.
+/// Parses the bundled piper voice catalog.
 class TtsVoiceCatalog extends ChangeNotifier {
-  static const String _cacheFileName = 'voices_cache.json';
-  static const Duration _cacheMaxAge = Duration(days: 7);
-
   List<TtsVoiceInfo> _voices = [];
   Map<String, TtsLanguageGroup> _languageGroups = {};
   bool _isLoading = false;
@@ -123,46 +117,14 @@ class TtsVoiceCatalog extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
 
-  /// Initialize the catalog: load from cache first, then refresh if stale.
-  /// Falls back to bundled asset if both cache and network are unavailable.
+  /// Initialize the catalog from the bundled asset.
   Future<void> initialize() async {
-    final cacheFile = await _cacheFile();
-
-    // Try loading from cache.
-    if (cacheFile.existsSync()) {
-      try {
-        final cacheContent = await cacheFile.readAsString();
-        final cacheData = jsonDecode(cacheContent) as Map<String, dynamic>;
-        final cachedAt = DateTime.fromMillisecondsSinceEpoch(
-          cacheData['cached_at'] as int,
-        );
-        final isStale = DateTime.now().difference(cachedAt) > _cacheMaxAge;
-
-        _parseVoicesJson(cacheData['data'] as Map<String, dynamic>);
-        notifyListeners();
-
-        if (isStale) {
-          // Refresh in background.
-          _fetchAndCache();
-        }
-        return;
-      } catch (e) {
-        debugPrint('[TtsVoiceCatalog] Cache read error: $e');
-      }
-    }
-
-    // No valid cache, fetch from network.
-    await _fetchAndCache();
-
-    // If network also failed, fall back to bundled asset.
-    if (_voices.isEmpty) {
-      await _loadBundledFallback();
-    }
+    await _loadBundledFallback();
   }
 
-  /// Force refresh the catalog from network.
+  /// Reload the catalog from the bundled asset.
   Future<void> refresh() async {
-    await _fetchAndCache();
+    await _loadBundledFallback();
   }
 
   /// Get voices for a specific language code.
@@ -178,57 +140,26 @@ class TtsVoiceCatalog extends ChangeNotifier {
     return null;
   }
 
-  Future<void> _fetchAndCache() async {
-    if (_isLoading) return;
+  Future<void> _loadBundledFallback() async {
     _isLoading = true;
     _error = null;
     notifyListeners();
 
     try {
-      final client = HttpClient();
-      final request = await client.getUrl(
-        Uri.parse(
-          'https://huggingface.co/rhasspy/piper-voices/raw/main/voices.json',
-        ),
-      );
-      final response = await request.close();
-
-      if (response.statusCode == 200) {
-        final body = await response.transform(utf8.decoder).join();
-        final data = jsonDecode(body) as Map<String, dynamic>;
-        _parseVoicesJson(data);
-
-        // Save cache.
-        final cacheFile = await _cacheFile();
-        final cacheData = jsonEncode({
-          'cached_at': DateTime.now().millisecondsSinceEpoch,
-          'data': data,
-        });
-        await cacheFile.writeAsString(cacheData);
-      } else {
-        _error = 'HTTP ${response.statusCode}';
-      }
-      client.close();
-    } catch (e) {
-      _error = e.toString();
-      debugPrint('[TtsVoiceCatalog] Fetch error: $e');
-    }
-
-    _isLoading = false;
-    notifyListeners();
-  }
-
-  Future<void> _loadBundledFallback() async {
-    try {
       final jsonStr = await rootBundle.loadString('assets/voices.json');
       final data = jsonDecode(jsonStr) as Map<String, dynamic>;
       _parseVoicesJson(data);
       _error = null;
-      notifyListeners();
-      debugPrint('[TtsVoiceCatalog] Loaded bundled fallback '
-          '(${_voices.length} voices)');
+      debugPrint(
+        '[TtsVoiceCatalog] Loaded bundled catalog '
+        '(${_voices.length} voices)',
+      );
     } catch (e) {
-      debugPrint('[TtsVoiceCatalog] Bundled fallback load error: $e');
+      _error = e.toString();
+      debugPrint('[TtsVoiceCatalog] Bundled catalog load error: $e');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
   }
 
@@ -267,20 +198,22 @@ class TtsVoiceCatalog extends ChangeNotifier {
         final voiceName = (data['name'] as String?) ?? key;
         final quality = (data['quality'] as String?) ?? 'medium';
 
-        voices.add(TtsVoiceInfo(
-          key: key,
-          name: voiceName,
-          languageCode: (language['code'] as String?) ?? '',
-          languageFamily: (language['family'] as String?) ?? '',
-          languageName: (language['name_english'] as String?) ?? '',
-          countryName: (language['country_english'] as String?) ?? '',
-          quality: quality,
-          numSpeakers: numSpeakers,
-          speakerIdMap: speakerIdMap,
-          estimatedSizeMB: (sizeBytes / (1024 * 1024)).ceil(),
-          onnxRelativePath: onnxPath,
-          gender: _inferGender(key, voiceName, numSpeakers),
-        ));
+        voices.add(
+          TtsVoiceInfo(
+            key: key,
+            name: voiceName,
+            languageCode: (language['code'] as String?) ?? '',
+            languageFamily: (language['family'] as String?) ?? '',
+            languageName: (language['name_english'] as String?) ?? '',
+            countryName: (language['country_english'] as String?) ?? '',
+            quality: quality,
+            numSpeakers: numSpeakers,
+            speakerIdMap: speakerIdMap,
+            estimatedSizeMB: (sizeBytes / (1024 * 1024)).ceil(),
+            onnxRelativePath: onnxPath,
+            gender: _inferGender(key, voiceName, numSpeakers),
+          ),
+        );
       } catch (e) {
         debugPrint('[TtsVoiceCatalog] Parse error for ${entry.key}: $e');
       }
@@ -308,22 +241,11 @@ class TtsVoiceCatalog extends ChangeNotifier {
     }
   }
 
-  Future<File> _cacheFile() async {
-    final docsDir = await getApplicationDocumentsDirectory();
-    final modelsDir = p.join(docsDir.path, 'tts-models');
-    await Directory(modelsDir).create(recursive: true);
-    return File(p.join(modelsDir, _cacheFileName));
-  }
-
   // ---------------------------------------------------------------------------
   // Gender inference
   // ---------------------------------------------------------------------------
 
-  static VoiceGender _inferGender(
-    String key,
-    String name,
-    int numSpeakers,
-  ) {
+  static VoiceGender _inferGender(String key, String name, int numSpeakers) {
     // Multi-speaker models -> unknown.
     if (numSpeakers > 1) return VoiceGender.unknown;
 

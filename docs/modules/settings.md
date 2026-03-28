@@ -27,6 +27,11 @@ Settings page providing user account info, AI configuration, and app information
 - Currently UI-only with hardcoded mock data
 - No state management required at this stage
 
+## Interaction & Exceptions
+
+- TTS voice catalog loading is network-first with cache/bundled fallback.
+- If remote catalog fetch times out or network is unavailable, settings should continue to use cached/bundled voices without blocking UI initialization.
+
 ## Components
 
 | Component | File | Description |

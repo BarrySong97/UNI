@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../pages/onboarding/onboarding_flow.dart';
 import '../pages/shell/main-tab-shell-page.dart';
 import 'i18n/app-locale.dart';
 import 'i18n/app-localizations.dart';
@@ -8,15 +9,26 @@ import 'routes/app-router.dart';
 import 'theme/app-theme.dart';
 
 class ImmersedApp extends StatefulWidget {
-  const ImmersedApp({required this.providers, super.key});
+  const ImmersedApp({
+    required this.providers,
+    required this.showOnboarding,
+    super.key,
+  });
 
   final AppProviders providers;
+  final bool showOnboarding;
 
   @override
   State<ImmersedApp> createState() => _ImmersedAppState();
 }
 
 class _ImmersedAppState extends State<ImmersedApp> {
+  late bool _showOnboarding = widget.showOnboarding;
+
+  void _onOnboardingComplete() {
+    setState(() => _showOnboarding = false);
+  }
+
   @override
   Widget build(BuildContext context) {
     return AppProvidersScope(
@@ -31,7 +43,9 @@ class _ImmersedAppState extends State<ImmersedApp> {
             localizationsDelegates: AppLocalizations.delegates,
             onGenerateRoute: AppRouter.onGenerateRoute,
             theme: AppTheme.light,
-            home: const MainTabShellPage(),
+            home: _showOnboarding
+                ? OnboardingFlow(onComplete: _onOnboardingComplete)
+                : const MainTabShellPage(),
           );
         },
       ),

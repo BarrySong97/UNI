@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; }
+  html, body { width: 1024px; height: 1024px; overflow: hidden; background: #E8E4DF; }
+  svg { display: block; width: 1024px; height: 1024px; }
+</style>
+</head>
+<body>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="cardShadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="6" stdDeviation="16" flood-color="#5C4A3A" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" fill="#E8E4DF"/>
+
+  <!-- ===== POPUP CARD ===== -->
+  <rect x="192" y="220" width="640" height="300" rx="28" fill="#FAF9F7" filter="url(#cardShadow)"/>
+  <!-- arrow pointing down -->
+  <polygon points="472,520 552,520 512,556" fill="#FAF9F7"/>
+
+  <!-- inside popup: word title -->
+  <text x="248" y="310" font-family="Georgia, 'Times New Roman', serif" font-size="64" font-weight="bold" fill="#1A1A1A">Immersed</text>
+  <!-- pronunciation -->
+  <text x="248" y="370" font-family="Georgia, 'Times New Roman', serif" font-size="38" fill="#8B7355">/ɪˈmɜːrst/</text>
+  <!-- definition lines -->
+  <rect x="248" y="410" width="540" height="20" rx="10" fill="#5C4A3A" opacity="0.18"/>
+  <rect x="248" y="446" width="400" height="20" rx="10" fill="#5C4A3A" opacity="0.12"/>
+  <rect x="248" y="482" width="470" height="20" rx="10" fill="#5C4A3A" opacity="0.07"/>
+
+  <!-- ===== "Get Immersed" TEXT ===== -->
+  <!-- "Get" faded -->
+  <text x="270" y="680" font-family="Georgia, 'Times New Roman', serif" font-size="72" fill="#5C4A3A" opacity="0.35">Get</text>
+
+  <!-- highlight behind "Immersed" -->
+  <rect x="390" y="636" width="380" height="62" rx="10" fill="#8B7355" opacity="0.15"/>
+  <!-- "Immersed" selected -->
+  <text x="580" y="684" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="72" fill="#1A1A1A">Immersed</text>
+</svg>
+</body>
+</html>

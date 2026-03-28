@@ -19,6 +19,7 @@ import '../services/library/book-profile-entry-service.dart';
 import '../services/parser/book-import-service.dart';
 import '../services/reader/epub_preparse_service.dart';
 import '../src/rust/frb_generated.dart';
+import '../pages/onboarding/onboarding_flow.dart';
 import '../stores/highlight/highlight-store.dart';
 import '../stores/library/library-store.dart';
 import 'app.dart';
@@ -100,6 +101,13 @@ class AppBootstrap {
       highlightStore: HighlightStore(highlightRepository: highlightRepository),
     );
 
-    return AppBootstrapResult(app: ImmersedApp(providers: providers));
+    final showOnboarding = !await OnboardingFlow.isCompleted();
+
+    return AppBootstrapResult(
+      app: ImmersedApp(
+        providers: providers,
+        showOnboarding: showOnboarding,
+      ),
+    );
   }
 }

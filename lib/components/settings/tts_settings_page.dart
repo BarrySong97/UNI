@@ -147,8 +147,21 @@ class _TtsSettingsPageState extends State<TtsSettingsPage> {
                   if (i > 0) _buildDivider(),
                   _buildLanguageRow(configuredLanguages[i]),
                 ],
-                if (configuredLanguages.isNotEmpty) _buildDivider(),
-                _buildAddLanguageRow(),
+                // TODO: re-enable when supporting more languages.
+                // if (configuredLanguages.isNotEmpty) _buildDivider(),
+                // _buildAddLanguageRow(),
+              ],
+            ),
+            const SizedBox(height: 28),
+
+            // DEFAULT ACCENT section
+            const _SectionLabel(label: 'DEFAULT ACCENT'),
+            const SizedBox(height: 12),
+            _buildCard(
+              children: [
+                _buildAccentOptionRow('en_US', 'American English'),
+                _buildDivider(),
+                _buildAccentOptionRow('en_GB', 'British English'),
               ],
             ),
             const SizedBox(height: 28),
@@ -231,6 +244,60 @@ class _TtsSettingsPageState extends State<TtsSettingsPage> {
       child: Container(
         height: FormDesignTokens.dividerThickness,
         color: FormDesignTokens.dividerColor,
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Default accent row
+  // ---------------------------------------------------------------------------
+
+  Widget _buildAccentOptionRow(String languageCode, String label) {
+    final isSelected = widget.ttsService.defaultEnglishAccent == languageCode;
+    return GestureDetector(
+      onTap: () => widget.ttsService.setDefaultEnglishAccent(languageCode),
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: SizedBox(
+          height: FormDesignTokens.fieldRowHeight,
+          child: Row(
+            children: [
+              Container(
+                width: SettingsDesignTokens.settingsRowIconContainerSize,
+                height: SettingsDesignTokens.settingsRowIconContainerSize,
+                decoration: BoxDecoration(
+                  color: SettingsDesignTokens.settingsRowIconContainerBg,
+                  borderRadius: BorderRadius.circular(
+                    SettingsDesignTokens.settingsRowIconContainerRadius,
+                  ),
+                ),
+                alignment: Alignment.center,
+                child: const Icon(
+                  Icons.spatial_audio_off_outlined,
+                  size: 20,
+                  color: CommonDesignTokens.headerLabelColor,
+                ),
+              ),
+              const SizedBox(width: FormDesignTokens.fieldIconGap),
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: FormDesignTokens.fieldValueSize,
+                    color: CommonDesignTokens.textPrimary,
+                  ),
+                ),
+              ),
+              if (isSelected)
+                const Icon(
+                  Icons.check,
+                  size: 20,
+                  color: CommonDesignTokens.headerLabelColor,
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -433,6 +500,8 @@ class _TtsSettingsPageState extends State<TtsSettingsPage> {
   // Add language row
   // ---------------------------------------------------------------------------
 
+  // TODO: re-enable when supporting more languages.
+  // ignore: unused_element
   Widget _buildAddLanguageRow() {
     return GestureDetector(
       onTap: _showAddLanguagePicker,
