@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../shared/constants/common-design-tokens.dart';
 
-class LibraryHeader extends StatelessWidget {
+class LibraryHeader extends StatefulWidget {
   const LibraryHeader({
     this.headerTitle = 'Shelf',
     this.onImportTap,
@@ -15,6 +15,43 @@ class LibraryHeader extends StatelessWidget {
   final VoidCallback? onImportTap;
   final bool isImporting;
   final bool showImportButton;
+
+  @override
+  State<LibraryHeader> createState() => _LibraryHeaderState();
+}
+
+class _LibraryHeaderState extends State<LibraryHeader>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _rotationController;
+
+  @override
+  void initState() {
+    super.initState();
+    _rotationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    );
+    if (widget.isImporting) {
+      _rotationController.repeat();
+    }
+  }
+
+  @override
+  void didUpdateWidget(LibraryHeader oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isImporting && !oldWidget.isImporting) {
+      _rotationController.repeat();
+    } else if (!widget.isImporting && oldWidget.isImporting) {
+      _rotationController.stop();
+      _rotationController.reset();
+    }
+  }
+
+  @override
+  void dispose() {
+    _rotationController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,7 +72,7 @@ class LibraryHeader extends StatelessWidget {
             ),
             const SizedBox(height: 2),
             Text(
-              headerTitle,
+              widget.headerTitle,
               style: const TextStyle(
                 fontSize: CommonDesignTokens.headerTitleSize,
                 fontWeight: FontWeight.w700,
@@ -45,14 +82,23 @@ class LibraryHeader extends StatelessWidget {
           ],
         ),
         const Spacer(),
-        if (showImportButton)
+        if (widget.showImportButton)
           IconButton(
-            icon: Icon(
-              isImporting ? Icons.hourglass_top : Icons.add,
-              color: CommonDesignTokens.textPrimary,
-              size: 22,
-            ),
-            onPressed: isImporting ? null : onImportTap,
+            icon: widget.isImporting
+                ? RotationTransition(
+                    turns: _rotationController,
+                    child: const Icon(
+                      Icons.hourglass_top,
+                      color: CommonDesignTokens.textPrimary,
+                      size: 22,
+                    ),
+                  )
+                : const Icon(
+                    Icons.add,
+                    color: CommonDesignTokens.textPrimary,
+                    size: 22,
+                  ),
+            onPressed: widget.isImporting ? null : widget.onImportTap,
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
           ),
