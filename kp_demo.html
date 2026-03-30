@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Knuth-Plass vs 贪心换行</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: #111827;
+  color: #e5e7eb;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 44px 20px 60px;
+  gap: 22px;
+}
+
+h1 {
+  font-size: 21px;
+  font-weight: 700;
+  color: #f9fafb;
+  text-align: center;
+}
+
+.desc {
+  font-size: 13px;
+  color: #9ca3af;
+  text-align: center;
+  max-width: 600px;
+  line-height: 1.8;
+}
+
+.desc strong { color: #f3f4f6; }
+
+.comparison {
+  display: flex;
+  gap: 32px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #d1d5db;
+  text-align: center;
+}
+
+.label span {
+  display: block;
+  font-size: 11px;
+  font-weight: 400;
+  color: #6b7280;
+  margin-top: 2px;
+}
+
+canvas {
+  border-radius: 10px;
+  box-shadow: 0 8px 36px rgba(0,0,0,0.6);
+  display: block;
+}
+
+.legend {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  justify-content: center;
+  font-size: 12px;
+  color: #9ca3af;
+}
+.li { display: flex; align-items: center; gap: 5px; }
+.ls { width: 22px; height: 10px; border-radius: 2px; }
+
+.note {
+  font-size: 12px;
+  color: #6b7280;
+  text-align: center;
+  max-width: 540px;
+  line-height: 1.6;
+  font-style: italic;
+}
+</style>
+</head>
+<body>
+
+<h1>Knuth-Plass vs 贪心 — 两端对齐效果对比</h1>
+
+<p class="desc">
+  两列文字都是<strong>两端对齐</strong>（左右边缘均对齐）。<br>
+  区别在于<strong>字间距是否均匀</strong>：<br>
+  贪心算法的某些行字间距极大（"撑"开），看起来很散；<br>
+  Knuth-Plass 全局最优，每行字间距趋于一致，段落更美观。
+</p>
+
+<div class="legend">
+  <div class="li"><div class="ls" style="background:#3b82f6"></div>正常字间距</div>
+  <div class="li"><div class="ls" style="background:#f59e0b"></div>偏宽（1.5–2.5×）</div>
+  <div class="li"><div class="ls" style="background:#ef4444"></div>过宽（&gt;2.5×）</div>
+  <div class="li"><div class="ls" style="background:#e5e7eb; border:1px solid #d1d5db"></div>末行（不拉伸）</div>
+</div>
+
+<div class="comparison">
+  <div class="panel">
+    <div class="label">贪心算法 <span>Greedy · 逐行填满</span></div>
+    <canvas id="greedy"></canvas>
+  </div>
+  <div class="panel">
+    <div class="label">Knuth-Plass 算法 <span>全局最优 · 字间距均匀</span></div>
+    <canvas id="kp"></canvas>
+  </div>
+</div>
+
+<p class="note">
+  色块 = 每个字间隙的实际宽度，颜色越红说明这行字间距越"撑"。<br>
+  灰色最后一行不拉伸（标准排版惯例）。
+</p>
+
+<script>
+// ──────────────────────────────────────────────
+//  参数
+// ──────────────────────────────────────────────
+const FONT     = '15px Georgia, "Times New Roman", serif';
+const LINE_W   = 220;   // 文本列宽（较窄以突出贪心算法的缺陷）
+const PAD_X    = 28;
+const PAD_Y    = 22;
+const LH       = 30;
+const CANVAS_W = PAD_X * 2 + LINE_W;
+
+const TEXT =
+  "Justified text looks clean when spacing is even. " +
+  "A greedy algorithm packs each line as full as it can, " +
+  "then stretches the gaps to reach the margin. Short " +
+  "lines with only two or three words get enormous spaces. " +
+  "Rivers of white run through the column. " +
+  "Knuth and Plass instead minimise a global cost, " +
+  "balancing all lines together so no single line " +
+  "stands out with awkward wide spacing.";
+
+// ──────────────────────────────────────────────
+//  度量
+// ──────────────────────────────────────────────
+const _mc = document.createElement('canvas').getContext('2d');
+_mc.font  = FONT;
+
+function mw(s) { return _mc.measureText(s).width; }
+
+function prepare(text) {
+  const words  = text.trim().split(/\s+/);
+  const widths = words.map(mw);
+  const space  = mw(' ');
+
+  const psum = new Float64Array(words.length + 1);
+  for (let k = 0; k < words.length; k++) psum[k+1] = psum[k] + widths[k];
+
+  function rw(i, j) {
+    return psum[j+1] - psum[i] + Math.max(0, j - i) * space;
+  }
+
+  return { words, widths, space, rw };
+}
+
+// ──────────────────────────────────────────────
+//  贪心
+// ──────────────────────────────────────────────
+function greedy({ words, widths, space }) {
+  const lines = [];
+  let i = 0;
+  while (i < words.length) {
+    let j = i, w = widths[i];
+    while (j + 1 < words.length) {
+      const nw = w + space + widths[j+1];
+      if (nw <= LINE_W + 0.5) { j++; w = nw; } else break;
+    }
+    lines.push({ s: i, e: j });
+    i = j + 1;
+  }
+  return lines;
+}
+
+// ──────────────────────────────────────────────
+//  Knuth-Plass（最小化 Σ excess²，末行除外）
+// ──────────────────────────────────────────────
+function knuthPlass({ words, rw }) {
+  const n   = words.length;
+  const INF = 1e18;
+  const dp  = new Float64Array(n + 1).fill(INF);
+  const bp  = new Int32Array(n + 1).fill(-1);
+  dp[0] = 0;
+
+  for (let j = 1; j <= n; j++) {
+    for (let i = j - 1; i >= 0; i--) {
+      if (dp[i] >= INF) continue;
+      const w = rw(i, j - 1);
+      if (w > LINE_W + 0.5) break;
+      const isLast = (j === n);
+      const excess = LINE_W - w;
+      const cost   = dp[i] + (isLast ? 0 : excess * excess);
+      if (cost < dp[j]) { dp[j] = cost; bp[j] = i; }
+    }
+  }
+
+  const starts = [];
+  for (let pos = n; pos > 0; pos = bp[pos]) starts.unshift(bp[pos]);
+
+  return starts.map((s, k) => ({
+    s,
+    e: (k + 1 < starts.length ? starts[k+1] : n) - 1
+  }));
+}
+
+// ──────────────────────────────────────────────
+//  绘制（两端对齐，字间距着色）
+// ──────────────────────────────────────────────
+function gapColor(ratio) {
+  // ratio = actualSpacing / normalSpace
+  if (ratio > 2.5) return { bg: 'rgba(239,68,68,0.30)', fg: '#ef4444' };
+  if (ratio > 1.5) return { bg: 'rgba(245,158,11,0.25)', fg: '#f59e0b' };
+  return { bg: 'rgba(59,130,246,0.18)', fg: '#3b82f6' };
+}
+
+function draw(id, lines, { words, widths, space }) {
+  const cvs   = document.getElementById(id);
+  cvs.width   = CANVAS_W;
+  cvs.height  = PAD_Y * 2 + lines.length * LH + 10;
+
+  const ctx = cvs.getContext('2d');
+
+  // 背景
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, cvs.width, cvs.height);
+
+  // 参考线（列边界）
+  ctx.save();
+  ctx.strokeStyle = '#e5e7eb';
+  ctx.setLineDash([3, 3]);
+  ctx.lineWidth = 1;
+  // 左边
+  ctx.beginPath(); ctx.moveTo(PAD_X, 6); ctx.lineTo(PAD_X, cvs.height - 6); ctx.stroke();
+  // 右边
+  ctx.beginPath(); ctx.moveTo(PAD_X + LINE_W, 6); ctx.lineTo(PAD_X + LINE_W, cvs.height - 6); ctx.stroke();
+  ctx.restore();
+
+  ctx.font = FONT;
+
+  lines.forEach((line, idx) => {
+    const isLast = idx === lines.length - 1;
+    const n      = line.e - line.s + 1;       // 本行单词数
+
+    // 计算字间距
+    let totalWordW = 0;
+    for (let k = line.s; k <= line.e; k++) totalWordW += widths[k];
+    const gaps    = n - 1;
+    const spacing = (n <= 1 || isLast)
+                      ? space
+                      : (LINE_W - totalWordW) / gaps;
+    const ratio   = spacing / space;
+
+    const baseY = PAD_Y + idx * LH + LH - 6;
+
+    // ── 先绘制字间色块 ──
+    if (!isLast && gaps > 0) {
+      const { bg } = gapColor(ratio);
+      let x = PAD_X;
+      for (let k = line.s; k <= line.e; k++) {
+        x += widths[k];
+        if (k < line.e) {
+          ctx.fillStyle = bg;
+          ctx.fillRect(x, baseY - LH + 7, spacing, LH - 8);
+          x += spacing;
+        }
+      }
+    }
+
+    // ── 绘制文字 ──
+    let x = PAD_X;
+    for (let k = line.s; k <= line.e; k++) {
+      ctx.fillStyle = '#111827';
+      ctx.font = FONT;
+      ctx.fillText(words[k], x, baseY);
+      x += widths[k] + spacing;
+    }
+
+    // ── 右侧比值标注 ──
+    if (!isLast && gaps > 0) {
+      const { fg } = gapColor(ratio);
+      ctx.fillStyle = fg;
+      ctx.font = 'bold 10px "SF Mono", Menlo, monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText(`×${ratio.toFixed(1)}`, cvs.width - 4, baseY - 1);
+      ctx.textAlign = 'left';
+    }
+  });
+}
+
+// ──────────────────────────────────────────────
+//  执行
+// ──────────────────────────────────────────────
+const data   = prepare(TEXT);
+const gLines = greedy(data);
+const kLines = knuthPlass(data);
+
+draw('greedy', gLines, data);
+draw('kp',     kLines, data);
+</script>
+</body>
+</html>

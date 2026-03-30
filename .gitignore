@@ -48,3 +48,4 @@ app.*.map.json
 # Rust
 **/target/
 rust/epub_parser/output/
+.gstack/
