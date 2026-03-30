@@ -64,3 +64,37 @@
 ## 禁止事项
 - 未经明确要求，不执行破坏性命令（如删除大量文件、重置历史）。
 - 未经确认，不引入大型依赖或升级 SDK 版本。
+
+## gstack
+
+Use the `/browse` skill from gstack for all web browsing. Never use `mcp__claude-in-chrome__*` tools.
+
+Available gstack skills:
+- `/office-hours` — structured office hours / Q&A session
+- `/plan-ceo-review` — CEO-level plan review
+- `/plan-eng-review` — engineering plan review
+- `/plan-design-review` — design plan review
+- `/design-consultation` — design consultation
+- `/review` — code review
+- `/ship` — ship a feature end-to-end
+- `/land-and-deploy` — land and deploy changes
+- `/canary` — canary deploy
+- `/benchmark` — performance benchmarking
+- `/browse` — fast headless browser for web browsing, QA, and site dogfooding
+- `/qa` — full QA pass
+- `/qa-only` — QA without shipping
+- `/design-review` — design review
+- `/setup-browser-cookies` — set up browser cookies
+- `/setup-deploy` — set up deployment configuration
+- `/retro` — retrospective
+- `/investigate` — investigate an issue
+- `/document-release` — document a release
+- `/codex` — OpenAI Codex integration
+- `/cso` — chief security officer review
+- `/careful` — careful/cautious mode
+- `/freeze` — freeze a branch
+- `/guard` — guard a branch
+- `/unfreeze` — unfreeze a branch
+- `/gstack-upgrade` — upgrade gstack
+
+If gstack skills aren't working, run `cd .claude/skills/gstack && ./setup` to build the binary and register skills.

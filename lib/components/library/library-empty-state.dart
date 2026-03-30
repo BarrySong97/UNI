@@ -2,20 +2,31 @@ import 'package:flutter/material.dart';
 
 import '../../shared/constants/common-design-tokens.dart';
 import '../../shared/constants/shelf-design-tokens.dart';
+import '../../shared/layout/responsive_layout.dart';
 
 class LibraryEmptyState extends StatelessWidget {
   const LibraryEmptyState({required this.onImportTap, super.key});
 
   final VoidCallback onImportTap;
 
+  // Max content width on tablet so the button doesn't stretch across the screen.
+  static const double _tabletContentWidth = 480;
+
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 80),
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isTablet = constraints.maxWidth >= kTabletBreakpoint;
+        return Padding(
+          padding: const EdgeInsets.only(top: 80),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: isTablet ? _tabletContentWidth : double.infinity,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
             _buildIconBadge(),
             const SizedBox(height: 28),
             const Text(
@@ -92,9 +103,12 @@ class LibraryEmptyState extends StatelessWidget {
                 ),
               ],
             ),
-          ],
-        ),
-      ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 

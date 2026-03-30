@@ -165,13 +165,21 @@ class ReaderLayoutEngine {
             node.align == ui.TextAlign.left && _shouldJustify(node, ctx)
             ? ui.TextAlign.justify
             : node.align;
-        final needsCopy = nestingIndentEm > 0 || effectiveAlign != node.align;
+        // Also copy when the source node has a CSS margin-left, so we can
+        // normalise it away (same policy as text-indent normalisation).
+        final needsCopy =
+            nestingIndentEm > 0 ||
+            effectiveAlign != node.align ||
+            node.marginLeftEm != 0;
         final paragraph = needsCopy
             ? ParagraphNode(
                 children: node.children,
                 marginTopEm: node.marginTopEm,
                 marginBottomEm: node.marginBottomEm,
-                marginLeftEm: node.marginLeftEm + nestingIndentEm,
+                // Ignore EPUB CSS margin-left for body text; keep only the
+                // structural nesting indent so body text starts at the left
+                // edge consistently (mirrors text-indent normalisation).
+                marginLeftEm: nestingIndentEm,
                 marginRightEm: node.marginRightEm,
                 align: effectiveAlign,
                 textIndentEm: node.textIndentEm,
@@ -262,11 +270,12 @@ class ReaderLayoutEngine {
     }
 
     // Lay out as a paragraph, using CSS values with sensible defaults.
+    // Normalise away EPUB CSS margin-left (mirrors body-text normalisation).
     final paragraphProxy = ParagraphNode(
       children: node.children,
       marginTopEm: node.marginTopEm != 0.0 ? node.marginTopEm : 0.8,
       marginBottomEm: node.marginBottomEm != 0.0 ? node.marginBottomEm : 0.4,
-      marginLeftEm: node.marginLeftEm + nestingIndentEm,
+      marginLeftEm: nestingIndentEm,
       marginRightEm: node.marginRightEm,
       align: node.align,
       textIndentEm: node.textIndentEm,

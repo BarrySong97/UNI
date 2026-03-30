@@ -438,7 +438,7 @@ class ShelfPageLayout extends StatelessWidget {
           50,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        padding: EdgeInsets.zero,
         itemCount: displayBooks.length,
         separatorBuilder: (_, _) =>
             const SizedBox(width: ShelfDesignTokens.homeGridItemSpacing),

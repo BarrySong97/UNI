@@ -63,55 +63,72 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     widget.onComplete();
   }
 
+  // Tablets are considered screens wider than 600 logical pixels.
+  static const double _tabletBreakpoint = 600;
+  // Maximum content width on tablet, approximates a phone form factor.
+  static const double _tabletContentWidth = 480;
+
   @override
   Widget build(BuildContext context) {
     final ttsService = AppProvidersScope.of(context).ttsService;
+    final isTablet =
+        MediaQuery.of(context).size.width >= _tabletBreakpoint;
+
+    final content = Column(
+      children: [
+        Expanded(
+          child: PageView(
+            controller: _pageController,
+            physics: const NeverScrollableScrollPhysics(),
+            onPageChanged: (i) => setState(() => _currentPage = i),
+            children: [
+              OnboardingAiStep(onContinue: _goToNext, onSkip: _goToNext),
+              OnboardingVoiceStep(
+                modelManager: ttsService.modelManager,
+                onVoiceSelected: (languageCode, voiceKey) =>
+                    ttsService.setVoiceForLanguage(languageCode, voiceKey),
+                onContinue: _finish,
+                onSkip: _finish,
+                onBack: _goBack,
+              ),
+            ],
+          ),
+        ),
+        // Page indicator
+        Padding(
+          padding: const EdgeInsets.only(bottom: 20),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(2, (i) {
+              final active = i == _currentPage;
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                width: active ? 24 : 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: active
+                      ? CommonDesignTokens.textPrimary
+                      : CommonDesignTokens.borderColor,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              );
+            }),
+          ),
+        ),
+      ],
+    );
+
     return Scaffold(
       backgroundColor: CommonDesignTokens.pageBackground,
-      body: Column(
-        children: [
-          Expanded(
-            child: PageView(
-              controller: _pageController,
-              physics: const NeverScrollableScrollPhysics(),
-              onPageChanged: (i) => setState(() => _currentPage = i),
-              children: [
-                OnboardingAiStep(onContinue: _goToNext, onSkip: _goToNext),
-                OnboardingVoiceStep(
-                  modelManager: ttsService.modelManager,
-                  onVoiceSelected: (languageCode, voiceKey) =>
-                      ttsService.setVoiceForLanguage(languageCode, voiceKey),
-                  onContinue: _finish,
-                  onSkip: _finish,
-                  onBack: _goBack,
-                ),
-              ],
-            ),
-          ),
-          // Page indicator
-          Padding(
-            padding: const EdgeInsets.only(bottom: 20),
-            child: Row(
+      // On tablets, center the content column horizontally at a fixed width so
+      // the onboarding screens don't stretch across the full wide display.
+      body: isTablet
+          ? Row(
               mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(2, (i) {
-                final active = i == _currentPage;
-                return AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                  width: active ? 24 : 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: active
-                        ? CommonDesignTokens.textPrimary
-                        : CommonDesignTokens.borderColor,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                );
-              }),
-            ),
-          ),
-        ],
-      ),
+              children: [SizedBox(width: _tabletContentWidth, child: content)],
+            )
+          : content,
     );
   }
 }

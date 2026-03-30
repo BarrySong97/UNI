@@ -519,6 +519,50 @@ void main() {
     expect(textElements.length, equals(1));
   });
 
+  test('paragraph margin-left is normalized away (no body indent)', () {
+    // ParagraphNode with marginLeftEm = 2.0 from EPUB CSS should still start
+    // at x=0 — CSS margin-left is normalised away for body text, consistent
+    // with the text-indent normalisation policy.
+    final chapter = engine.paginate(
+      chapterIndex: 0,
+      nodes: [
+        const ParagraphNode(
+          marginLeftEm: 2.0,
+          children: [
+            TextNode(
+              content:
+                  'This paragraph has a CSS margin-left of 2em applied by the EPUB stylesheet. '
+                  'The reader normalises it away so body text always starts at the left edge.',
+            ),
+          ],
+        ),
+      ],
+      viewportSize: const Size(200, 400),
+      prefs: prefs,
+    );
+
+    final textElements = chapter.pages.first.elements
+        .where((e) => e.hasText)
+        .toList();
+
+    expect(textElements.length, greaterThanOrEqualTo(1));
+    // The first fragment on the first line should start at x=0.
+    // (For K-P justified text, subsequent fragments on the same line have
+    // non-zero xOffset, so we only check the line-start fragment — same
+    // approach as the text-indent normalisation test.)
+    final firstLineTop = textElements
+        .map((e) => e.rect.top)
+        .reduce((a, b) => a < b ? a : b);
+    final firstLineElements = textElements
+        .where((e) => (e.rect.top - firstLineTop).abs() < 0.01)
+        .toList();
+    expect(
+      firstLineElements.first.rect.left,
+      closeTo(0, 0.01),
+      reason: 'EPUB CSS margin-left should be normalised away',
+    );
+  });
+
   test('paragraph with LineBreakNode is not auto-justified', () {
     // Structured content with forced line breaks (e.g. ISBN metadata,
     // addresses) should not be force-justified even if long enough.

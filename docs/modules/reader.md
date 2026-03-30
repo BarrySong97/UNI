@@ -134,7 +134,8 @@ lib/
 - Paragraph margins from CSS em values, with CSS-style margin collapsing
 - First element on page: top margin suppressed
 - Line height: CSS override or user preference (default 1.6)
-- `text-indent`: currently normalized to no indent in Flutter layout to keep first-line alignment consistent across mixed EPUB content
+- `text-indent`: normalized to no indent in Flutter layout to keep first-line alignment consistent across mixed EPUB content
+- `margin-left` (CSS): normalized to no indent for body text (paragraphs and headings); structural indentation from list nesting and blockquotes is preserved via the internal `nestingIndentEm` mechanism
 
 ### Performance Optimizations
 
