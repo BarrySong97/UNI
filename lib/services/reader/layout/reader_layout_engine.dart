@@ -7,6 +7,7 @@ import 'package:flutter/painting.dart';
 import '../models/page_layout.dart';
 import '../models/reader_preferences.dart';
 import '../models/render_node.dart';
+import 'knuth_plass/paragraph_prepare_cache.dart';
 import 'knuth_plass/width_cache.dart';
 import 'layout_context.dart';
 import 'paragraph_layouter.dart';
@@ -72,6 +73,7 @@ class ReaderLayoutEngine {
     double safeAreaBottom = 0.0,
     bool pageCountOnly = false,
     WidthCache? widthCache,
+    ParagraphPrepareCache? paragraphPrepareCache,
   }) {
     final contentWidth = viewportSize.width - 2 * prefs.pageHorizontalPaddingPx;
     final contentHeight =
@@ -88,6 +90,7 @@ class ReaderLayoutEngine {
       pageCountOnly: pageCountOnly,
       decodedImages: decodedImages ?? const {},
       widthCache: widthCache,
+      paragraphPrepareCache: paragraphPrepareCache,
     );
 
     for (final node in nodes) {
@@ -116,6 +119,7 @@ class ReaderLayoutEngine {
     double safeAreaBottom = 0.0,
     bool pageCountOnly = false,
     WidthCache? widthCache,
+    ParagraphPrepareCache? paragraphPrepareCache,
   }) async {
     final contentWidth = viewportSize.width - 2 * prefs.pageHorizontalPaddingPx;
     final contentHeight =
@@ -132,6 +136,7 @@ class ReaderLayoutEngine {
       pageCountOnly: pageCountOnly,
       decodedImages: decodedImages ?? const {},
       widthCache: widthCache,
+      paragraphPrepareCache: paragraphPrepareCache,
     );
 
     for (var i = 0; i < nodes.length; i++) {

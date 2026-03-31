@@ -77,6 +77,7 @@ lib/
         kp_solver.dart              # K-P solver (ported from tex-linebreak) + adjustmentRatios()/positionItems()
         kp_item_builder.dart        # RenderNode children → K-P item sequence (uses WidthCache)
         width_cache.dart            # Chapter-scoped cache for space and word widths per TextStyle
+        paragraph_prepare_cache.dart # Caches pre-built K-P item sequences for repeated paragraph layouts
     selection/
       page_hit_test.dart              # Hit-testing, selection rects, text extraction
       cross_page_selection.dart       # BookPosition, CrossPageSelection (multi-page model)
@@ -113,6 +114,7 @@ lib/
    - Apply CSS margin collapsing (max of adjacent top/bottom margins)
    - **Smart justify override**: paragraphs with `TextAlign.left` (the default when EPUB CSS omits `text-align`) are automatically overridden to `TextAlign.justify` only when `_shouldJustify()` returns true — i.e. the paragraph has no `LineBreakNode` children (ruling out ISBN metadata, addresses, poetry) and its text fills at least ~1.5 lines (ruling out short TOC entries and titles). This matches the behaviour of mainstream reader apps (Apple Books, Kindle) for body text while preserving natural spacing for structured content. Headings and explicitly-centered/right-aligned text are never overridden.
    - **Justified text (Knuth-Plass path)**: attempted first (greedy TextPainter is only created on K-P fallback). Convert children to Box/Glue/Penalty items (word measurement via chapter-scoped `WidthCache`) using a mixed tokenizer: space-delimited Latin text stays word-based, while no-space CJK runs are split into per-character boxes with breakable zero-width glue/soft penalties. Run K-P solver (ported from tex-linebreak) to find optimal breakpoints minimising total demerits. The solver now follows tex-linebreak's two-pass helper strategy: first pass uses `maxAdjustmentRatio=1` to avoid loose lines (especially for English), and only when that fails does it retry with relaxed limits. Solver includes Restriction-1 guarded pruning, look-ahead to next box, and emergency breaks. Then run `positionItems()` and render each box/hyphen fragment at exact x offsets (no uniform `wordSpacing` approximation). Non-last lines get a per-line right-edge gap correction to compensate for sub-pixel measurement drift. Falls back to greedy if both solver passes fail or the result is a single line (nothing to justify). Additionally, `positionItems()` caps the stretch ratio for non-last lines at 2.0 (`_maxVisualRatio`) — lines with few words won't get excessively wide word spacing; they simply won't fill the full width, which looks far better than huge gaps.
+   - **Soft hyphen (`\u00AD`) support in K-P items**: inside word tokens, soft hyphen is treated as a discretionary breakpoint (`KPPenalty`) with visible `-` width only when that breakpoint is selected. If no break occurs, the soft hyphen is invisible and contributes no width.
    - **Non-justified text (greedy path)**: Build `TextSpan` from children, measure with `TextPainter`
    - If fits on current page → place as single `LayoutElement`
    - If overflows → split at line boundary using `computeLineMetrics()` + `getPositionForOffset()`, place first part, start new page, recursively layout remainder
@@ -140,6 +142,7 @@ lib/
 ### Performance Optimizations
 
 - **Cross-chapter `WidthCache`**: A single `WidthCache` instance is shared across all chapters within the same `ReaderStore` session (cleared only when layout-affecting preferences change). Caches both space widths and word widths keyed by `(style, word)`. Repeated words like "the", "and" are measured only once across all chapters, eliminating redundant TextPainter creation. Subsequent chapter paginations are 10-30% faster due to cache hits on common vocabulary.
+- **Paragraph prepare cache**: K-P item sequences are cached per paragraph signature (text/style/layout inputs) and reused across repeated pagination calls. This avoids rebuilding token/script-run segmentation and Box/Glue/Penalty sequences for unchanged paragraphs.
 - **K-P solver look-ahead hoisting**: The look-ahead loop (computing `widthToNextBox/shrinkToNextBox/stretchToNextBox`) depends only on breakpoint position `b`, not on active node `a`. Hoisted above the active-node loop to avoid redundant O(active × scan) work per breakpoint.
 - **Deferred greedy TextPainter**: For justified paragraphs, the K-P path is attempted first. The greedy `TextSpan` + `TextPainter` are only created if K-P fails, avoiding wasted native layout calls on the happy path.
 - **Shared style computation**: `TextSpanBuilder.styleForTextNode()` is the single source of truth for `TextNode → TextStyle` conversion, used by both the greedy path and K-P item builder.

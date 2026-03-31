@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uni/services/reader/layout/knuth_plass/paragraph_prepare_cache.dart';
 import 'package:uni/services/reader/layout/knuth_plass/kp_item_builder.dart';
 import 'package:uni/services/reader/layout/knuth_plass/kp_items.dart';
 import 'package:uni/services/reader/layout/knuth_plass/width_cache.dart';
@@ -12,10 +13,12 @@ void main() {
   group('KPItemBuilder', () {
     late ReaderPreferences prefs;
     late WidthCache widthCache;
+    late ParagraphPrepareCache prepareCache;
 
     setUp(() {
       prefs = const ReaderPreferences();
       widthCache = WidthCache();
+      prepareCache = ParagraphPrepareCache();
     });
 
     test('returns null for empty children', () {
@@ -261,6 +264,78 @@ void main() {
           .where((p) => p.cost == 0)
           .toList();
       expect(softPenalties.isNotEmpty, isTrue);
+    });
+
+    test('soft hyphen emits discretionary penalty with hyphen width', () {
+      final children = [
+        TextNode(content: 'micro\u00adarchitecture', nodeIndex: 0),
+      ];
+
+      final items = KPItemBuilder.build(
+        children: children,
+        prefs: prefs,
+        widthCache: widthCache,
+      );
+
+      expect(items, isNotNull);
+      final boxes = items!.whereType<KPBox>().toList();
+      expect(boxes.any((b) => b.text.contains('\u00ad')), isFalse);
+      expect(boxes.any((b) => b.text == 'micro'), isTrue);
+      expect(boxes.any((b) => b.text == 'architecture'), isTrue);
+
+      final hyphenPenalties = items
+          .whereType<KPPenalty>()
+          .where((p) => p.flagged && p.width > 0)
+          .toList();
+      expect(hyphenPenalties.isNotEmpty, isTrue);
+    });
+
+    test('prepare cache reuses built items for same paragraph signature', () {
+      final children = [TextNode(content: 'cache me once', nodeIndex: 0)];
+
+      final first = KPItemBuilder.build(
+        children: children,
+        prefs: prefs,
+        widthCache: widthCache,
+        paragraphPrepareCache: prepareCache,
+        availableWidth: 320,
+      );
+      final second = KPItemBuilder.build(
+        children: children,
+        prefs: prefs,
+        widthCache: widthCache,
+        paragraphPrepareCache: prepareCache,
+        availableWidth: 320,
+      );
+
+      expect(first, isNotNull);
+      expect(second, isNotNull);
+      expect(identical(first, second), isTrue);
+      expect(prepareCache.size, 1);
+    });
+
+    test('prepare cache key changes when available width changes', () {
+      final children = [TextNode(content: 'width sensitive key', nodeIndex: 0)];
+
+      final first = KPItemBuilder.build(
+        children: children,
+        prefs: prefs,
+        widthCache: widthCache,
+        paragraphPrepareCache: prepareCache,
+        availableWidth: 300,
+      );
+      final second = KPItemBuilder.build(
+        children: children,
+        prefs: prefs,
+        widthCache: widthCache,
+        paragraphPrepareCache: prepareCache,
+        availableWidth: 360,
+      );
+
+      expect(first, isNotNull);
+      expect(second, isNotNull);
+      expect(identical(first, second), isFalse);
+      expect(prepareCache.size, 2);
     });
   });
 }

@@ -152,6 +152,7 @@ void main() {
       expect(store.bookReadPercent, closeTo(expectedRead, 1e-9));
 
       await store.goToBookPercent(0.0);
+      await store.flushProgress();
       expect(progressRepo.lastSaved, isNotNull);
       expect(
         progressRepo.lastSaved!.percent,

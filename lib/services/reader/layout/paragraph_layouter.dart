@@ -240,6 +240,8 @@ class ParagraphLayouter {
       children: node.children,
       prefs: prefs,
       widthCache: widthCache,
+      paragraphPrepareCache: ctx.paragraphPrepareCache,
+      availableWidth: availableWidth,
       headingLevel: headingLevel,
       lineHeightOverride: effectiveLineHeight,
       defaultColor: defaultColor,

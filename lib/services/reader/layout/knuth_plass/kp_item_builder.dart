@@ -5,6 +5,7 @@ import 'package:flutter/painting.dart';
 import '../../models/reader_preferences.dart';
 import '../../models/render_node.dart';
 import '../text_span_builder.dart';
+import 'paragraph_prepare_cache.dart';
 import 'kp_items.dart';
 import 'width_cache.dart';
 
@@ -15,6 +16,8 @@ import 'width_cache.dart';
 /// are measured with a reused [TextPainter] per styled run.
 class KPItemBuilder {
   const KPItemBuilder._();
+  static const _softHyphenChar = '\u00ad';
+  static const _softHyphenPenaltyCost = 50.0;
 
   /// Build the K-P item list for a paragraph's children.
   ///
@@ -23,10 +26,28 @@ class KPItemBuilder {
     required List<RenderNode> children,
     required ReaderPreferences prefs,
     required WidthCache widthCache,
+    ParagraphPrepareCache? paragraphPrepareCache,
+    double? availableWidth,
     int? headingLevel,
     double? lineHeightOverride,
     Color? defaultColor,
   }) {
+    final cache = paragraphPrepareCache;
+    final cacheKey = cache != null
+        ? _buildCacheKey(
+            children: children,
+            prefs: prefs,
+            availableWidth: availableWidth,
+            headingLevel: headingLevel,
+            lineHeightOverride: lineHeightOverride,
+            defaultColor: defaultColor,
+          )
+        : null;
+    if (cacheKey != null) {
+      final cached = cache!.get(cacheKey);
+      if (cached != null) return cached;
+    }
+
     final items = <KPItem>[];
 
     for (final child in children) {
@@ -57,6 +78,11 @@ class KPItemBuilder {
     // then a forced break. Matches tex-linebreak helpers.ts:77-78.
     items.add(const KPGlue(width: 0, stretch: KPPenalty.maxCost, shrink: 0));
     items.add(forcedBreak());
+
+    if (cacheKey != null) {
+      cache!.put(cacheKey, items);
+      return cache.get(cacheKey);
+    }
 
     return items;
   }
@@ -93,6 +119,7 @@ class KPItemBuilder {
     final tokens = _splitIntoWords(content);
     if (tokens.isEmpty) return;
 
+    final hyphenWidth = widthCache.wordWidth('-', style);
     for (final token in tokens) {
       if (token.trim().isEmpty) {
         // Space token → emit glue (only if preceded by a box).
@@ -100,9 +127,10 @@ class KPItemBuilder {
           items.add(KPGlue(width: sw, stretch: stretch, shrink: shrink));
         }
       } else {
-        _emitNonWhitespaceToken(
+        _emitTokenWithSoftHyphenBreaks(
           token: token,
           style: style,
+          hyphenWidth: hyphenWidth,
           items: items,
           widthCache: widthCache,
         );
@@ -144,11 +172,7 @@ class KPItemBuilder {
 
       if (!run.isCjk) {
         final w = widthCache.wordWidth(run.text, style);
-        items.add(KPBox(
-          text: run.text,
-          style: style,
-          width: w,
-        ));
+        items.add(KPBox(text: run.text, style: style, width: w));
         prevWasCjk = false;
         continue;
       }
@@ -164,11 +188,7 @@ class KPItemBuilder {
 
       for (var i = 0; i < graphemes.length; i++) {
         items.add(
-          KPBox(
-            text: graphemes[i],
-            style: style,
-            width: charWidths[i],
-          ),
+          KPBox(text: graphemes[i], style: style, width: charWidths[i]),
         );
         if (i < graphemes.length - 1) {
           // Zero-width glue lets K-P distribute extra spacing across CJK chars.
@@ -176,6 +196,53 @@ class KPItemBuilder {
         }
       }
       prevWasCjk = true;
+    }
+  }
+
+  /// Emit a token, converting embedded soft hyphens (`\u00AD`) into
+  /// discretionary break penalties with visible `-` width only at line breaks.
+  static void _emitTokenWithSoftHyphenBreaks({
+    required String token,
+    required TextStyle style,
+    required double hyphenWidth,
+    required List<KPItem> items,
+    required WidthCache widthCache,
+  }) {
+    if (!token.contains(_softHyphenChar)) {
+      _emitNonWhitespaceToken(
+        token: token,
+        style: style,
+        items: items,
+        widthCache: widthCache,
+      );
+      return;
+    }
+
+    final parts = token.split(_softHyphenChar);
+    for (var i = 0; i < parts.length; i++) {
+      final part = parts[i];
+      if (part.isNotEmpty) {
+        _emitNonWhitespaceToken(
+          token: part,
+          style: style,
+          items: items,
+          widthCache: widthCache,
+        );
+      }
+      if (i == parts.length - 1) continue;
+
+      final hasFollowingContent = parts
+          .skip(i + 1)
+          .any((segment) => segment.isNotEmpty);
+      if (hasFollowingContent && items.isNotEmpty && items.last is KPBox) {
+        items.add(
+          KPPenalty(
+            cost: _softHyphenPenaltyCost,
+            width: hyphenWidth,
+            flagged: true,
+          ),
+        );
+      }
     }
   }
 
@@ -235,6 +302,60 @@ class KPItemBuilder {
       defaultColor: defaultColor,
     );
   }
+
+  static String _buildCacheKey({
+    required List<RenderNode> children,
+    required ReaderPreferences prefs,
+    required double? availableWidth,
+    required int? headingLevel,
+    required double? lineHeightOverride,
+    required Color? defaultColor,
+  }) {
+    final buffer = StringBuffer()
+      ..write('lh=')
+      ..write(prefs.layoutHash)
+      ..write('|aw=')
+      ..write(availableWidth?.toStringAsFixed(3) ?? 'na')
+      ..write('|hl=')
+      ..write(headingLevel ?? -1)
+      ..write('|lhov=')
+      ..write(lineHeightOverride?.toStringAsFixed(3) ?? 'na')
+      ..write('|dc=')
+      ..write(defaultColor?.toARGB32() ?? -1);
+
+    for (final child in children) {
+      switch (child) {
+        case TextNode():
+          buffer
+            ..write('|T:')
+            ..write(child.content)
+            ..write(':')
+            ..write(child.bold ? 1 : 0)
+            ..write(child.italic ? 1 : 0)
+            ..write(child.underline ? 1 : 0)
+            ..write(child.lineThrough ? 1 : 0)
+            ..write(':')
+            ..write(child.fontSizeEm.toStringAsFixed(4))
+            ..write(':')
+            ..write(child.color ?? -1)
+            ..write(':')
+            ..write(child.href ?? '')
+            ..write(':')
+            ..write(child.superscript ? 1 : 0)
+            ..write(child.subscript ? 1 : 0)
+            ..write(':')
+            ..write(child.backgroundColor ?? -1);
+        case LineBreakNode():
+          buffer.write('|BR');
+        default:
+          buffer
+            ..write('|N:')
+            ..write(child.runtimeType.toString());
+      }
+    }
+
+    return buffer.toString();
+  }
 }
 
 class _ScriptRun {
@@ -243,4 +364,3 @@ class _ScriptRun {
   final String text;
   final bool isCjk;
 }
-

@@ -7,6 +7,7 @@ import '../../entities/book-entity.dart';
 import '../../entities/reading-progress-entity.dart';
 import '../../repositories/progress/progress-repository.dart';
 import '../../services/reader/data/chapter_data_source.dart';
+import '../../services/reader/layout/knuth_plass/paragraph_prepare_cache.dart';
 import '../../services/reader/layout/knuth_plass/width_cache.dart';
 import '../../services/reader/layout/reader_layout_engine.dart';
 import '../../services/reader/models/page_layout.dart';
@@ -60,6 +61,10 @@ class ReaderStore extends ChangeNotifier {
   /// Shared width cache across chapters — avoids re-measuring common words.
   /// Cleared when layout-affecting preferences change.
   WidthCache? _widthCache;
+
+  /// Shared paragraph prepare cache across chapters.
+  /// Cleared when layout-affecting preferences change.
+  ParagraphPrepareCache? _paragraphPrepareCache;
 
   // ---------------------------------------------------------------------------
   // Progress save throttle — at most one DB write per [_saveInterval].
@@ -196,10 +201,7 @@ class ReaderStore extends ChangeNotifier {
   /// merged with the next chapter at pagination time.
   PageLayout? get secondPageLayout {
     if (_currentPagination == null) return null;
-    return _strategy.secondPage(
-      _currentPagination!.pages,
-      _currentPageIndex,
-    );
+    return _strategy.secondPage(_currentPagination!.pages, _currentPageIndex);
   }
 
   /// Left page of the next spread (for swipe preview).
@@ -396,6 +398,7 @@ class ReaderStore extends ChangeNotifier {
     _absorbedChapters.clear();
     _pageCountCache.clear();
     _widthCache = null;
+    _paragraphPrepareCache = null;
     _persistedPageCountsJson = null;
     _allPagesComputed = false;
 
@@ -425,8 +428,7 @@ class ReaderStore extends ChangeNotifier {
       );
 
       // Skip empty or absorbed chapters.
-      while ((_currentPagination != null &&
-              _currentPagination!.pages.isEmpty ||
+      while ((_currentPagination != null && _currentPagination!.pages.isEmpty ||
               _absorbedChapters.contains(_currentChapterIndex)) &&
           _currentChapterIndex < chapterCount - 1) {
         _currentChapterIndex++;
@@ -496,6 +498,7 @@ class ReaderStore extends ChangeNotifier {
     _safeAreaBottom = safeAreaBottom;
     _cache.clear();
     _absorbedChapters.clear();
+    _paragraphPrepareCache?.clear();
 
     if (_dataSource != null) {
       await _loadChapter(_currentChapterIndex);
@@ -518,8 +521,10 @@ class ReaderStore extends ChangeNotifier {
       _saveProgress();
       // Proactively prefetch the next chapter when approaching the end of
       // the current chapter (within the last spread/page).
-      if (_strategy.coversLastPage(_currentPageIndex,
-              _currentPagination!.pages.length)) {
+      if (_strategy.coversLastPage(
+        _currentPageIndex,
+        _currentPagination!.pages.length,
+      )) {
         _ensureNextChapterPrefetched();
       }
     } else {
@@ -791,10 +796,11 @@ class ReaderStore extends ChangeNotifier {
       // Theme changes require re-pagination because text colors are baked
       // into TextPainter instances during layout.
       _cache.clear();
-    _absorbedChapters.clear();
+      _absorbedChapters.clear();
       if (needsRelayout) {
         _pageCountCache.clear();
         _widthCache = null;
+        _paragraphPrepareCache = null;
         _persistedPageCountsJson = null;
         _allPagesComputed = false;
       }
@@ -866,6 +872,7 @@ class ReaderStore extends ChangeNotifier {
       );
 
       _widthCache ??= WidthCache();
+      _paragraphPrepareCache ??= ParagraphPrepareCache();
 
       var allNodes = chapter.nodes;
       var allImages = decodedImages;
@@ -873,8 +880,7 @@ class ReaderStore extends ChangeNotifier {
       // Merge consecutive short chapters (e.g. title-only spine items) with
       // the following chapter so title and content paginate together.
       var mergeTarget = index + 1;
-      while (mergeTarget < chapterCount &&
-          !_absorbedChapters.contains(index)) {
+      while (mergeTarget < chapterCount && !_absorbedChapters.contains(index)) {
         // Quick paginate to check page count.
         final testPagination = await _engine.paginateAsync(
           chapterIndex: index,
@@ -885,6 +891,7 @@ class ReaderStore extends ChangeNotifier {
           safeAreaTop: _safeAreaTop,
           safeAreaBottom: _safeAreaBottom,
           widthCache: _widthCache,
+          paragraphPrepareCache: _paragraphPrepareCache,
         );
         if (requestToken != _chapterLoadToken) return;
 
@@ -906,9 +913,7 @@ class ReaderStore extends ChangeNotifier {
         allNodes = [...allNodes, ...nextChapter.nodes];
         allImages = {...allImages, ...nextImages};
         _absorbedChapters.add(mergeTarget);
-        debugPrint(
-          '[ReaderStore] ch$mergeTarget absorbed into ch$index',
-        );
+        debugPrint('[ReaderStore] ch$mergeTarget absorbed into ch$index');
         mergeTarget++;
       }
 
@@ -921,6 +926,7 @@ class ReaderStore extends ChangeNotifier {
         safeAreaTop: _safeAreaTop,
         safeAreaBottom: _safeAreaBottom,
         widthCache: _widthCache,
+        paragraphPrepareCache: _paragraphPrepareCache,
       );
       if (requestToken != _chapterLoadToken) return;
       debugPrint(
@@ -1075,6 +1081,7 @@ class ReaderStore extends ChangeNotifier {
           final chapter = await _dataSource!.loadChapter(i);
           // Paginate without decoding images (dimensions from Rust suffice).
           _widthCache ??= WidthCache();
+          _paragraphPrepareCache ??= ParagraphPrepareCache();
           final pagination = await _engine.paginateAsync(
             chapterIndex: i,
             nodes: chapter.nodes,
@@ -1084,6 +1091,7 @@ class ReaderStore extends ChangeNotifier {
             safeAreaBottom: _safeAreaBottom,
             pageCountOnly: true,
             widthCache: _widthCache,
+            paragraphPrepareCache: _paragraphPrepareCache,
           );
           _chapterPageCounts[i] = pagination.pages.length;
           // Cache page count only (no full pagination — images not decoded).

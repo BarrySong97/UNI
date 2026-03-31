@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import '../models/page_layout.dart';
 import '../models/reader_preferences.dart';
+import 'knuth_plass/paragraph_prepare_cache.dart';
 import 'knuth_plass/width_cache.dart';
 
 /// Mutable context passed through the pagination pipeline.
@@ -16,7 +17,9 @@ class LayoutContext {
     this.pageCountOnly = false,
     this.decodedImages = const {},
     WidthCache? widthCache,
-  }) : widthCache = widthCache ?? WidthCache();
+    ParagraphPrepareCache? paragraphPrepareCache,
+  }) : widthCache = widthCache ?? WidthCache(),
+       paragraphPrepareCache = paragraphPrepareCache ?? ParagraphPrepareCache();
 
   final double contentWidth;
   final double contentHeight;
@@ -32,6 +35,9 @@ class LayoutContext {
 
   /// Chapter-scoped cache for space and word widths, shared across paragraphs.
   final WidthCache widthCache;
+
+  /// Shared cache for prepared paragraph K-P items.
+  final ParagraphPrepareCache paragraphPrepareCache;
 
   /// Vertical cursor position within the current page's content area.
   double cursorY = 0.0;
@@ -121,10 +127,7 @@ class LayoutContext {
       // Return lightweight list with empty PageLayouts for page count.
       return List.generate(
         _pageCount,
-        (i) => PageLayout(
-          chapterIndex: chapterIndex,
-          pageIndexInChapter: i,
-        ),
+        (i) => PageLayout(chapterIndex: chapterIndex, pageIndexInChapter: i),
       );
     }
     if (currentPage.elements.isNotEmpty) {
