@@ -59,6 +59,16 @@ Future<void> _waitForAllPages(ReaderStore store) async {
   }
 }
 
+Future<void> _waitForChapter(ReaderStore store, int chapterIndex) async {
+  final sw = Stopwatch()..start();
+  while (store.currentChapterIndex != chapterIndex) {
+    if (sw.elapsedMilliseconds > 3000) {
+      fail('Timed out waiting for chapter $chapterIndex');
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+}
+
 ParsedChapter _chapter({
   required int index,
   required String title,
@@ -263,4 +273,127 @@ void main() {
     expect(store.bookReadPercent, lessThanOrEqualTo(1.0));
     expect(store.bookPercent, closeTo(store.bookPositionPercent, 1e-9));
   });
+
+  test(
+    'TOC chapter mapping remains stable with href format mismatch',
+    () async {
+      final progressRepo = _FakeProgressRepository();
+      final store = ReaderStore(progressRepository: progressRepo);
+
+      final chapters = [
+        _chapter(index: 0, title: 'Prologue', href: 'p0.xhtml', text: 'p0'),
+        _chapter(index: 1, title: 'Chapter 1', href: 'ch1.xhtml', text: 'ch1'),
+        _chapter(index: 2, title: 'Chapter 2', href: 'ch2.xhtml', text: 'ch2'),
+        _chapter(index: 3, title: 'Chapter 3', href: 'ch3.xhtml', text: 'ch3'),
+        _chapter(index: 4, title: 'Chapter 4', href: 'ch4.xhtml', text: 'ch4'),
+        _chapter(
+          index: 5,
+          title: 'Chapter 5',
+          href: '/OEBPS/xhtml/ch5.xhtml',
+          text: 'A very short bridge chapter.',
+        ),
+        _chapter(
+          index: 6,
+          title: 'Content',
+          href: '/OEBPS/xhtml/content.xhtml',
+          text: _longText(140),
+        ),
+      ];
+
+      final dataSource = _FakeChapterDataSource(
+        book: ParsedBook(
+          metadata: const BookMetadata(title: 'T', author: 'A'),
+          toc: const [
+            TocEntry(title: 'Chapter 1', href: 'xhtml/ch1.xhtml#start'),
+            TocEntry(title: 'Content', href: 'xhtml/content.xhtml#toc'),
+          ],
+          chapters: chapters,
+        ),
+        chapters: chapters,
+      );
+
+      await store.openBook(
+        book: _bookEntity(),
+        dataSource: dataSource,
+        viewportSize: const Size(320, 220),
+        safeAreaTop: 0,
+        safeAreaBottom: 0,
+      );
+
+      // Force-load chapter 5 first.
+      await store.goToChapter(5);
+      expect(store.currentChapterIndex, 5);
+
+      // Chapter 6 should still resolve as TOC "Content".
+      await store.goToChapter(6);
+      expect(store.currentChapterIndex, 6);
+      expect(store.currentPageIndex, 0);
+      expect(store.currentChapterTitle, 'Content');
+    },
+  );
+
+  test(
+    'interstitial image chapter before chapter one inherits content display title',
+    () async {
+      final progressRepo = _FakeProgressRepository();
+      final store = ReaderStore(progressRepository: progressRepo);
+
+      final chapters = [
+        _chapter(
+          index: 0,
+          title: 'Preface',
+          href: '/OPS/preface.xhtml',
+          text: 'p',
+        ),
+        _chapter(
+          index: 1,
+          title: 'Content',
+          href: '/OEBPS/xhtml/content.xhtml',
+          text: _longText(100),
+        ),
+        _chapter(
+          index: 2,
+          title: 'Chapter 5',
+          href: '/OEBPS/xhtml/interstitial-images.xhtml',
+          text: 'Image placeholder 1. Image placeholder 2.',
+        ),
+        _chapter(
+          index: 3,
+          title: 'Chapter 1',
+          href: '/OEBPS/xhtml/ch1.xhtml',
+          text: _longText(100),
+        ),
+      ];
+
+      final dataSource = _FakeChapterDataSource(
+        book: ParsedBook(
+          metadata: const BookMetadata(title: 'T', author: 'A'),
+          toc: const [
+            TocEntry(title: 'Content', href: 'xhtml/content.xhtml#toc'),
+            TocEntry(title: 'Chapter 1', href: 'xhtml/ch1.xhtml#start'),
+          ],
+          chapters: chapters,
+        ),
+        chapters: chapters,
+      );
+
+      await store.openBook(
+        book: _bookEntity(),
+        dataSource: dataSource,
+        viewportSize: const Size(320, 220),
+        safeAreaTop: 0,
+        safeAreaBottom: 0,
+      );
+
+      await store.goToChapter(3);
+      await _waitForChapter(store, 3);
+      expect(store.currentChapterTitle, 'Chapter 1');
+
+      // Back from chapter 1 first page lands on interstitial chapter index 2.
+      store.previousPage();
+      await _waitForChapter(store, 2);
+      expect(store.currentDisplayChapterIndex, 1);
+      expect(store.currentChapterTitle, 'Content');
+    },
+  );
 }

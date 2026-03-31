@@ -12,6 +12,7 @@ import '../../services/reader/layout/knuth_plass/width_cache.dart';
 import '../../services/reader/layout/reader_layout_engine.dart';
 import '../../services/reader/models/page_layout.dart';
 import '../../services/reader/models/parsed_chapter.dart';
+import '../../services/reader/reader_href_matcher.dart';
 import '../../services/reader/models/reader_preferences.dart';
 import 'page_navigation_strategy.dart';
 
@@ -54,6 +55,8 @@ class ReaderStore extends ChangeNotifier {
   /// pagination (e.g. a title-only spine item merged with its content item).
   /// These chapters are skipped during navigation.
   final Set<int> _absorbedChapters = {};
+  final Set<int> _tocChapterIndexes = {};
+  final Map<int, String> _tocTitleByChapterIndex = {};
 
   /// Cache: cacheKey → page count (lightweight, survives across page-count runs).
   final Map<int, int> _pageCountCache = {};
@@ -109,6 +112,8 @@ class ReaderStore extends ChangeNotifier {
   int get chapterCount => _bookData?.chapters.length ?? 0;
   List<TocEntry> get toc => _bookData?.toc ?? const [];
   bool get isDualPage => _isDualPage;
+  int get currentDisplayChapterIndex =>
+      _resolveDisplayChapterIndex(_currentChapterIndex);
 
   /// Resolve a human-readable chapter title for [index].
   ///
@@ -118,27 +123,30 @@ class ReaderStore extends ChangeNotifier {
     if (_bookData == null || index < 0 || index >= _bookData!.chapters.length) {
       return 'Chapter ${index + 1}';
     }
-    final chapter = _bookData!.chapters[index];
-    // Try matching TOC entry by href.
-    final chapterBase = chapter.href.split('#').first;
-    final tocTitle = _findTocTitle(_bookData!.toc, chapterBase);
+    final displayIndex = _resolveDisplayChapterIndex(index);
+    final tocTitle = _tocTitleByChapterIndex[displayIndex];
     if (tocTitle != null && tocTitle.isNotEmpty) return tocTitle;
+    final chapter = _bookData!.chapters[index];
     // Fall back to spine chapter title.
     if (chapter.title.isNotEmpty) return chapter.title;
     return 'Chapter ${index + 1}';
   }
 
-  /// Recursively search TOC tree for an entry whose href matches [baseHref].
-  String? _findTocTitle(List<TocEntry> entries, String baseHref) {
-    for (final entry in entries) {
-      if (entry.href.split('#').first == baseHref) return entry.title;
-      final child = _findTocTitle(entry.children, baseHref);
-      if (child != null) return child;
-    }
-    return null;
-  }
-
   String get currentChapterTitle => chapterTitleAt(_currentChapterIndex);
+
+  int _resolveDisplayChapterIndex(int index) {
+    if (_bookData == null || _bookData!.chapters.isEmpty) return index;
+    if (_tocTitleByChapterIndex.containsKey(index)) return index;
+
+    var nearestPrev = -1;
+    for (final tocIndex in _tocTitleByChapterIndex.keys) {
+      if (tocIndex <= index && tocIndex > nearestPrev) {
+        nearestPrev = tocIndex;
+      }
+    }
+    if (nearestPrev >= 0) return nearestPrev;
+    return index;
+  }
 
   /// Chapter title mapped from position-based percent.
   ///
@@ -396,6 +404,8 @@ class ReaderStore extends ChangeNotifier {
         : const SinglePageStrategy();
     _cache.clear();
     _absorbedChapters.clear();
+    _tocChapterIndexes.clear();
+    _tocTitleByChapterIndex.clear();
     _pageCountCache.clear();
     _widthCache = null;
     _paragraphPrepareCache = null;
@@ -410,6 +420,23 @@ class ReaderStore extends ChangeNotifier {
 
     try {
       _bookData = await dataSource.loadBook();
+      final hrefIndex = ReaderHrefIndex.fromChapters(_bookData!.chapters);
+      _tocChapterIndexes
+        ..clear()
+        ..addAll(
+          ReaderHrefIndex.collectTocChapterIndexes(
+            toc: _bookData!.toc,
+            hrefIndex: hrefIndex,
+          ),
+        );
+      _tocTitleByChapterIndex
+        ..clear()
+        ..addAll(
+          ReaderHrefIndex.collectTocTitlesByChapterIndex(
+            toc: _bookData!.toc,
+            hrefIndex: hrefIndex,
+          ),
+        );
       debugPrint(
         '[ReaderStore] loadBook: ${sw.elapsedMilliseconds}ms, chapters=${_bookData!.chapters.length}',
       );
@@ -443,6 +470,7 @@ class ReaderStore extends ChangeNotifier {
         '[ReaderStore] openBook done: ${sw.elapsedMilliseconds}ms, '
         'pages=${_currentPagination?.pages.length}',
       );
+      _debugChapterResolution('openBook');
 
       // Clamp page index to valid range after loading.
       if (_currentPagination != null &&
@@ -517,6 +545,7 @@ class ReaderStore extends ChangeNotifier {
 
     if (_currentPageIndex + step <= lastIdx) {
       _currentPageIndex += step;
+      _debugChapterResolution('nextPage');
       notifyListeners();
       _saveProgress();
       // Proactively prefetch the next chapter when approaching the end of
@@ -597,6 +626,7 @@ class ReaderStore extends ChangeNotifier {
     final step = _strategy.pageStep;
     if (_currentPageIndex >= step) {
       _currentPageIndex -= step;
+      _debugChapterResolution('previousPage');
       notifyListeners();
       _saveProgress();
     } else if (_currentChapterIndex > 0) {
@@ -641,6 +671,7 @@ class ReaderStore extends ChangeNotifier {
         );
       }
       _isLoading = false;
+      _debugChapterResolution('goToChapter(cache)');
       notifyListeners();
       _saveProgress();
       _prefetchAdjacentChapters(target);
@@ -666,6 +697,7 @@ class ReaderStore extends ChangeNotifier {
     }
 
     _isLoading = false;
+    _debugChapterResolution('goToChapter(load)');
     notifyListeners();
     _saveProgress();
   }
@@ -880,7 +912,12 @@ class ReaderStore extends ChangeNotifier {
       // Merge consecutive short chapters (e.g. title-only spine items) with
       // the following chapter so title and content paginate together.
       var mergeTarget = index + 1;
+      final isTocTargetChapter = _tocChapterIndexes.contains(index);
       while (mergeTarget < chapterCount && !_absorbedChapters.contains(index)) {
+        // Keep TOC-addressable chapters stable so TOC jumps remain deterministic.
+        if (isTocTargetChapter || _tocChapterIndexes.contains(mergeTarget)) {
+          break;
+        }
         // Quick paginate to check page count.
         final testPagination = await _engine.paginateAsync(
           chapterIndex: index,
@@ -1002,6 +1039,22 @@ class ReaderStore extends ChangeNotifier {
       i--;
     }
     return i >= 0 ? i : null;
+  }
+
+  void _debugChapterResolution(String reason) {
+    if (_bookData == null ||
+        _currentChapterIndex < 0 ||
+        _currentChapterIndex >= _bookData!.chapters.length) {
+      return;
+    }
+    final resolved = _resolveDisplayChapterIndex(_currentChapterIndex);
+    final chapter = _bookData!.chapters[_currentChapterIndex];
+    final resolvedTitle = _tocTitleByChapterIndex[resolved] ?? '';
+    debugPrint(
+      '[ReaderStore] $reason chapter=$_currentChapterIndex '
+      'displayChapter=$resolved href=${chapter.href} '
+      'rawTitle="${chapter.title}" displayTitle="$resolvedTitle"',
+    );
   }
 
   /// Pages of the next non-absorbed chapter from cache, or null.

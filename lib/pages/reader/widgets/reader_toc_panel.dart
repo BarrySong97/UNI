@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../services/reader/models/parsed_chapter.dart';
+import '../../../services/reader/reader_href_matcher.dart';
 import '../../../services/reader/models/reader_preferences.dart';
 
 /// Inline panel showing the Table of Contents.
@@ -46,23 +47,15 @@ class _ReaderTocPanelState extends State<ReaderTocPanel> {
     }
   }
 
-  /// Build a mapping from base href (without fragment) to spine index.
-  Map<String, int> _buildHrefToSpineIndex() {
-    final map = <String, int>{};
-    for (final chapter in widget.chapters) {
-      if (chapter.href.isNotEmpty) {
-        final baseHref = chapter.href.split('#').first;
-        map.putIfAbsent(baseHref, () => chapter.index);
-      }
-    }
-    return map;
+  /// Build an href matcher for TOC-entry -> spine-index resolution.
+  ReaderHrefIndex _buildHrefToSpineIndex() {
+    return ReaderHrefIndex.fromChapters(widget.chapters);
   }
 
   /// Resolve a TOC entry's href to a spine index.
-  int? _resolveSpineIndex(String tocHref, Map<String, int> hrefMap) {
+  int? _resolveSpineIndex(String tocHref, ReaderHrefIndex hrefIndex) {
     if (tocHref.isEmpty) return null;
-    final baseHref = tocHref.split('#').first;
-    return hrefMap[baseHref];
+    return hrefIndex.resolve(tocHref);
   }
 
   @override
@@ -78,8 +71,7 @@ class _ReaderTocPanelState extends State<ReaderTocPanel> {
         children: [
           // Title.
           Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Text(
               'Table of Contents',
               style: TextStyle(
@@ -111,7 +103,7 @@ class _ReaderTocPanelState extends State<ReaderTocPanel> {
     TocEntry entry,
     int depth,
     Color textColor,
-    Map<String, int> hrefMap,
+    ReaderHrefIndex hrefMap,
   ) {
     final spineIndex = _resolveSpineIndex(entry.href, hrefMap);
     final isCurrent =
@@ -141,8 +133,8 @@ class _ReaderTocPanelState extends State<ReaderTocPanel> {
                       color: isCurrent
                           ? Colors.blue
                           : spineIndex != null
-                              ? textColor
-                              : textColor.withValues(alpha: 0.4),
+                          ? textColor
+                          : textColor.withValues(alpha: 0.4),
                       fontSize: 15,
                       fontWeight: isCurrent
                           ? FontWeight.w600

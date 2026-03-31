@@ -1039,7 +1039,7 @@ class _ReaderPageState extends State<ReaderPage>
                   },
                   toc: _store.toc,
                   chapters: _store.bookData?.chapters ?? const [],
-                  currentChapterIndex: _store.currentChapterIndex,
+                  currentChapterIndex: _store.currentDisplayChapterIndex,
                   chapterTitleForPercent: _store.chapterTitleAtPositionPercent,
                   onChapterSelected: (index) => _store.goToChapter(index),
                   onPercentChanged: (percent) =>
