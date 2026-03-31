@@ -6,6 +6,7 @@ import '../../services/tts/tts_voice_catalog.dart';
 import '../../shared/constants/common-design-tokens.dart';
 import '../../shared/constants/form-design-tokens.dart';
 import '../../shared/constants/settings-design-tokens.dart';
+import '../../shared/layout/responsive_layout.dart';
 
 class AiSettingsPage extends StatefulWidget {
   const AiSettingsPage({
@@ -94,13 +95,14 @@ class _AiSettingsPageState extends State<AiSettingsPage> {
           ),
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // CONNECTION section
-            const _SectionLabel(label: 'CONNECTION'),
+      body: ResponsiveContentWrapper(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // CONNECTION section
+              const _SectionLabel(label: 'CONNECTION'),
             const SizedBox(height: 12),
             _buildCard(
               children: [
@@ -193,6 +195,7 @@ class _AiSettingsPageState extends State<AiSettingsPage> {
             ),
             const SizedBox(height: 24),
           ],
+          ),
         ),
       ),
     );

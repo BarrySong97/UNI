@@ -7,6 +7,7 @@ import '../../services/tts/tts_voice_catalog.dart';
 import '../../shared/constants/common-design-tokens.dart';
 import '../../shared/constants/form-design-tokens.dart';
 import '../../shared/constants/settings-design-tokens.dart';
+import '../../shared/layout/responsive_layout.dart';
 
 class TtsSettingsPage extends StatefulWidget {
   const TtsSettingsPage({super.key, required this.ttsService});
@@ -133,9 +134,10 @@ class _TtsSettingsPageState extends State<TtsSettingsPage> {
           ),
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Column(
+      body: ResponsiveContentWrapper(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // LANGUAGES section
@@ -219,6 +221,7 @@ class _TtsSettingsPageState extends State<TtsSettingsPage> {
             ),
             const SizedBox(height: 24),
           ],
+          ),
         ),
       ),
     );

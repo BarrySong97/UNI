@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../shared/constants/common-design-tokens.dart';
+import '../../shared/layout/responsive_layout.dart';
 
 class HelpFaqPage extends StatelessWidget {
   const HelpFaqPage({super.key});
@@ -54,11 +55,12 @@ class HelpFaqPage extends StatelessWidget {
         ),
         centerTitle: true,
       ),
-      body: ListView.separated(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-        itemCount: _entries.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 12),
-        itemBuilder: (context, index) {
+      body: ResponsiveContentWrapper(
+        child: ListView.separated(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+          itemCount: _entries.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 12),
+          itemBuilder: (context, index) {
           final entry = _entries[index];
           return Container(
             decoration: BoxDecoration(
@@ -104,6 +106,7 @@ class HelpFaqPage extends StatelessWidget {
             ),
           );
         },
+        ),
       ),
     );
   }
