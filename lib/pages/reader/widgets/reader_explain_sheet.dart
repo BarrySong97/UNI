@@ -201,7 +201,21 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
       }
     }
 
-    return fullText.substring(sentenceStart, sentenceEnd).trim();
+    var result = fullText.substring(sentenceStart, sentenceEnd).trim();
+
+    // Safety net: if the extracted "sentence" is unreasonably long (no
+    // punctuation boundary found), truncate to a window around the target.
+    if (result.length > 300) {
+      final targetInResult = result.indexOf(target);
+      if (targetInResult >= 0) {
+        final windowStart = (targetInResult - 100).clamp(0, result.length);
+        final windowEnd =
+            (targetInResult + target.length + 100).clamp(0, result.length);
+        result = result.substring(windowStart, windowEnd).trim();
+      }
+    }
+
+    return result;
   }
 
   @override

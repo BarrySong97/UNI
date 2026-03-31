@@ -142,6 +142,47 @@ PageSelection? expandToWord(PageLayout page, PagePosition position) {
   );
 }
 
+/// Snap a hit position to the nearest word boundary.
+///
+/// [isForward] indicates whether the moving end is after the anchor in book
+/// order. When true, snaps to the END of the word at [movingPos]; when false,
+/// snaps to the START. The caller must determine direction using full
+/// [BookPosition] comparison so that cross-page selections are handled
+/// correctly.
+PagePosition snapToWordBoundary(
+  PageLayout page,
+  PagePosition movingPos, {
+  required bool isForward,
+}) {
+  final el = page.elements[movingPos.elementIndex];
+  final painter = el.ensurePainter();
+  if (painter == null) return movingPos;
+
+  final text = _extractPainterText(painter);
+  if (text.isEmpty) return movingPos;
+
+  final offset = movingPos.charOffset.clamp(0, text.length);
+
+  if (isForward) {
+    // Snap to end of word.
+    var end = offset;
+    while (end < text.length && _isWordChar(text[end])) {
+      end++;
+    }
+    return PagePosition(elementIndex: movingPos.elementIndex, charOffset: end);
+  } else {
+    // Snap to start of word.
+    var start = offset;
+    while (start > 0 && _isWordChar(text[start - 1])) {
+      start--;
+    }
+    return PagePosition(
+      elementIndex: movingPos.elementIndex,
+      charOffset: start,
+    );
+  }
+}
+
 bool _isWordChar(String ch) {
   // Letters, digits, CJK characters.
   final code = ch.codeUnitAt(0);

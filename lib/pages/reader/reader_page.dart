@@ -163,6 +163,7 @@ class _ReaderPageState extends State<ReaderPage>
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:
         unawaited(_readingTimeTracker.onAppBackground());
+        unawaited(_store.flushProgress());
         break;
     }
   }
@@ -433,8 +434,18 @@ class _ReaderPageState extends State<ReaderPage>
     final hit = hitTestPage(page, contentOffset);
     if (hit == null) return;
 
-    final movingPos = BookPosition.fromPagePosition(
+    // Snap to word boundary for word-granularity selection.
+    // Build a temporary BookPosition to determine direction in book order.
+    final movingBook = BookPosition.fromPagePosition(
       hit,
+      chapterIndex: page.chapterIndex,
+      pageIndexInChapter: page.pageIndexInChapter,
+    );
+    final isForward = movingBook.compareTo(_selectionAnchor!) >= 0;
+    final snapped = snapToWordBoundary(page, hit, isForward: isForward);
+
+    final movingPos = BookPosition.fromPagePosition(
+      snapped,
       chapterIndex: page.chapterIndex,
       pageIndexInChapter: page.pageIndexInChapter,
     );
@@ -494,8 +505,17 @@ class _ReaderPageState extends State<ReaderPage>
     }
 
     // --- Normal update ---
-    final movingPos = BookPosition.fromPagePosition(
+    // Snap to word boundary for word-granularity selection.
+    final movingBook = BookPosition.fromPagePosition(
       hit,
+      chapterIndex: page.chapterIndex,
+      pageIndexInChapter: page.pageIndexInChapter,
+    );
+    final isForward = movingBook.compareTo(_selectionAnchor!) >= 0;
+    final snapped = snapToWordBoundary(page, hit, isForward: isForward);
+
+    final movingPos = BookPosition.fromPagePosition(
+      snapped,
       chapterIndex: page.chapterIndex,
       pageIndexInChapter: page.pageIndexInChapter,
     );

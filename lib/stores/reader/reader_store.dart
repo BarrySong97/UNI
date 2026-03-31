@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/widgets.dart';
@@ -59,6 +60,13 @@ class ReaderStore extends ChangeNotifier {
   /// Shared width cache across chapters — avoids re-measuring common words.
   /// Cleared when layout-affecting preferences change.
   WidthCache? _widthCache;
+
+  // ---------------------------------------------------------------------------
+  // Progress save throttle — at most one DB write per [_saveInterval].
+  // ---------------------------------------------------------------------------
+  Timer? _progressSaveTimer;
+  bool _progressDirty = false;
+  static const _saveInterval = Duration(seconds: 5);
 
   /// Per-chapter page counts for whole-book pagination (null = not yet computed).
   List<int?> _chapterPageCounts = [];
@@ -1193,8 +1201,24 @@ class ReaderStore extends ChangeNotifier {
     });
   }
 
-  Future<void> _saveProgress() async {
-    if (_book == null) return;
+  /// Mark progress dirty and schedule a throttled DB write.
+  ///
+  /// At most one actual write happens per [_saveInterval]. On [dispose] the
+  /// latest state is flushed so no progress is lost.
+  void _saveProgress() {
+    _progressDirty = true;
+    if (_progressSaveTimer?.isActive ?? false) return;
+    _progressSaveTimer = Timer(_saveInterval, flushProgress);
+  }
+
+  /// Flush any pending throttled progress write immediately.
+  ///
+  /// Called on app background and dispose to avoid losing recent position.
+  Future<void> flushProgress() async {
+    _progressSaveTimer?.cancel();
+    _progressSaveTimer = null;
+    if (!_progressDirty || _book == null) return;
+    _progressDirty = false;
 
     final locator = jsonEncode({
       'chapterIndex': _currentChapterIndex,
@@ -1211,5 +1235,11 @@ class ReaderStore extends ChangeNotifier {
         pageCountsJson: _persistedPageCountsJson,
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    flushProgress();
+    super.dispose();
   }
 }
