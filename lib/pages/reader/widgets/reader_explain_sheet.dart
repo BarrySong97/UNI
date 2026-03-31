@@ -88,7 +88,7 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
   PhoneticsResult? _phonetics;
   String? _playingAccent;
 
-  static final _sentenceEndPattern = RegExp(r'[.!?。！？]');
+  static final _sentenceEndPattern = RegExp(r'[.!?。！？\n]');
 
   @override
   void initState() {

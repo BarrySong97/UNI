@@ -377,7 +377,7 @@ String extractFullPageText(PageLayout page) {
     if (painter == null) continue;
     final text = _extractPainterText(painter);
     if (text.isNotEmpty) {
-      if (buffer.isNotEmpty) buffer.write(' ');
+      if (buffer.isNotEmpty) buffer.write('\n');
       buffer.write(text);
     }
   }
