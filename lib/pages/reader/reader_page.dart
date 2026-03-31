@@ -1287,7 +1287,10 @@ class _ReaderPageState extends State<ReaderPage>
     }
     if (_dragOffset != 0.0) {
       adjLeft ??= _snapCurrentLeft ?? leftPage;
-      adjRight ??= _snapCurrentRight;
+      // adjRight intentionally NOT fallback-filled: null means the adjacent
+      // spread has no right page (e.g. last spread of an odd-page chapter).
+      // buildPagePaint(null) renders the theme background color, which is
+      // the correct visual for an empty right page.
     }
 
     const handleColor = Color(0xFF3B82F6);

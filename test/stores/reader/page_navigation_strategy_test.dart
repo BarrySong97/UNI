@@ -370,5 +370,65 @@ void main() {
         isNull,
       );
     });
+
+    // -- Regression: odd-page chapter last spread must have null right page --
+
+    test(
+        'prevPreviewRight returns null for 5-page prev chapter (odd, regression)',
+        () {
+      // Chapter A has 5 pages: last spread is [page 4 | EMPTY].
+      // Swiping backward from chapter B page 0 must NOT fill the right side.
+      final pages = [_page(1, 0), _page(1, 1)];
+      final prevCh = List.generate(5, (i) => _page(0, i));
+
+      // Left page of prev spread: page 4 (even index).
+      expect(
+        strategy.prevPreviewLeft(
+          pages: pages,
+          currentIndex: 0,
+          prevChapterPages: () => prevCh,
+        ),
+        same(prevCh[4]),
+      );
+
+      // Right page of prev spread: null (lastIdx=4 is even → no right page).
+      expect(
+        strategy.prevPreviewRight(
+          pages: pages,
+          currentIndex: 0,
+          prevChapterPages: () => prevCh,
+        ),
+        isNull,
+      );
+    });
+
+    test(
+        'nextPreviewRight returns null for within-chapter last odd spread (regression)',
+        () {
+      // Chapter has 5 pages. At spread [0,1], next spread is [2, null? no,
+      // 3 exists], next-next is [4, null].
+      // At spread [2,3], next spread is [4, null].
+      final pages = List.generate(5, (i) => _page(0, i));
+
+      // At spread [2,3]: nextPreviewRight should be null (no page 5).
+      expect(
+        strategy.nextPreviewRight(
+          pages: pages,
+          currentIndex: 2,
+          nextChapterPages: () => null,
+        ),
+        isNull,
+      );
+
+      // At spread [2,3]: nextPreviewLeft should be page 4.
+      expect(
+        strategy.nextPreviewLeft(
+          pages: pages,
+          currentIndex: 2,
+          nextChapterPages: () => null,
+        ),
+        same(pages[4]),
+      );
+    });
   });
 }
