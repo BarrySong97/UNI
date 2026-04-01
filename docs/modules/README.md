@@ -9,6 +9,7 @@
 - [import](./import.md)
 - [shell-navigation](./shell-navigation.md)
 - [onboarding](./onboarding.md)
+- [release-packaging](./release-packaging.md)
 
 ## 阅读顺序建议
 1. `shell-navigation`
