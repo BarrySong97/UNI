@@ -13,6 +13,7 @@ class AiLanguageConfig {
     this.detail = ExplanationDetail.balanced,
     this.explanationLanguage = '',
     this.customPrompt = '',
+    this.customPromptModeEnabled = false,
   });
 
   final String model;
@@ -24,12 +25,17 @@ class AiLanguageConfig {
   /// Custom prompt template. Empty = use default.
   final String customPrompt;
 
+  /// When true, explanation uses user-defined prompt + free-form markdown.
+  /// When false, reader explain uses built-in structured UI format.
+  final bool customPromptModeEnabled;
+
   Map<String, dynamic> toJson() => {
-        'model': model,
-        'detail': detail.name,
-        'explanationLanguage': explanationLanguage,
-        'customPrompt': customPrompt,
-      };
+    'model': model,
+    'detail': detail.name,
+    'explanationLanguage': explanationLanguage,
+    'customPrompt': customPrompt,
+    'customPromptModeEnabled': customPromptModeEnabled,
+  };
 
   factory AiLanguageConfig.fromJson(Map<String, dynamic> json) {
     return AiLanguageConfig(
@@ -40,6 +46,8 @@ class AiLanguageConfig {
       ),
       explanationLanguage: json['explanationLanguage'] as String? ?? '',
       customPrompt: json['customPrompt'] as String? ?? '',
+      customPromptModeEnabled:
+          json['customPromptModeEnabled'] as bool? ?? false,
     );
   }
 
@@ -48,12 +56,15 @@ class AiLanguageConfig {
     ExplanationDetail? detail,
     String? explanationLanguage,
     String? customPrompt,
+    bool? customPromptModeEnabled,
   }) {
     return AiLanguageConfig(
       model: model ?? this.model,
       detail: detail ?? this.detail,
       explanationLanguage: explanationLanguage ?? this.explanationLanguage,
       customPrompt: customPrompt ?? this.customPrompt,
+      customPromptModeEnabled:
+          customPromptModeEnabled ?? this.customPromptModeEnabled,
     );
   }
 }

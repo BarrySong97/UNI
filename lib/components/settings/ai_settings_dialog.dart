@@ -120,98 +120,98 @@ class _AiSettingsPageState extends State<AiSettingsPage> {
             children: [
               // CONNECTION section
               const _SectionLabel(label: 'CONNECTION'),
-            const SizedBox(height: 12),
-            _buildCard(
-              children: [
-                _buildFieldRow(
-                  icon: Icons.link_outlined,
-                  label: 'Base URL',
-                  controller: _baseUrlController,
-                  hintText: 'https://api.openai.com/v1',
-                  keyboardType: TextInputType.url,
-                ),
-                _buildDivider(),
-                _buildFieldRow(
-                  icon: Icons.key_outlined,
-                  label: 'API Key',
-                  controller: _apiKeyController,
-                  hintText: 'sk-...',
-                  obscureText: _obscureApiKey,
-                  trailing: GestureDetector(
-                    onTap: () =>
-                        setState(() => _obscureApiKey = !_obscureApiKey),
-                    child: Icon(
-                      _obscureApiKey
-                          ? Icons.visibility_off_outlined
-                          : Icons.visibility_outlined,
-                      size: 20,
-                      color: CommonDesignTokens.textSecondary,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 28),
-
-            // LANGUAGES section
-            const _SectionLabel(label: 'LANGUAGES'),
-            const SizedBox(height: 12),
-            if (configuredLanguages.isEmpty)
+              const SizedBox(height: 12),
               _buildCard(
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 20,
-                    ),
-                    child: Text(
-                      'Configure languages in TTS settings first.',
-                      style: TextStyle(
-                        fontSize: FormDesignTokens.fieldLabelSize,
-                        color: CommonDesignTokens.textSecondary.withValues(
-                          alpha: 0.6,
-                        ),
+                  _buildFieldRow(
+                    icon: Icons.link_outlined,
+                    label: 'Base URL',
+                    controller: _baseUrlController,
+                    hintText: 'https://api.openai.com/v1',
+                    keyboardType: TextInputType.url,
+                  ),
+                  _buildDivider(),
+                  _buildFieldRow(
+                    icon: Icons.key_outlined,
+                    label: 'API Key',
+                    controller: _apiKeyController,
+                    hintText: 'sk-...',
+                    obscureText: _obscureApiKey,
+                    trailing: GestureDetector(
+                      onTap: () =>
+                          setState(() => _obscureApiKey = !_obscureApiKey),
+                      child: Icon(
+                        _obscureApiKey
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                        size: 20,
+                        color: CommonDesignTokens.textSecondary,
                       ),
-                      textAlign: TextAlign.center,
                     ),
                   ),
                 ],
-              )
-            else
-              _buildCard(
-                children: [
-                  for (int i = 0; i < configuredLanguages.length; i++) ...[
-                    if (i > 0) _buildDivider(),
-                    _buildLanguageRow(configuredLanguages[i]),
-                  ],
-                ],
               ),
-            const SizedBox(height: 32),
+              const SizedBox(height: 28),
 
-            // Save button (saves global connection settings)
-            SizedBox(
-              width: double.infinity,
-              height: FormDesignTokens.buttonHeight,
-              child: FilledButton(
-                onPressed: _save,
-                style: FilledButton.styleFrom(
-                  backgroundColor: FormDesignTokens.buttonBg,
-                  foregroundColor: FormDesignTokens.buttonText,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      CommonDesignTokens.cardRadius,
+              // LANGUAGES section
+              const _SectionLabel(label: 'LANGUAGES'),
+              const SizedBox(height: 12),
+              if (configuredLanguages.isEmpty)
+                _buildCard(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 20,
+                      ),
+                      child: Text(
+                        'Configure languages in TTS settings first.',
+                        style: TextStyle(
+                          fontSize: FormDesignTokens.fieldLabelSize,
+                          color: CommonDesignTokens.textSecondary.withValues(
+                            alpha: 0.6,
+                          ),
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ],
+                )
+              else
+                _buildCard(
+                  children: [
+                    for (int i = 0; i < configuredLanguages.length; i++) ...[
+                      if (i > 0) _buildDivider(),
+                      _buildLanguageRow(configuredLanguages[i]),
+                    ],
+                  ],
+                ),
+              const SizedBox(height: 32),
+
+              // Save button (saves global connection settings)
+              SizedBox(
+                width: double.infinity,
+                height: FormDesignTokens.buttonHeight,
+                child: FilledButton(
+                  onPressed: _save,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: FormDesignTokens.buttonBg,
+                    foregroundColor: FormDesignTokens.buttonText,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(
+                        CommonDesignTokens.cardRadius,
+                      ),
+                    ),
+                    textStyle: const TextStyle(
+                      fontSize: FormDesignTokens.buttonFontSize,
+                      fontWeight: FormDesignTokens.buttonFontWeight,
                     ),
                   ),
-                  textStyle: const TextStyle(
-                    fontSize: FormDesignTokens.buttonFontSize,
-                    fontWeight: FormDesignTokens.buttonFontWeight,
-                  ),
+                  child: const Text('Save'),
                 ),
-                child: const Text('Save'),
               ),
-            ),
-            const SizedBox(height: 24),
-          ],
+              const SizedBox(height: 24),
+            ],
           ),
         ),
       ),
@@ -303,6 +303,7 @@ class _AiSettingsPageState extends State<AiSettingsPage> {
 
   String _configSummary(AiLanguageConfig config) {
     final parts = <String>[config.model];
+    parts.add(config.customPromptModeEnabled ? 'Custom Prompt' : 'Structured');
     parts.add(_detailLabel(config.detail));
     if (config.explanationLanguage.isNotEmpty) {
       parts.add(config.explanationLanguage);
@@ -493,6 +494,7 @@ class _AiLanguageConfigSheetState extends State<_AiLanguageConfigSheet> {
   late final TextEditingController _modelController;
   late final TextEditingController _promptController;
   late ExplanationDetail _detail;
+  late bool _customPromptModeEnabled;
 
   @override
   void initState() {
@@ -500,6 +502,7 @@ class _AiLanguageConfigSheetState extends State<_AiLanguageConfigSheet> {
     _modelController = TextEditingController(text: widget.config.model);
     _promptController = TextEditingController(text: widget.config.customPrompt);
     _detail = widget.config.detail;
+    _customPromptModeEnabled = widget.config.customPromptModeEnabled;
   }
 
   @override
@@ -581,6 +584,41 @@ class _AiLanguageConfigSheetState extends State<_AiLanguageConfigSheet> {
                   ),
                   const SizedBox(height: 24),
 
+                  const _SectionLabel(label: 'EXPLAIN MODE'),
+                  const SizedBox(height: 8),
+                  _buildCard(
+                    children: [
+                      SwitchListTile.adaptive(
+                        title: const Text(
+                          'Enable custom prompt mode',
+                          style: TextStyle(
+                            fontSize: FormDesignTokens.fieldLabelSize,
+                            fontWeight: FontWeight.w600,
+                            color: CommonDesignTokens.textPrimary,
+                          ),
+                        ),
+                        subtitle: Text(
+                          _customPromptModeEnabled
+                              ? 'Reader will render free-form markdown from your prompt.'
+                              : 'Reader will use built-in structured explain cards.',
+                          style: const TextStyle(
+                            fontSize: FormDesignTokens.helperSize,
+                            color: CommonDesignTokens.textSecondary,
+                            height: FormDesignTokens.helperLineHeight,
+                          ),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                        ),
+                        value: _customPromptModeEnabled,
+                        onChanged: (value) {
+                          setState(() => _customPromptModeEnabled = value);
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+
                   // CUSTOM PROMPT section
                   const _SectionLabel(label: 'CUSTOM PROMPT'),
                   const SizedBox(height: 8),
@@ -597,6 +635,7 @@ class _AiLanguageConfigSheetState extends State<_AiLanguageConfigSheet> {
                     child: TextField(
                       controller: _promptController,
                       maxLines: FormDesignTokens.textareaMaxLines,
+                      enabled: _customPromptModeEnabled,
                       textAlignVertical: TextAlignVertical.top,
                       style: const TextStyle(
                         fontSize: FormDesignTokens.textareaSize,
@@ -604,7 +643,9 @@ class _AiLanguageConfigSheetState extends State<_AiLanguageConfigSheet> {
                         height: FormDesignTokens.textareaLineHeight,
                       ),
                       decoration: InputDecoration(
-                        hintText: 'Leave empty to use default prompt...',
+                        hintText: _customPromptModeEnabled
+                            ? 'Leave empty to use default prompt...'
+                            : 'Enable custom prompt mode to edit.',
                         hintStyle: TextStyle(
                           fontSize: FormDesignTokens.textareaSize,
                           color: CommonDesignTokens.textSecondary.withValues(
@@ -623,7 +664,7 @@ class _AiLanguageConfigSheetState extends State<_AiLanguageConfigSheet> {
                     ),
                     child: Text(
                       'Use {bookTitle}, {selectedText}, and {context} as '
-                      'placeholders. Leave empty to use the default template.',
+                      'placeholders. This takes effect only when custom prompt mode is enabled.',
                       style: TextStyle(
                         fontSize: FormDesignTokens.helperSize,
                         color: CommonDesignTokens.textSecondary,
@@ -820,6 +861,7 @@ class _AiLanguageConfigSheetState extends State<_AiLanguageConfigSheet> {
           : _modelController.text.trim(),
       detail: _detail,
       customPrompt: _promptController.text.trim(),
+      customPromptModeEnabled: _customPromptModeEnabled,
     );
     widget.onSave(config);
   }
@@ -827,9 +869,7 @@ class _AiLanguageConfigSheetState extends State<_AiLanguageConfigSheet> {
   void _showTestSheet() {
     if (!widget.aiSettings.isConfigured) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please configure your API key first.'),
-        ),
+        const SnackBar(content: Text('Please configure your API key first.')),
       );
       return;
     }

@@ -3,12 +3,17 @@
 ## Purpose
 
 Settings page providing user account info, AI configuration, and app information links.
+Includes per-language AI explain behavior controls used by Reader.
 
 ## Boundary
 
 ### In Scope
 - Account display (avatar, name, membership info)
 - AI settings rows (Explanation Detail, Explanation Language, API Key)
+- Per-language AI explain mode toggle:
+  - Structured mode (default): Reader uses built-in explain cards.
+  - Custom prompt mode: Reader renders free-form markdown generated from user prompt.
+- Per-language custom prompt template editing with placeholders
 - About section links (Feedback, Email, Social Media, Help, FAQ)
 
 ### Out of Scope
@@ -26,6 +31,12 @@ Settings page providing user account info, AI configuration, and app information
 
 - Currently UI-only with hardcoded mock data
 - No state management required at this stage
+- `AiLanguageConfig` persistence in `SharedPreferences`:
+  - `model`
+  - `detail`
+  - `explanationLanguage`
+  - `customPrompt`
+  - `customPromptModeEnabled`
 
 ## Interaction & Exceptions
 
@@ -52,6 +63,8 @@ Settings page providing user account info, AI configuration, and app information
 - [ ] Settings tab shows header with "IMMERSED" + "Settings" + avatar
 - [ ] ACCOUNT section displays card with avatar circle, name, subtitle, edit icon
 - [ ] AI section shows 3 rows with icons, labels, values, and chevrons
+- [ ] AI language config supports switching between structured mode and custom prompt mode
+- [ ] Custom prompt is only editable/effective when custom prompt mode is enabled
 - [ ] ABOUT section shows 5 rows with icons, labels, and chevrons
 - [ ] Visual style matches shelf/library page patterns (colors, spacing, typography)
 - [ ] `flutter analyze` passes with no errors

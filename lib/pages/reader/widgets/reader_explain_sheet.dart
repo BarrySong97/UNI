@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 
@@ -92,6 +94,8 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
 
   late final bool _isWordOrPhrase;
   late final String _containingSentence;
+  late final bool _customPromptModeEnabled;
+  _StructuredExplainData? _structuredData;
 
   // Phonetics state (word mode only).
   PhoneticsResult? _phonetics;
@@ -114,31 +118,47 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
         ? '${selectedText.substring(0, 4000)}\n(text truncated)'
         : selectedText;
 
-    _isWordOrPhrase = selectedText.length <= 80 &&
+    _isWordOrPhrase =
+        selectedText.length <= 80 &&
         !_sentenceEndPattern.hasMatch(selectedText);
 
     _containingSentence = _isWordOrPhrase
         ? _extractContainingSentence(widget.paragraphContext, selectedText)
         : '';
 
-    final surroundingContext =
-        _isWordOrPhrase ? _containingSentence : widget.pageContext;
+    final surroundingContext = _isWordOrPhrase
+        ? _containingSentence
+        : widget.pageContext;
 
     final config = widget.languageConfig;
-    final promptTemplate = config.customPrompt.isNotEmpty
-        ? config.customPrompt
-        : AiSettingsService.defaultPrompt;
-    final basePrompt = promptTemplate
-        .replaceAll('{bookTitle}', widget.bookTitle)
-        .replaceAll('{selectedText}', text)
-        .replaceAll('{context}', surroundingContext);
-
+    _customPromptModeEnabled = config.customPromptModeEnabled;
     final detailLine = AiSettingsService.detailInstruction(config.detail);
     final langLine = AiSettingsService.languageInstruction(
       config.explanationLanguage,
     );
-    final systemPrompt = '$basePrompt\n\n$detailLine'
+
+    final promptTemplate =
+        _customPromptModeEnabled && config.customPrompt.isNotEmpty
+        ? config.customPrompt
+        : AiSettingsService.defaultPrompt;
+    final defaultPrompt = promptTemplate
+        .replaceAll('{bookTitle}', widget.bookTitle)
+        .replaceAll('{selectedText}', text)
+        .replaceAll('{context}', surroundingContext);
+
+    final structuredPrompt = _buildStructuredPrompt(
+      bookTitle: widget.bookTitle,
+      selectedText: text,
+      context: surroundingContext,
+      detailLine: detailLine,
+      languageLine: langLine,
+    );
+    final customPromptSystem =
+        '$defaultPrompt\n\n$detailLine'
         '${langLine.isNotEmpty ? '\n$langLine' : ''}';
+    final systemPrompt = _customPromptModeEnabled
+        ? customPromptSystem
+        : structuredPrompt;
 
     _aiService = ExplainAiService(
       settings: widget.aiSettings,
@@ -158,8 +178,7 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
 
   Future<void> _lookupPhonetics() async {
     try {
-      final result =
-          await widget.phoneticsService.lookup(widget.selectedText);
+      final result = await widget.phoneticsService.lookup(widget.selectedText);
       if (mounted) setState(() => _phonetics = result);
     } catch (_) {}
   }
@@ -218,13 +237,44 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
       final targetInResult = result.indexOf(target);
       if (targetInResult >= 0) {
         final windowStart = (targetInResult - 100).clamp(0, result.length);
-        final windowEnd =
-            (targetInResult + target.length + 100).clamp(0, result.length);
+        final windowEnd = (targetInResult + target.length + 100).clamp(
+          0,
+          result.length,
+        );
         result = result.substring(windowStart, windowEnd).trim();
       }
     }
 
     return result;
+  }
+
+  String _buildStructuredPrompt({
+    required String bookTitle,
+    required String selectedText,
+    required String context,
+    required String detailLine,
+    required String languageLine,
+  }) {
+    final languageInstruction = languageLine.isNotEmpty
+        ? '\n- $languageLine'
+        : '';
+    return 'You are a reading assistant for "$bookTitle".\n'
+        'The user selected text: "$selectedText"\n'
+        'Context:\n---\n$context\n---\n\n'
+        'Goal: help the reader quickly understand the selected text in context.\n'
+        'Return ONLY a JSON object (no markdown, no code fence, no extra text) '
+        'with this exact schema:\n'
+        '{\n'
+        '  "meaningExplain": "string",\n'
+        '  "detailExplain": ["string", "string"]\n'
+        '}\n\n'
+        'Constraints:\n'
+        '- Keep each string concise and practical.\n'
+        '- Focus on this exact context, not generic dictionary entries.\n'
+        '- Use plain language for intermediate English learners.\n'
+        '- Keep detailExplain to 2-3 short bullets.\n'
+        '- $detailLine'
+        '$languageInstruction';
   }
 
   @override
@@ -241,6 +291,7 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
       _isStreaming = true;
       _error = null;
       _aiResponse = '';
+      _structuredData = null;
     });
 
     try {
@@ -253,6 +304,9 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
       if (cached != null && mounted) {
         setState(() {
           _aiResponse = cached;
+          _structuredData = _customPromptModeEnabled
+              ? null
+              : _StructuredExplainData.tryParse(cached);
           _isStreaming = false;
         });
         return;
@@ -269,20 +323,25 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
       _isStreaming = true;
       _error = null;
       _aiResponse = '';
+      _structuredData = null;
     });
     await _fetchFromAi();
   }
 
   Future<void> _fetchFromAi() async {
     try {
-      await for (final chunk
-          in _aiService.sendMessage('Explain this passage')) {
+      await for (final chunk in _aiService.sendMessage(
+        'Explain this passage',
+      )) {
         if (!mounted) return;
         setState(() {
           _aiResponse += chunk;
         });
-        _scrollToBottom();
+        if (_customPromptModeEnabled) _scrollToBottom();
       }
+      final parsed = _customPromptModeEnabled
+          ? null
+          : _StructuredExplainData.tryParse(_aiResponse);
       // Save to cache after successful completion.
       if (_aiResponse.isNotEmpty) {
         widget.database.upsertExplainCache(
@@ -293,6 +352,10 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
           response: _aiResponse,
         );
       }
+      if (!mounted) return;
+      setState(() {
+        _structuredData = parsed;
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -342,18 +405,14 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
           // Header: word + sentence, or text preview
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: _isWordOrPhrase
-                ? _buildWordHeader()
-                : _buildTextPreview(),
+            child: _isWordOrPhrase ? _buildWordHeader() : _buildTextPreview(),
           ),
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 16),
             child: Divider(height: 24),
           ),
           // AI response
-          Expanded(
-            child: _buildResponseArea(),
-          ),
+          Expanded(child: _buildResponseArea()),
           // Error
           if (_error != null)
             Padding(
@@ -412,11 +471,7 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
         ],
         if (_containingSentence.isNotEmpty) ...[
           const SizedBox(height: 8),
-          // The sentence with the word bolded
-          _buildSentenceWithBoldWord(
-            _containingSentence,
-            widget.selectedText,
-          ),
+          _buildSentenceWithBoldWord(_containingSentence, widget.selectedText),
         ],
       ],
     );
@@ -424,13 +479,14 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
 
   Widget _buildPhoneticsRow() {
     final ph = _phonetics!;
-    final usChip = ph.us.isNotEmpty ? _buildAccentChip('US', ph.us, 'us') : null;
-    final ukChip = ph.uk.isNotEmpty ? _buildAccentChip('UK', ph.uk, 'uk') : null;
+    final usChip = ph.us.isNotEmpty
+        ? _buildAccentChip('US', ph.us, 'us')
+        : null;
+    final ukChip = ph.uk.isNotEmpty
+        ? _buildAccentChip('UK', ph.uk, 'uk')
+        : null;
 
-    final chips = [
-      if (usChip != null) usChip,
-      if (ukChip != null) ukChip,
-    ];
+    final chips = [if (usChip != null) usChip, if (ukChip != null) ukChip];
 
     if (chips.isEmpty) return const SizedBox.shrink();
     if (chips.length == 1) return chips.first;
@@ -446,27 +502,16 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
         if (estimatedWidth > constraints.maxWidth) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              chips[0],
-              const SizedBox(height: 4),
-              chips[1],
-            ],
+            children: [chips[0], const SizedBox(height: 4), chips[1]],
           );
         }
-        return Row(
-          children: [
-            chips[0],
-            const SizedBox(width: 16),
-            chips[1],
-          ],
-        );
+        return Row(children: [chips[0], const SizedBox(width: 16), chips[1]]);
       },
     );
   }
 
   Widget _buildAccentChip(String label, String ipa, String accent) {
-    final isPlaying =
-        _playingAccent == accent && widget.ttsService.isSpeaking;
+    final isPlaying = _playingAccent == accent && widget.ttsService.isSpeaking;
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -495,9 +540,7 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
         GestureDetector(
           onTap: () => _playPronunciation(accent),
           child: Icon(
-            isPlaying
-                ? Icons.stop_circle_outlined
-                : Icons.volume_up_outlined,
+            isPlaying ? Icons.stop_circle_outlined : Icons.volume_up_outlined,
             size: 18,
             color: isPlaying ? Colors.black87 : Colors.grey.shade600,
           ),
@@ -594,6 +637,14 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
       );
     }
 
+    if (!_customPromptModeEnabled) {
+      return SingleChildScrollView(
+        controller: _scrollController,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: _buildStructuredContent(),
+      );
+    }
+
     return SingleChildScrollView(
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -608,6 +659,110 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
             decoration: TextDecoration.none,
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildStructuredContent() {
+    final data = _structuredData;
+    if (data == null) {
+      return MarkdownBody(
+        data: _aiResponse,
+        selectable: true,
+        styleSheet: MarkdownStyleSheet(
+          p: const TextStyle(
+            fontSize: 15,
+            height: 1.5,
+            color: Colors.black87,
+            decoration: TextDecoration.none,
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildStructuredCard(
+          title: 'Meaning Explain',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                data.meaningExplain,
+                style: const TextStyle(
+                  fontSize: 18,
+                  height: 1.35,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.black87,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        _buildStructuredCard(
+          title: 'Detail Explain',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final detail in data.detailExplain)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    '• $detail',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      height: 1.45,
+                      color: Colors.black87,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                ),
+              if (data.detailExplain.isEmpty)
+                const Text(
+                  'No extra detail.',
+                  style: TextStyle(
+                    fontSize: 14,
+                    height: 1.45,
+                    color: Colors.black54,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+      ],
+    );
+  }
+
+  Widget _buildStructuredCard({required String title, required Widget child}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: const Color(0xFFE6DCCF)),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title.toUpperCase(),
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.45,
+              color: Colors.grey.shade600,
+              decoration: TextDecoration.none,
+            ),
+          ),
+          const SizedBox(height: 8),
+          child,
+        ],
       ),
     );
   }
@@ -664,5 +819,76 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
         ),
       ),
     );
+  }
+}
+
+class _StructuredExplainData {
+  const _StructuredExplainData({
+    required this.meaningExplain,
+    required this.detailExplain,
+  });
+
+  final String meaningExplain;
+  final List<String> detailExplain;
+
+  static _StructuredExplainData? tryParse(String raw) {
+    final jsonText = _extractJson(raw);
+    if (jsonText == null) return null;
+    try {
+      final decoded = jsonDecode(jsonText);
+      if (decoded is! Map<String, dynamic>) return null;
+      final meaningExplain = _readString(decoded['meaningExplain']).isNotEmpty
+          ? _readString(decoded['meaningExplain'])
+          : _readString(decoded['inThisSentence']);
+      if (meaningExplain.isEmpty) return null;
+
+      var detailExplain = _readStringList(decoded['detailExplain']);
+      if (detailExplain.isEmpty) {
+        final legacyWhy = _readStringList(decoded['whyThisMeaning']);
+        final legacyNotHere = _readString(decoded['notHere']);
+        final legacyAlternatives = _readStringList(
+          decoded['nearbyAlternatives'],
+        );
+        detailExplain = [
+          ...legacyWhy,
+          if (legacyNotHere.isNotEmpty) 'Not here: $legacyNotHere',
+          ...legacyAlternatives.map((item) => 'Alternative: $item'),
+        ];
+      }
+
+      return _StructuredExplainData(
+        meaningExplain: meaningExplain,
+        detailExplain: detailExplain,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static String? _extractJson(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return null;
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) return trimmed;
+
+    final fenced = RegExp(
+      r'```(?:json)?\s*([\s\S]*?)\s*```',
+      multiLine: true,
+    ).firstMatch(trimmed);
+    if (fenced == null) return null;
+    return fenced.group(1)?.trim();
+  }
+
+  static String _readString(Object? value) {
+    if (value is String) return value.trim();
+    return '';
+  }
+
+  static List<String> _readStringList(Object? value) {
+    if (value is! List) return const [];
+    return value
+        .whereType<String>()
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toList(growable: false);
   }
 }
