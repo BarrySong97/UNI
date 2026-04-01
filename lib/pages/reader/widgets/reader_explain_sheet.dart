@@ -404,8 +404,9 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
               ),
           ],
         ),
-        // Phonetics row: IPA + play button
-        if (_phonetics != null) ...[
+        // Phonetics row: IPA + play button (hidden when no IPA available).
+        if (_phonetics != null &&
+            (_phonetics!.us.isNotEmpty || _phonetics!.uk.isNotEmpty)) ...[
           const SizedBox(height: 6),
           _buildPhoneticsRow(),
         ],
@@ -423,12 +424,43 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
 
   Widget _buildPhoneticsRow() {
     final ph = _phonetics!;
-    return Row(
-      children: [
-        _buildAccentChip('US', ph.us, 'us'),
-        const SizedBox(width: 16),
-        _buildAccentChip('UK', ph.uk, 'uk'),
-      ],
+    final usChip = ph.us.isNotEmpty ? _buildAccentChip('US', ph.us, 'us') : null;
+    final ukChip = ph.uk.isNotEmpty ? _buildAccentChip('UK', ph.uk, 'uk') : null;
+
+    final chips = [
+      if (usChip != null) usChip,
+      if (ukChip != null) ukChip,
+    ];
+
+    if (chips.isEmpty) return const SizedBox.shrink();
+    if (chips.length == 1) return chips.first;
+
+    // Try horizontal first; fall back to vertical when too wide.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Rough threshold: if both IPAs together are likely to overflow,
+        // stack vertically.  Each IPA char ≈ 8px at fontSize 14; add
+        // label (22px) + icon (20px) + gaps (10px) ≈ 52px per chip.
+        final estimatedWidth =
+            (ph.us.length + ph.uk.length) * 8.0 + 52 * 2 + 16;
+        if (estimatedWidth > constraints.maxWidth) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              chips[0],
+              const SizedBox(height: 4),
+              chips[1],
+            ],
+          );
+        }
+        return Row(
+          children: [
+            chips[0],
+            const SizedBox(width: 16),
+            chips[1],
+          ],
+        );
+      },
     );
   }
 
@@ -449,12 +481,14 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
           ),
         ),
         const SizedBox(width: 4),
-        Text(
-          '/$ipa/',
-          style: TextStyle(
-            fontSize: 14,
-            color: Colors.grey.shade700,
-            decoration: TextDecoration.none,
+        Flexible(
+          child: Text(
+            '/$ipa/',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey.shade700,
+              decoration: TextDecoration.none,
+            ),
           ),
         ),
         const SizedBox(width: 2),
