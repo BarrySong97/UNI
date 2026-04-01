@@ -1,0 +1,15 @@
+{
+  "name": "reader-render-diff",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "run": "node run.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "epubjs": "^0.3.93",
+    "pixelmatch": "^7.1.0",
+    "playwright": "^1.59.0",
+    "pngjs": "^7.0.0"
+  }
+}

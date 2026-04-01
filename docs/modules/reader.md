@@ -25,6 +25,10 @@ Provides an immersive book reading experience using Canvas-based rendering. The 
 - Reading preferences: font size, font family, page margins, line height, paragraph spacing, theme
 - Progress persistence via `ReadingProgressEntity` (chapter index + page index)
 - Multi-chapter navigation with progress saving
+- Developer render diff support via `reader-render-diff`:
+  - reuse `RenderNode -> ReaderLayoutEngine -> ReaderCanvasPainter`
+  - export Canvas screenshots and structured page metrics for offline comparison
+  - consume Rust-exported `book.json` / `chapter_N.json` caches without booting full reader UI
 
 ### Out
 
@@ -33,6 +37,7 @@ Provides an immersive book reading experience using Canvas-based rendering. The 
 - TXT/PDF format support
 - flutter_rust_bridge FFI integration (Phase 2)
 - Image rendering from base64 data (placeholder only for now)
+- Reference renderer orchestration, diff scoring, and HTML report generation
 
 ## Architecture
 
@@ -56,6 +61,7 @@ EPUB → parse_chapter()           RenderNode[] → paginate()           PageLay
    - Pre-decodes images recursively from nested node trees (list/table/blockquote/code children)
 5. **Canvas Painter** draws each `LayoutElement` (text, backgrounds, borders) onto `Canvas`
 6. **ReaderPage** wraps `CustomPaint` in `GestureDetector` for navigation
+7. **Reader render diff harness** can reuse the same cached chapter JSON + layout + painter path to export developer-only PNG artifacts and metrics for offline comparison against a reference renderer
 
 ## File Structure
 
@@ -86,6 +92,12 @@ lib/
       cached_chapter_data_source.dart # Reads pre-parsed JSON from cache dir
       chapter_json_bridge.dart      # Legacy: direct Rust CLI bridge (unused)
     epub_preparse_service.dart      # Calls Rust CLI --batch-export at import time
+    debug/
+      render_diff_job.dart          # Job spec used by the offline render diff harness
+      render_diff_metrics.dart      # Page / anchor metrics serialized for report generation
+      render_diff_text_normalizer.dart # Shared text normalization for anchor alignment
+      render_diff_style_signature.dart # Stable style/block signatures for diagnostics
+      render_diff_canvas_exporter.dart # Canvas screenshot + metric export using existing layout/painter
   stores/reader/
     reader_store.dart               # ChangeNotifier: pagination, navigation, progress
     reader_store_manager.dart       # LRU cache of ReaderStore instances per book ID
