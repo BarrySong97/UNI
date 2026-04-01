@@ -1388,6 +1388,9 @@ class _ReaderPageState extends State<ReaderPage>
         // Current spread (two pages side by side, or centered if image-only).
         Positioned.fill(
           child: GestureDetector(
+            // Opaque so gestures are captured on the empty space flanking a
+            // centered image-only page (the Row only has a half-width child).
+            behavior: HitTestBehavior.opaque,
             onTapUp: _onTapUp,
             onHorizontalDragStart: _onDragStart,
             onHorizontalDragUpdate: _onDragUpdate,
