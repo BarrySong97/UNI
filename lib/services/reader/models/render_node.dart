@@ -369,3 +369,50 @@ TextAlign _parseTextAlign(String? value) {
     _ => TextAlign.left,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Plain-text extraction
+// ---------------------------------------------------------------------------
+
+/// Extract the plain text content from a [RenderNode] tree.
+///
+/// For block nodes (ParagraphNode, HeadingNode, etc.), recursively
+/// concatenates the text of their inline children.  [TextNode.content] is
+/// included as-is (preserving original spaces).  [LineBreakNode] produces
+/// `'\n'`.  Non-text nodes are skipped.
+String renderNodePlainText(RenderNode node) {
+  final buffer = StringBuffer();
+  _collectPlainText(node, buffer);
+  return buffer.toString();
+}
+
+void _collectPlainText(RenderNode node, StringBuffer buffer) {
+  switch (node) {
+    case TextNode():
+      buffer.write(node.content);
+    case ParagraphNode():
+      for (final child in node.children) {
+        _collectPlainText(child, buffer);
+      }
+    case HeadingNode():
+      for (final child in node.children) {
+        _collectPlainText(child, buffer);
+      }
+    case BlockQuoteNode():
+      for (final child in node.children) {
+        _collectPlainText(child, buffer);
+      }
+    case CodeBlockNode():
+      if (node.children.isNotEmpty) {
+        for (final child in node.children) {
+          _collectPlainText(child, buffer);
+        }
+      } else {
+        buffer.write(node.content);
+      }
+    case LineBreakNode():
+      buffer.write('\n');
+    default:
+      break;
+  }
+}

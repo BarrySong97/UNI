@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/painting.dart';
 
 import '../models/page_layout.dart';
+import '../models/render_node.dart';
 
 /// A position within a [PageLayout]: element index + character offset.
 class PagePosition implements Comparable<PagePosition> {
@@ -327,11 +328,18 @@ void _visitSpan(InlineSpan span, StringBuffer buffer) {
 }
 
 /// Extract the selected text as a string.
+///
+/// For K-P layout, each word is a separate element sharing the same
+/// [LayoutElement.sourceNode].  A space is inserted between consecutive
+/// fragments from the same source paragraph so the result reads naturally
+/// (e.g. "the quick brown" instead of "thequickbrown").
 String extractSelectedText(PageLayout page, PageSelection selection) {
   final buffer = StringBuffer();
 
   final startIdx = selection.start.elementIndex;
   final endIdx = selection.end.elementIndex;
+
+  RenderNode? prevSourceNode;
 
   for (var i = startIdx; i <= endIdx; i++) {
     if (i < 0 || i >= page.elements.length) continue;
@@ -362,10 +370,38 @@ String extractSelectedText(PageLayout page, PageSelection selection) {
     selStart = selStart.clamp(0, text.length);
     selEnd = selEnd.clamp(0, text.length);
     if (selStart < selEnd) {
+      // Insert space between K-P word fragments from the same paragraph.
+      if (buffer.isNotEmpty && identical(el.sourceNode, prevSourceNode)) {
+        buffer.write(' ');
+      }
       buffer.write(text.substring(selStart, selEnd));
     }
+    prevSourceNode = el.sourceNode;
   }
 
+  return buffer.toString();
+}
+
+/// Extract the plain text of the paragraph(s) containing the selection.
+///
+/// Uses the [LayoutElement.sourceNode] (typically a [ParagraphNode]) to get
+/// the original paragraph text with proper spacing, bypassing layout
+/// fragmentation from K-P or greedy paths.
+String extractSelectionParagraphText(
+  PageLayout page,
+  PageSelection selection,
+) {
+  final visited = <RenderNode>{};
+  final buffer = StringBuffer();
+  final startIdx = selection.start.elementIndex;
+  final endIdx = selection.end.elementIndex;
+  for (var i = startIdx; i <= endIdx; i++) {
+    if (i < 0 || i >= page.elements.length) continue;
+    final src = page.elements[i].sourceNode;
+    if (!visited.add(src)) continue;
+    if (buffer.isNotEmpty) buffer.write('\n');
+    buffer.write(renderNodePlainText(src));
+  }
   return buffer.toString();
 }
 

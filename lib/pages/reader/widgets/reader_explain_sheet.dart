@@ -12,6 +12,7 @@ class ReaderExplainSheet extends StatefulWidget {
     super.key,
     required this.selectedText,
     required this.pageContext,
+    required this.paragraphContext,
     required this.aiSettings,
     required this.languageConfig,
     required this.bookTitle,
@@ -24,6 +25,12 @@ class ReaderExplainSheet extends StatefulWidget {
 
   final String selectedText;
   final String pageContext;
+
+  /// The plain text of the source paragraph(s) containing the selection,
+  /// extracted directly from the original [RenderNode] tree.  Used for
+  /// sentence extraction so that `indexOf` works reliably regardless of
+  /// whether the K-P or greedy layout path was used.
+  final String paragraphContext;
   final AiSettingsService aiSettings;
   final AiLanguageConfig languageConfig;
   final String bookTitle;
@@ -37,6 +44,7 @@ class ReaderExplainSheet extends StatefulWidget {
     required BuildContext context,
     required String selectedText,
     required String pageContext,
+    required String paragraphContext,
     required AiSettingsService aiSettings,
     required AiLanguageConfig languageConfig,
     required String bookTitle,
@@ -56,6 +64,7 @@ class ReaderExplainSheet extends StatefulWidget {
       builder: (_) => ReaderExplainSheet(
         selectedText: selectedText,
         pageContext: pageContext,
+        paragraphContext: paragraphContext,
         aiSettings: aiSettings,
         languageConfig: languageConfig,
         bookTitle: bookTitle,
@@ -109,7 +118,7 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
         !_sentenceEndPattern.hasMatch(selectedText);
 
     _containingSentence = _isWordOrPhrase
-        ? _extractContainingSentence(widget.pageContext, selectedText)
+        ? _extractContainingSentence(widget.paragraphContext, selectedText)
         : '';
 
     final surroundingContext =

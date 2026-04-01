@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../../services/ai/ai_settings_service.dart';
+import '../../services/ai/openai_llm_provider.dart';
 import '../../services/tts/tts_service.dart';
 import '../../services/tts/tts_voice_catalog.dart';
 import '../../shared/constants/common-design-tokens.dart';
@@ -68,9 +70,24 @@ class _AiSettingsPageState extends State<AiSettingsPage> {
 
   TtsVoiceCatalog get _catalog => widget.ttsService.catalog;
 
+  /// Deduplicate configured languages by family (e.g. en_US + en_GB → one
+  /// "English" entry). Keeps the first locale per family as the config key.
+  List<String> _deduplicatedLanguages() {
+    final all = widget.ttsService.configuredLanguages;
+    final seenFamilies = <String>{};
+    final result = <String>[];
+    for (final lang in all) {
+      final family = lang.split('_').first;
+      if (seenFamilies.add(family)) {
+        result.add(lang);
+      }
+    }
+    return result;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final configuredLanguages = widget.ttsService.configuredLanguages;
+    final configuredLanguages = _deduplicatedLanguages();
 
     return Scaffold(
       backgroundColor: CommonDesignTokens.pageBackground,
@@ -207,7 +224,8 @@ class _AiSettingsPageState extends State<AiSettingsPage> {
 
   Widget _buildLanguageRow(String languageCode) {
     final group = _catalog.languageGroups[languageCode];
-    final langLabel = group?.displayLabel ?? languageCode;
+    // Show just the language name (e.g. "English") without country.
+    final langLabel = group?.languageName ?? languageCode;
     final config = widget.aiSettings.configForLanguage(languageCode);
     final hasCustomConfig = widget.aiSettings.configMap.containsKey(
       languageCode,
@@ -420,6 +438,7 @@ class _AiSettingsPageState extends State<AiSettingsPage> {
       isScrollControlled: true,
       builder: (ctx) {
         return _AiLanguageConfigSheet(
+          aiSettings: widget.aiSettings,
           languageCode: languageCode,
           languageLabel: langLabel,
           config: currentConfig,
@@ -451,6 +470,7 @@ class _AiSettingsPageState extends State<AiSettingsPage> {
 
 class _AiLanguageConfigSheet extends StatefulWidget {
   const _AiLanguageConfigSheet({
+    required this.aiSettings,
     required this.languageCode,
     required this.languageLabel,
     required this.config,
@@ -458,6 +478,7 @@ class _AiLanguageConfigSheet extends StatefulWidget {
     required this.onReset,
   });
 
+  final AiSettingsService aiSettings;
   final String languageCode;
   final String languageLabel;
   final AiLanguageConfig config;
@@ -628,6 +649,24 @@ class _AiLanguageConfigSheetState extends State<_AiLanguageConfigSheet> {
                       ),
                     ),
                     const Spacer(),
+                    OutlinedButton(
+                      onPressed: _showTestSheet,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: CommonDesignTokens.textPrimary,
+                        side: BorderSide(
+                          color: CommonDesignTokens.textSecondary.withValues(
+                            alpha: 0.3,
+                          ),
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(
+                            CommonDesignTokens.cardRadius,
+                          ),
+                        ),
+                      ),
+                      child: const Text('Test'),
+                    ),
+                    const SizedBox(width: 8),
                     FilledButton(
                       onPressed: _saveConfig,
                       style: FilledButton.styleFrom(
@@ -783,6 +822,355 @@ class _AiLanguageConfigSheetState extends State<_AiLanguageConfigSheet> {
       customPrompt: _promptController.text.trim(),
     );
     widget.onSave(config);
+  }
+
+  void _showTestSheet() {
+    if (!widget.aiSettings.isConfigured) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please configure your API key first.'),
+        ),
+      );
+      return;
+    }
+    final model = _modelController.text.trim().isEmpty
+        ? AiSettingsService.defaultModel
+        : _modelController.text.trim();
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => _TestExplainSheet(
+        aiSettings: widget.aiSettings,
+        model: model,
+        detail: _detail,
+        customPrompt: _promptController.text.trim(),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// Test explain sheet — mimics the Reader explain bottom sheet with sample data.
+// =============================================================================
+
+class _TestExplainSheet extends StatefulWidget {
+  const _TestExplainSheet({
+    required this.aiSettings,
+    required this.model,
+    required this.detail,
+    required this.customPrompt,
+  });
+
+  final AiSettingsService aiSettings;
+  final String model;
+  final ExplanationDetail detail;
+  final String customPrompt;
+
+  static const _testBookTitle = 'The Great Gatsby';
+  static const _testSelectedText = 'ephemeral';
+  static const _testSentence =
+      'Yet the sight made him feel that the moment was ephemeral, '
+      'destined to dissolve like morning mist under the indifferent sun.';
+
+  @override
+  State<_TestExplainSheet> createState() => _TestExplainSheetState();
+}
+
+class _TestExplainSheetState extends State<_TestExplainSheet>
+    with SingleTickerProviderStateMixin {
+  late final ExplainAiService _aiService;
+  late final AnimationController _shimmerController;
+  final ScrollController _scrollController = ScrollController();
+  String _aiResponse = '';
+  bool _isStreaming = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _shimmerController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat();
+
+    final promptTemplate = widget.customPrompt.isNotEmpty
+        ? widget.customPrompt
+        : AiSettingsService.defaultPrompt;
+    final basePrompt = promptTemplate
+        .replaceAll('{bookTitle}', _TestExplainSheet._testBookTitle)
+        .replaceAll('{selectedText}', _TestExplainSheet._testSelectedText)
+        .replaceAll('{context}', _TestExplainSheet._testSentence);
+
+    final detailLine = AiSettingsService.detailInstruction(widget.detail);
+    final systemPrompt = '$basePrompt\n\n$detailLine';
+
+    _aiService = ExplainAiService(
+      settings: widget.aiSettings,
+      systemPrompt: systemPrompt,
+      model: widget.model,
+    );
+
+    _fetchFromAi();
+  }
+
+  @override
+  void dispose() {
+    _shimmerController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _fetchFromAi() async {
+    setState(() {
+      _isStreaming = true;
+      _error = null;
+      _aiResponse = '';
+    });
+    try {
+      await for (final chunk in _aiService.sendMessage(
+        'What does "${_TestExplainSheet._testSelectedText}" mean here?',
+      )) {
+        if (!mounted) return;
+        setState(() => _aiResponse += chunk);
+        _scrollToBottom();
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _isStreaming = false);
+    }
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 100),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final maxHeight = MediaQuery.of(context).size.height * 0.75;
+
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: maxHeight),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Handle bar
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+          ),
+          // Word header
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        _TestExplainSheet._testSelectedText,
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade50,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        'TEST',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.orange.shade700,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                _buildSentenceWithBoldWord(
+                  _TestExplainSheet._testSentence,
+                  _TestExplainSheet._testSelectedText,
+                ),
+              ],
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: Divider(height: 24),
+          ),
+          // AI response
+          Expanded(child: _buildResponseArea()),
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Text(
+                _error!,
+                style: const TextStyle(
+                  color: Colors.red,
+                  fontSize: 13,
+                  decoration: TextDecoration.none,
+                ),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSentenceWithBoldWord(String sentence, String word) {
+    final index = sentence.indexOf(word);
+    if (index < 0) {
+      return Text(
+        sentence,
+        style: TextStyle(
+          fontSize: 14,
+          color: Colors.grey.shade700,
+          height: 1.4,
+          decoration: TextDecoration.none,
+        ),
+      );
+    }
+
+    final before = sentence.substring(0, index);
+    final after = sentence.substring(index + word.length);
+
+    return RichText(
+      text: TextSpan(
+        style: TextStyle(
+          fontSize: 14,
+          color: Colors.grey.shade700,
+          height: 1.4,
+        ),
+        children: [
+          TextSpan(text: before),
+          TextSpan(
+            text: word,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          TextSpan(text: after),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResponseArea() {
+    if (_aiResponse.isEmpty && _isStreaming) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: _buildSkeleton(),
+      );
+    }
+
+    return SingleChildScrollView(
+      controller: _scrollController,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: MarkdownBody(
+        data: _aiResponse,
+        selectable: true,
+        styleSheet: MarkdownStyleSheet(
+          p: const TextStyle(
+            fontSize: 15,
+            height: 1.5,
+            color: Colors.black87,
+            decoration: TextDecoration.none,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSkeleton() {
+    return AnimatedBuilder(
+      animation: _shimmerController,
+      builder: (context, child) {
+        return ShaderMask(
+          shaderCallback: (bounds) {
+            final offset = _shimmerController.value * 2 - 0.5;
+            return LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.centerRight,
+              colors: const [
+                Color(0xFFEBEBEB),
+                Color(0xFFF5F5F5),
+                Color(0xFFEBEBEB),
+              ],
+              stops: [
+                (offset - 0.3).clamp(0.0, 1.0),
+                offset.clamp(0.0, 1.0),
+                (offset + 0.3).clamp(0.0, 1.0),
+              ],
+            ).createShader(bounds);
+          },
+          blendMode: BlendMode.srcATop,
+          child: child,
+        );
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _skeletonLine(1.0),
+          const SizedBox(height: 10),
+          _skeletonLine(0.92),
+          const SizedBox(height: 10),
+          _skeletonLine(0.85),
+          const SizedBox(height: 10),
+          _skeletonLine(0.6),
+        ],
+      ),
+    );
+  }
+
+  Widget _skeletonLine(double widthFraction) {
+    return FractionallySizedBox(
+      widthFactor: widthFraction,
+      child: Container(
+        height: 14,
+        decoration: BoxDecoration(
+          color: Colors.grey.shade200,
+          borderRadius: BorderRadius.circular(4),
+        ),
+      ),
+    );
   }
 }
 
