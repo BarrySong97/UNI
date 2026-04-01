@@ -774,7 +774,11 @@ class _ReaderPageState extends State<ReaderPage>
         final pageSel = sel.projectOntoPage(pageLayout);
         if (pageSel == null) continue;
 
-        buffer.write(extractSelectedText(pageLayout, pageSel));
+        final text = extractSelectedText(pageLayout, pageSel);
+        if (text.isNotEmpty) {
+          if (buffer.isNotEmpty) buffer.write(' ');
+          buffer.write(text);
+        }
       }
     }
 
@@ -1324,6 +1328,37 @@ class _ReaderPageState extends State<ReaderPage>
       }
     }
 
+    // Helper: build a spread widget. When the spread has only one page and
+    // it is image-only, center it across the full screen width for a nicer
+    // visual instead of leaving an empty right half.
+    final halfWidth = screenWidth / 2;
+    Widget buildSpread(
+      PageLayout? left,
+      PageLayout? right, {
+      List<Rect>? leftSel,
+      List<Rect>? rightSel,
+    }) {
+      if (right == null && left != null && left.isImageOnly) {
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              width: halfWidth,
+              child: buildPagePaint(left, selRects: leftSel),
+            ),
+          ],
+        );
+      }
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(child: buildPagePaint(left, selRects: leftSel)),
+          Expanded(child: buildPagePaint(right, selRects: rightSel)),
+        ],
+      );
+    }
+
     return Stack(
       clipBehavior: Clip.hardEdge,
       children: [
@@ -1345,18 +1380,12 @@ class _ReaderPageState extends State<ReaderPage>
               0,
             ),
             child: (adjLeft != null || adjRight != null)
-                ? Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Expanded(child: buildPagePaint(adjLeft)),
-                      Expanded(child: buildPagePaint(adjRight)),
-                    ],
-                  )
+                ? buildSpread(adjLeft, adjRight)
                 : const SizedBox.expand(),
           ),
         ),
 
-        // Current spread (two pages side by side).
+        // Current spread (two pages side by side, or centered if image-only).
         Positioned.fill(
           child: GestureDetector(
             onTapUp: _onTapUp,
@@ -1368,22 +1397,11 @@ class _ReaderPageState extends State<ReaderPage>
             onLongPressEnd: _onLongPressEnd,
             child: Transform.translate(
               offset: Offset(_dragOffset, 0),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(
-                    child: buildPagePaint(
-                      displayLeftPage,
-                      selRects: leftSelRects,
-                    ),
-                  ),
-                  Expanded(
-                    child: buildPagePaint(
-                      displayRightPage,
-                      selRects: rightSelRects,
-                    ),
-                  ),
-                ],
+              child: buildSpread(
+                displayLeftPage,
+                displayRightPage,
+                leftSel: leftSelRects,
+                rightSel: rightSelRects,
               ),
             ),
           ),
@@ -1410,36 +1428,57 @@ class _ReaderPageState extends State<ReaderPage>
           ),
         ),
 
-        // Left page indicator (bottom-left).
-        Positioned(
-          left: prefs.pageHorizontalPaddingPx,
-          bottom: mediaPadding.bottom + 8,
-          child: Text(
-            _store.totalBookPages > 0
-                ? '${_store.currentBookPage} / ${_store.totalBookPages}'
-                : '${_store.currentPageIndex + 1} / ${_store.totalPagesInChapter}',
-            style: TextStyle(
-              color: prefs.theme.textColor.withValues(alpha: 0.4),
-              fontSize: 11,
-            ),
-          ),
-        ),
-
-        // Right page indicator (bottom-right).
-        if (rightPage != null)
+        // Page indicator(s).
+        // When the spread is a centered image-only page, show a single
+        // centered indicator; otherwise show left/right indicators.
+        if (rightPage == null && leftPage.isImageOnly) ...[
           Positioned(
-            right: prefs.pageHorizontalPaddingPx,
+            left: 0,
+            right: 0,
             bottom: mediaPadding.bottom + 8,
             child: Text(
               _store.totalBookPages > 0
-                  ? '${_store.secondBookPage} / ${_store.totalBookPages}'
-                  : '${_store.currentPageIndex + 2} / ${_store.totalPagesInChapter}',
+                  ? '${_store.currentBookPage} / ${_store.totalBookPages}'
+                  : '${_store.currentPageIndex + 1} / ${_store.totalPagesInChapter}',
+              textAlign: TextAlign.center,
               style: TextStyle(
                 color: prefs.theme.textColor.withValues(alpha: 0.4),
                 fontSize: 11,
               ),
             ),
           ),
+        ] else ...[
+          // Left page indicator (bottom-left).
+          Positioned(
+            left: prefs.pageHorizontalPaddingPx,
+            bottom: mediaPadding.bottom + 8,
+            child: Text(
+              _store.totalBookPages > 0
+                  ? '${_store.currentBookPage} / ${_store.totalBookPages}'
+                  : '${_store.currentPageIndex + 1} / ${_store.totalPagesInChapter}',
+              style: TextStyle(
+                color: prefs.theme.textColor.withValues(alpha: 0.4),
+                fontSize: 11,
+              ),
+            ),
+          ),
+
+          // Right page indicator (bottom-right).
+          if (rightPage != null)
+            Positioned(
+              right: prefs.pageHorizontalPaddingPx,
+              bottom: mediaPadding.bottom + 8,
+              child: Text(
+                _store.totalBookPages > 0
+                    ? '${_store.secondBookPage} / ${_store.totalBookPages}'
+                    : '${_store.currentPageIndex + 2} / ${_store.totalPagesInChapter}',
+                style: TextStyle(
+                  color: prefs.theme.textColor.withValues(alpha: 0.4),
+                  fontSize: 11,
+                ),
+              ),
+            ),
+        ],
       ],
     );
   }
@@ -1624,6 +1663,21 @@ class _ReaderPageState extends State<ReaderPage>
                     ? extractFullPageText(pageLayout)
                     : '';
 
+                // Extract paragraph-level text from the original RenderNode
+                // tree for reliable sentence extraction (bypasses K-P / greedy
+                // layout fragmentation).
+                String paragraphContext = '';
+                if (pageLayout != null && _crossSelection != null) {
+                  final pageSel =
+                      _crossSelection!.projectOntoPage(pageLayout);
+                  if (pageSel != null) {
+                    paragraphContext = extractSelectionParagraphText(
+                      pageLayout,
+                      pageSel,
+                    );
+                  }
+                }
+
                 final languageConfig = aiSettings.resolveConfig(
                   widget.book.language,
                 );
@@ -1634,6 +1688,7 @@ class _ReaderPageState extends State<ReaderPage>
                   context: context,
                   selectedText: selectedText,
                   pageContext: pageContext,
+                  paragraphContext: paragraphContext,
                   aiSettings: aiSettings,
                   languageConfig: languageConfig,
                   bookTitle: widget.book.title,

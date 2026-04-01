@@ -71,6 +71,14 @@ class PageLayout {
 
   /// Last TextNode.nodeIndex on this page.
   int endNodeIndex;
+
+  /// Whether this page consists solely of image elements (no text content).
+  ///
+  /// Used by dual-page mode to center a single image page across the full
+  /// screen width instead of confining it to one half.
+  bool get isImageOnly =>
+      elements.isNotEmpty &&
+      elements.every((e) => e.image != null && !e.hasText);
 }
 
 /// Result of paginating an entire chapter.
