@@ -4,6 +4,9 @@ import { spawn } from 'node:child_process';
 
 import { resolveConfig } from './src/config.mjs';
 import { loadCaseCatalog } from './src/cases/load_case_catalog.mjs';
+import { buildXhtmlInventory } from './src/xhtml/build_xhtml_inventory.mjs';
+import { findStructuralGaps } from './src/xhtml/find_structural_gaps.mjs';
+import { resolveChapterXhtmlPaths, loadChapterJsons } from './src/structural/resolve_chapters.mjs';
 import { renderReferenceArtifacts } from './src/reference/render_epubjs.mjs';
 import { invokeFlutterHarness } from './src/canvas/invoke_flutter_harness.mjs';
 import { buildBrowserObjects } from './src/cases/classify_browser_object.mjs';
@@ -36,6 +39,11 @@ async function main() {
     ],
     config.repoRoot,
   );
+
+  if (config.structuralCheck) {
+    await runStructuralCheck(config);
+    return;
+  }
 
   const caseCatalog = await loadCaseCatalog(config.caseCatalogPath);
   const referenceMetrics = await renderReferenceArtifacts(config);
@@ -126,6 +134,56 @@ async function main() {
   console.log(`Canvas objects: ${canvasObjects.length}`);
   console.log(`Missing conversions: ${missingConversions.length}`);
   console.log(`Matched screenshot comparisons: ${matchedComparisons.length}`);
+}
+
+async function runStructuralCheck(config) {
+  const caseCatalog = await loadCaseCatalog(config.caseCatalogPath);
+
+  // Resolve chapter XHTML paths from Rust parser's book.json
+  const xhtmlPaths = await resolveChapterXhtmlPaths(config);
+
+  // Build XHTML inventory
+  const xhtmlInventory = await buildXhtmlInventory({
+    epubPath: config.epubPath,
+    xhtmlPaths,
+    caseCatalog,
+  });
+
+  // Load chapter JSONs from cache
+  const chapterJsons = await loadChapterJsons(config, xhtmlPaths.length);
+
+  // Run structural gap detection
+  const structuralGaps = findStructuralGaps({
+    xhtmlInventory,
+    chapterJsons,
+    caseCatalog,
+  });
+
+  // Write output artifacts
+  await Promise.all([
+    fs.writeFile(
+      path.join(config.outDir, 'xhtml_inventory.json'),
+      JSON.stringify(xhtmlInventory, null, 2),
+    ),
+    fs.writeFile(
+      path.join(config.outDir, 'structural_gaps.json'),
+      JSON.stringify(structuralGaps, null, 2),
+    ),
+  ]);
+
+  // Print summary
+  const s = structuralGaps.summary;
+  console.log(
+    `Structural check: ${s.missingElements} missing, ` +
+    `${s.featureGaps} feature gaps, ` +
+    `${s.overConvertedNodes} over-converted, ` +
+    `gapScore=${s.gapScore}`,
+  );
+
+  // Exit with code 1 if gaps remain
+  if (s.gapScore !== 0) {
+    process.exitCode = 1;
+  }
 }
 
 async function ensureDirs(config) {
