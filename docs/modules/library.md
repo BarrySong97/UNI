@@ -145,7 +145,7 @@ Header + "Add Your First Book" button (on Shelf).
 - Book Profile top background uses `profileBgColor` gradient.
 - Book Profile settings menu can delete book with cascading cleanup.
 - Importing: top linear progress indicator (no blocking overlay).
-- Grid items show progress percentage badge (top-right) on cover.
+- Grid items show progress percentage badge (bottom-left, semi-transparent gray `#99666666`, 10px white text, 4px radius) on cover when progress > 0.
 - Shelf Statistic Card reads real monthly `ReadingTime` from `reading_time_daily` and shows the current calendar month's cumulative `xh ym` plus normalized daily bars.
 - Shelf `BOOKS READ` uses the same time-block aggregation API with the current year block (`YYYY-01-01` to `(YYYY+1)-01-01`) and counts unique books that satisfy both: persisted progress `>= 40%` and aggregated reading time in block `>= 20 minutes` (1200s).
 - Statistics page always reuses the same time-block data APIs; changing tabs does not change the current time block.
