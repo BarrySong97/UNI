@@ -8,7 +8,10 @@ import path from 'node:path';
 export async function resolveChapterXhtmlPaths(config) {
   const bookJsonPath = path.join(config.cacheDir, 'book.json');
   const bookJson = JSON.parse(await fs.readFile(bookJsonPath, 'utf8'));
-  let spine = bookJson.spine ?? [];
+  if (!Array.isArray(bookJson.spine)) {
+    throw new Error(`Invalid book.json: expected spine to be an array, got ${typeof bookJson.spine}`);
+  }
+  let spine = bookJson.spine;
 
   // Sort by index to ensure consistent order
   spine = [...spine].sort((a, b) => a.index - b.index);
@@ -36,9 +39,13 @@ export async function loadChapterJsons(config, chapterCount) {
     try {
       const content = await fs.readFile(chapterPath, 'utf8');
       chapterJsons.push(JSON.parse(content));
-    } catch {
-      // If chapter JSON doesn't exist, push null so gap detector handles it
-      chapterJsons.push(null);
+    } catch (err) {
+      // Missing chapter file is expected (gap detector handles null); other errors bubble up
+      if (err.code === 'ENOENT') {
+        chapterJsons.push(null);
+      } else {
+        throw err;
+      }
     }
   }
   return chapterJsons;
