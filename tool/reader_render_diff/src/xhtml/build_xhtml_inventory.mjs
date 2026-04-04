@@ -313,8 +313,8 @@ function walkInlineChildren(node, features, insidePre) {
 function detectLayoutFeatures(inlineStyle, tagName, node, inheritedAlign = null) {
   const features = [];
 
-  // Text alignment — from inline style, element-level defaults, or inherited (e.g. <center>)
-  const textAlign = inlineStyle['text-align'] ?? elementDefaultAlign(tagName) ?? inheritedAlign;
+  // Text alignment — from inline style or inherited (e.g. from <center> ancestor)
+  const textAlign = inlineStyle['text-align'] ?? inheritedAlign;
   if (textAlign === 'center') {
     features.push('layout.align.center');
   } else if (textAlign === 'right' || textAlign === 'end') {
@@ -436,16 +436,6 @@ function detectTableSubCases(tableNode) {
 }
 
 /**
- * Element-level default text-align for tags with intrinsic alignment.
- */
-function elementDefaultAlign(tagName) {
-  if (tagName === 'center') {
-    return 'center';
-  }
-  return null;
-}
-
-/**
  * Whether a tag has intrinsic margin (element-level default).
  */
 function elementDefaultMargin(tagName) {
@@ -472,7 +462,7 @@ function buildDomPath(node) {
       );
       if (siblings.length > 1) {
         const childIndex = siblings.indexOf(current) + 1;
-        segments.unshift(`${tag}:nth-child(${childIndex})`);
+        segments.unshift(`${tag}:nth-of-type(${childIndex})`);
       } else {
         segments.unshift(tag);
       }

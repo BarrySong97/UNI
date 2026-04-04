@@ -411,7 +411,7 @@ test('non-breaking spaces are normalized', () => {
 
 test('domPath is built correctly for simple structure', () => {
   const result = buildFromHtml('<p>First</p><p>Second</p>');
-  // Both p tags are siblings, so they should get nth-child indices
+  // Both p tags are siblings, so they should get nth-of-type indices
   assert.ok(result.elements[0].domPath.includes('p'));
   assert.ok(result.elements[1].domPath.includes('p'));
 });
