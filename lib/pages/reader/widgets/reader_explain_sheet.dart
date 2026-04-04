@@ -455,6 +455,8 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
             Expanded(
               child: Text(
                 widget.selectedText,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.w800,
