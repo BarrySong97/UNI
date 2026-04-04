@@ -536,3 +536,16 @@ test('no inline style produces no layout features for simple p', () => {
   const result = buildFromHtml('<p>Plain text</p>');
   assert.deepEqual(result.elements[0].layoutCaseIds, []);
 });
+
+test('center element propagates text-align center to child blocks', () => {
+  const result = buildFromHtml('<center><p>Centered text</p></center>');
+  assert.equal(result.elements.length, 1);
+  assert.equal(result.elements[0].blockCaseId, 'block.paragraph');
+  assert.equal(result.elements[0].layoutCaseIds.includes('layout.align.center'), true);
+});
+
+test('center element propagation is overridden by explicit inline style', () => {
+  const result = buildFromHtml('<center><p style="text-align: right;">Right text</p></center>');
+  assert.equal(result.elements[0].layoutCaseIds.includes('layout.align.right'), true);
+  assert.equal(result.elements[0].layoutCaseIds.includes('layout.align.center'), false);
+});

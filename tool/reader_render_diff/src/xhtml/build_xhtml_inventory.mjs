@@ -133,6 +133,7 @@ export function buildChapterInventory({ chapterIndex, xhtmlPath, xhtmlContent, c
     getDomOrderIndex: () => domOrderIndex++,
     insidePre: false,
     ancestorListDepth: 0,
+    inheritedAlign: null,
   });
 
   return {
@@ -222,6 +223,12 @@ function walkDom(node, ctx) {
     return;
   }
 
+  // <center> — deprecated HTML tag that propagates text-align:center to children
+  if (tagName === 'center') {
+    walkChildren(node, { ...ctx, inheritedAlign: 'center' });
+    return;
+  }
+
   // Unknown elements — try recursing into children in case they contain blocks
   walkChildren(node, ctx);
 }
@@ -245,7 +252,7 @@ function emitBlockElement(node, tagName, blockCaseId, inlineStyle, ctx) {
   const domPath = buildDomPath(node);
 
   const featureCaseIds = uniqueSorted(detectInlineFeatures(node, insidePre));
-  const layoutCaseIds = uniqueSorted(detectLayoutFeatures(inlineStyle, tagName, node));
+  const layoutCaseIds = uniqueSorted(detectLayoutFeatures(inlineStyle, tagName, node, ctx.inheritedAlign));
   const status = ctx.caseCatalog.byId[blockCaseId]?.status ?? 'unsupported';
 
   ctx.elements.push({
@@ -303,11 +310,11 @@ function walkInlineChildren(node, features, insidePre) {
 // Layout feature detection from inline styles + element defaults
 // ---------------------------------------------------------------------------
 
-function detectLayoutFeatures(inlineStyle, tagName, node) {
+function detectLayoutFeatures(inlineStyle, tagName, node, inheritedAlign = null) {
   const features = [];
 
-  // Text alignment — from inline style or element-level defaults
-  const textAlign = inlineStyle['text-align'] ?? elementDefaultAlign(tagName);
+  // Text alignment — from inline style, element-level defaults, or inherited (e.g. <center>)
+  const textAlign = inlineStyle['text-align'] ?? elementDefaultAlign(tagName) ?? inheritedAlign;
   if (textAlign === 'center') {
     features.push('layout.align.center');
   } else if (textAlign === 'right' || textAlign === 'end') {
