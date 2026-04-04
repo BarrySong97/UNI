@@ -38,6 +38,8 @@ class RenderDiffBlockMetric {
     required this.kind,
     required this.styleSignature,
     required this.rect,
+    this.objectId,
+    this.nodePath,
     this.text,
     this.normalizedText,
     this.lineCount,
@@ -52,6 +54,8 @@ class RenderDiffBlockMetric {
   final String kind;
   final String styleSignature;
   final RenderDiffRect rect;
+  final String? objectId;
+  final String? nodePath;
   final String? text;
   final String? normalizedText;
   final int? lineCount;
@@ -66,6 +70,8 @@ class RenderDiffBlockMetric {
     'kind': kind,
     'styleSignature': styleSignature,
     'rect': rect.toJson(),
+    'objectId': objectId,
+    'nodePath': nodePath,
     'text': text,
     'normalizedText': normalizedText,
     'lineCount': lineCount,
@@ -85,6 +91,8 @@ class RenderDiffBlockMetric {
           (json['rect'] as Map?)?.cast<String, dynamic>() ??
               const <String, dynamic>{},
         ),
+        objectId: json['objectId'] as String?,
+        nodePath: json['nodePath'] as String?,
         text: json['text'] as String?,
         normalizedText: json['normalizedText'] as String?,
         lineCount: (json['lineCount'] as num?)?.toInt(),
@@ -145,6 +153,77 @@ class RenderDiffAnchor {
               const <String, dynamic>{},
         ),
         lineCount: (json['lineCount'] as num?)?.toInt() ?? 0,
+      );
+}
+
+class RenderDiffNodeInventoryItem {
+  const RenderDiffNodeInventoryItem({
+    required this.objectId,
+    required this.chapterIndex,
+    required this.nodeOrdinal,
+    required this.nodePath,
+    required this.renderNodeKind,
+    required this.blockCaseHint,
+    required this.featureCaseHints,
+    required this.observedCaseHints,
+    required this.rawNodeSummary,
+    this.text,
+    this.normalizedText,
+    this.imageSignature,
+  });
+
+  final String objectId;
+  final int chapterIndex;
+  final int nodeOrdinal;
+  final String nodePath;
+  final String renderNodeKind;
+  final String blockCaseHint;
+  final List<String> featureCaseHints;
+  final List<String> observedCaseHints;
+  final Map<String, dynamic> rawNodeSummary;
+  final String? text;
+  final String? normalizedText;
+  final String? imageSignature;
+
+  Map<String, dynamic> toJson() => {
+    'objectId': objectId,
+    'chapterIndex': chapterIndex,
+    'nodeOrdinal': nodeOrdinal,
+    'nodePath': nodePath,
+    'renderNodeKind': renderNodeKind,
+    'blockCaseHint': blockCaseHint,
+    'featureCaseHints': featureCaseHints,
+    'observedCaseHints': observedCaseHints,
+    'rawNodeSummary': rawNodeSummary,
+    'text': text,
+    'normalizedText': normalizedText,
+    'imageSignature': imageSignature,
+  };
+
+  factory RenderDiffNodeInventoryItem.fromJson(Map<String, dynamic> json) =>
+      RenderDiffNodeInventoryItem(
+        objectId: json['objectId'] as String? ?? '',
+        chapterIndex: (json['chapterIndex'] as num?)?.toInt() ?? 0,
+        nodeOrdinal: (json['nodeOrdinal'] as num?)?.toInt() ?? 0,
+        nodePath: json['nodePath'] as String? ?? '',
+        renderNodeKind: json['renderNodeKind'] as String? ?? '',
+        blockCaseHint: json['blockCaseHint'] as String? ?? '',
+        featureCaseHints:
+            (json['featureCaseHints'] as List?)
+                ?.map((e) => e.toString())
+                .toList() ??
+            const <String>[],
+        observedCaseHints:
+            (json['observedCaseHints'] as List?)
+                ?.map((e) => e.toString())
+                .toList() ??
+            const <String>[],
+        rawNodeSummary:
+            (json['rawNodeSummary'] as Map?)?.cast<String, dynamic>() ??
+            const <String, dynamic>{},
+        text: json['text'] as String?,
+        normalizedText: json['normalizedText'] as String?,
+        imageSignature: json['imageSignature'] as String?,
       );
 }
 
@@ -210,6 +289,7 @@ class RenderDiffBookMetrics {
     required this.devicePixelRatio,
     required this.pages,
     required this.chapterPageCounts,
+    required this.nodeInventory,
     this.sampleName,
   });
 
@@ -221,6 +301,7 @@ class RenderDiffBookMetrics {
   final double devicePixelRatio;
   final List<RenderDiffPageMetric> pages;
   final Map<String, int> chapterPageCounts;
+  final List<RenderDiffNodeInventoryItem> nodeInventory;
 
   Map<String, dynamic> toJson() => {
     'engine': engine,
@@ -231,6 +312,7 @@ class RenderDiffBookMetrics {
     'devicePixelRatio': devicePixelRatio,
     'pages': pages.map((p) => p.toJson()).toList(),
     'chapterPageCounts': chapterPageCounts,
+    'nodeInventory': nodeInventory.map((item) => item.toJson()).toList(),
   };
 
   String toPrettyJson() {
@@ -245,8 +327,7 @@ class RenderDiffBookMetrics {
         sampleName: json['sampleName'] as String?,
         viewportWidth: (json['viewportWidth'] as num?)?.toDouble() ?? 0,
         viewportHeight: (json['viewportHeight'] as num?)?.toDouble() ?? 0,
-        devicePixelRatio:
-            (json['devicePixelRatio'] as num?)?.toDouble() ?? 1.0,
+        devicePixelRatio: (json['devicePixelRatio'] as num?)?.toDouble() ?? 1.0,
         pages:
             (json['pages'] as List?)
                 ?.map(
@@ -257,11 +338,18 @@ class RenderDiffBookMetrics {
                 .toList() ??
             const [],
         chapterPageCounts:
-            (json['chapterPageCounts'] as Map?)
-                ?.map(
-                  (key, value) =>
-                      MapEntry(key.toString(), (value as num).toInt()),
-                ) ??
+            (json['chapterPageCounts'] as Map?)?.map(
+              (key, value) => MapEntry(key.toString(), (value as num).toInt()),
+            ) ??
             const {},
+        nodeInventory:
+            (json['nodeInventory'] as List?)
+                ?.map(
+                  (e) => RenderDiffNodeInventoryItem.fromJson(
+                    (e as Map).cast<String, dynamic>(),
+                  ),
+                )
+                .toList() ??
+            const [],
       );
 }

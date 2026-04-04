@@ -194,7 +194,7 @@ class ReaderLayoutEngine {
                 color: node.color,
               )
             : node;
-        ParagraphLayouter.layout(paragraph, ctx);
+        ParagraphLayouter.layout(paragraph, ctx, sourceNodeOverride: node);
       case HeadingNode():
         _layoutHeading(node, ctx, nestingIndentEm: nestingIndentEm);
       case ImageNode():
@@ -210,7 +210,7 @@ class ReaderLayoutEngine {
       case LineBreakNode():
         ctx.cursorY += ctx.preferences.baseFontSizePx * 0.5;
       case HorizontalRuleNode():
-        _layoutHorizontalRule(ctx);
+        _layoutHorizontalRule(node, ctx);
       case TextNode():
         // Bare text node outside a paragraph — wrap in a paragraph.
         final bareNode = ParagraphNode(
@@ -226,6 +226,7 @@ class ReaderLayoutEngine {
                 )
               : bareNode,
           ctx,
+          sourceNodeOverride: node,
         );
     }
   }
@@ -289,7 +290,12 @@ class ReaderLayoutEngine {
       paddingEm: node.paddingEm,
       color: node.color,
     );
-    ParagraphLayouter.layout(paragraphProxy, ctx, headingLevel: node.level);
+    ParagraphLayouter.layout(
+      paragraphProxy,
+      ctx,
+      headingLevel: node.level,
+      sourceNodeOverride: node,
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -367,7 +373,7 @@ class ReaderLayoutEngine {
       marginBottomEm: 0.5,
       align: ui.TextAlign.center,
     );
-    ParagraphLayouter.layout(placeholder, ctx);
+    ParagraphLayouter.layout(placeholder, ctx, sourceNodeOverride: node);
   }
 
   // ---------------------------------------------------------------------------
@@ -394,7 +400,11 @@ class ReaderLayoutEngine {
             marginBottomEm: 0.2,
             marginLeftEm: indentEm,
           );
-          ParagraphLayouter.layout(listParagraph, ctx);
+          ParagraphLayouter.layout(
+            listParagraph,
+            ctx,
+            sourceNodeOverride: node,
+          );
         }
         for (final subNode in item.subNodes) {
           _layoutNode(subNode, ctx, nestingIndentEm: indentEm);
@@ -433,7 +443,7 @@ class ReaderLayoutEngine {
           marginBottomEm: 0.2,
           marginLeftEm: indentEm,
         );
-        ParagraphLayouter.layout(listParagraph, ctx);
+        ParagraphLayouter.layout(listParagraph, ctx, sourceNodeOverride: node);
       }
 
       // Layout block-level sub-nodes (nested lists, paragraphs, etc.)
@@ -540,7 +550,7 @@ class ReaderLayoutEngine {
         marginLeftEm: nestingIndentEm,
         align: ui.TextAlign.center,
       );
-      ParagraphLayouter.layout(captionParagraph, ctx);
+      ParagraphLayouter.layout(captionParagraph, ctx, sourceNodeOverride: node);
     }
 
     // Compute logical column count accounting for colspan.
@@ -846,7 +856,7 @@ class ReaderLayoutEngine {
       marginRightEm: node.marginRightEm,
       backgroundColor: node.backgroundColor,
     );
-    ParagraphLayouter.layout(paragraph, ctx);
+    ParagraphLayouter.layout(paragraph, ctx, sourceNodeOverride: node);
   }
 
   // ---------------------------------------------------------------------------
@@ -875,14 +885,14 @@ class ReaderLayoutEngine {
       paddingEm: node.paddingEm ?? 0.5,
       backgroundColor: bgColor,
     );
-    ParagraphLayouter.layout(paragraph, ctx);
+    ParagraphLayouter.layout(paragraph, ctx, sourceNodeOverride: node);
   }
 
   // ---------------------------------------------------------------------------
   // HorizontalRule
   // ---------------------------------------------------------------------------
 
-  void _layoutHorizontalRule(LayoutContext ctx) {
+  void _layoutHorizontalRule(HorizontalRuleNode node, LayoutContext ctx) {
     final prefs = ctx.preferences;
     final lineHeight = prefs.baseFontSizePx;
 
@@ -894,7 +904,7 @@ class ReaderLayoutEngine {
     ctx.addElement(
       LayoutElement(
         rect: Rect.fromLTWH(0, y, ctx.contentWidth, 1),
-        sourceNode: const HorizontalRuleNode(),
+        sourceNode: node,
       ),
     );
 

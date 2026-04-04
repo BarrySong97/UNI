@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 
@@ -24,8 +25,11 @@ export async function invokeFlutterHarness(config) {
   await runCommand(
     'flutter',
     [
-      'test',
-      'test/tools/reader_render_diff/canvas_snapshot_harness_test.dart',
+      'run',
+      '-d',
+      resolveDesktopDevice(),
+      '-t',
+      'lib/tools/reader_render_diff_harness.dart',
       `--dart-define=RENDER_DIFF_JOB=${jobPath}`,
     ],
     config.repoRoot,
@@ -34,6 +38,19 @@ export async function invokeFlutterHarness(config) {
   const metricsPath = path.join(config.canvasDir, 'metrics.json');
   const json = JSON.parse(await fs.readFile(metricsPath, 'utf8'));
   return json;
+}
+
+function resolveDesktopDevice() {
+  switch (os.platform()) {
+    case 'darwin':
+      return 'macos';
+    case 'linux':
+      return 'linux';
+    case 'win32':
+      return 'windows';
+    default:
+      throw new Error(`Unsupported desktop platform for render diff harness: ${os.platform()}`);
+  }
 }
 
 function runCommand(command, args, cwd) {

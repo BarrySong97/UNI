@@ -51,6 +51,7 @@ class ParagraphLayouter {
     ParagraphNode node,
     LayoutContext ctx, {
     int? headingLevel,
+    RenderNode? sourceNodeOverride,
   }) {
     final prefs = ctx.preferences;
 
@@ -110,6 +111,7 @@ class ParagraphLayouter {
         headingLevel: headingLevel,
         effectiveLineHeight: effectiveLineHeight,
         defaultColor: defaultColor,
+        sourceNodeOverride: sourceNodeOverride,
       );
       if (kpDone) return;
       // K-P failed — fall through to greedy layout.
@@ -143,6 +145,7 @@ class ParagraphLayouter {
         paddingPx: paddingPx,
         totalHeight: totalHeight,
         bgPaint: bgPaint,
+        sourceNodeOverride: sourceNodeOverride,
       );
       ctx.recordBottomMargin(marginBottomPx);
       return;
@@ -159,6 +162,7 @@ class ParagraphLayouter {
       paddingPx: paddingPx,
       bgPaint: bgPaint,
       headingLevel: headingLevel,
+      sourceNodeOverride: sourceNodeOverride,
     );
   }
 
@@ -172,9 +176,11 @@ class ParagraphLayouter {
     required double paddingPx,
     required double totalHeight,
     required Paint? bgPaint,
+    RenderNode? sourceNodeOverride,
   }) {
     final x = marginLeftPx;
     final y = ctx.cursorY;
+    final sourceNode = sourceNodeOverride ?? node;
 
     // Background rect covers the full paragraph area including padding.
     if (bgPaint != null) {
@@ -188,7 +194,7 @@ class ParagraphLayouter {
                 (ctx.preferences.emToPx(node.marginRightEm)),
             totalHeight,
           ),
-          sourceNode: node,
+          sourceNode: sourceNode,
           backgroundPaint: bgPaint,
         ),
       );
@@ -204,7 +210,7 @@ class ParagraphLayouter {
           availableWidth,
           painter.height,
         ),
-        sourceNode: node,
+        sourceNode: sourceNode,
         textPainter: painter,
       ),
     );
@@ -231,6 +237,7 @@ class ParagraphLayouter {
     required int? headingLevel,
     required double effectiveLineHeight,
     required Color? defaultColor,
+    RenderNode? sourceNodeOverride,
   }) {
     final prefs = ctx.preferences;
     final widthCache = ctx.widthCache;
@@ -317,6 +324,7 @@ class ParagraphLayouter {
       marginBottomPx: marginBottomPx,
       paddingPx: paddingPx,
       bgPaint: bgPaint,
+      sourceNodeOverride: sourceNodeOverride,
     );
 
     return true;
@@ -499,9 +507,11 @@ class ParagraphLayouter {
     required double marginBottomPx,
     required double paddingPx,
     required Paint? bgPaint,
+    RenderNode? sourceNodeOverride,
   }) {
     final x = marginLeftPx;
     var isFirstLine = true;
+    final sourceNode = sourceNodeOverride ?? node;
 
     for (var i = 0; i < lines.length; i++) {
       final line = lines[i];
@@ -533,7 +543,7 @@ class ParagraphLayouter {
                   (ctx.preferences.emToPx(node.marginRightEm)),
               totalLineHeight,
             ),
-            sourceNode: node,
+            sourceNode: sourceNode,
             backgroundPaint: bgPaint,
           ),
         );
@@ -550,7 +560,7 @@ class ParagraphLayouter {
               fragment.width,
               lineHeight,
             ),
-            sourceNode: node,
+            sourceNode: sourceNode,
             deferredText: fragment.text,
             deferredStyle: fragment.style,
           ),
@@ -576,6 +586,7 @@ class ParagraphLayouter {
     required double paddingPx,
     required Paint? bgPaint,
     int? headingLevel,
+    RenderNode? sourceNodeOverride,
   }) {
     final lineMetrics = painter.computeLineMetrics();
     final remainingHeight = ctx.remainingHeight;
@@ -592,7 +603,12 @@ class ParagraphLayouter {
     if (fittingLines == 0) {
       // Not even one line fits. Start a new page and retry.
       ctx.startNewPage();
-      layout(node, ctx, headingLevel: headingLevel);
+      layout(
+        node,
+        ctx,
+        headingLevel: headingLevel,
+        sourceNodeOverride: sourceNodeOverride,
+      );
       return;
     }
 
@@ -607,6 +623,7 @@ class ParagraphLayouter {
         paddingPx: paddingPx,
         totalHeight: painter.height + 2 * paddingPx,
         bgPaint: bgPaint,
+        sourceNodeOverride: sourceNodeOverride,
       );
       ctx.recordBottomMargin(marginBottomPx);
       return;
@@ -620,7 +637,12 @@ class ParagraphLayouter {
     if (splitOffset <= 0 || splitOffset >= fullText.length) {
       // Edge case: can't split meaningfully, push to next page.
       ctx.startNewPage();
-      layout(node, ctx, headingLevel: headingLevel);
+      layout(
+        node,
+        ctx,
+        headingLevel: headingLevel,
+        sourceNodeOverride: sourceNodeOverride,
+      );
       return;
     }
 
@@ -633,6 +655,7 @@ class ParagraphLayouter {
 
     final x = marginLeftPx;
     final y = ctx.cursorY;
+    final sourceNode = sourceNodeOverride ?? node;
 
     if (bgPaint != null) {
       ctx.addElement(
@@ -645,7 +668,7 @@ class ParagraphLayouter {
                 (ctx.preferences.emToPx(node.marginRightEm)),
             firstPainter.height + 2 * paddingPx,
           ),
-          sourceNode: node,
+          sourceNode: sourceNode,
           backgroundPaint: bgPaint,
         ),
       );
@@ -659,7 +682,7 @@ class ParagraphLayouter {
           availableWidth,
           firstPainter.height,
         ),
-        sourceNode: node,
+        sourceNode: sourceNode,
         textPainter: firstPainter,
       ),
     );
@@ -688,6 +711,7 @@ class ParagraphLayouter {
         paddingPx: paddingPx,
         totalHeight: remainingHeight2,
         bgPaint: bgPaint,
+        sourceNodeOverride: sourceNodeOverride,
       );
       ctx.recordBottomMargin(marginBottomPx);
     } else {
@@ -703,6 +727,7 @@ class ParagraphLayouter {
         paddingPx: paddingPx,
         bgPaint: bgPaint,
         headingLevel: headingLevel,
+        sourceNodeOverride: sourceNodeOverride,
       );
     }
   }

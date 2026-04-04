@@ -3,10 +3,17 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 
 import { resolveConfig } from './src/config.mjs';
+import { loadCaseCatalog } from './src/cases/load_case_catalog.mjs';
 import { renderReferenceArtifacts } from './src/reference/render_epubjs.mjs';
 import { invokeFlutterHarness } from './src/canvas/invoke_flutter_harness.mjs';
-import { alignAnchors } from './src/diff/align_anchors.mjs';
-import { scoreDiffs } from './src/diff/score_diffs.mjs';
+import { buildBrowserObjects } from './src/cases/classify_browser_object.mjs';
+import { buildCanvasObjects } from './src/cases/classify_canvas_object.mjs';
+import { buildCaseInventory } from './src/audit/build_case_inventory.mjs';
+import { findMissingConversions } from './src/audit/find_missing_conversions.mjs';
+import {
+  buildMatchedScreenshotPairs,
+  matchContentObjects,
+} from './src/report/build_matched_screenshot_pairs.mjs';
 import { writeJsonReport } from './src/report/write_json_report.mjs';
 import { writeHtmlReport } from './src/report/write_html_report.mjs';
 
@@ -30,55 +37,95 @@ async function main() {
     config.repoRoot,
   );
 
+  const caseCatalog = await loadCaseCatalog(config.caseCatalogPath);
   const referenceMetrics = await renderReferenceArtifacts(config);
   const canvasMetrics = await invokeFlutterHarness(config);
-  const allowlist = JSON.parse(await fs.readFile(config.allowlistPath, 'utf8'));
-  const { aligned, diffs: anchorDiffs } = alignAnchors(referenceMetrics, canvasMetrics);
-  const scored = await scoreDiffs({
+  const { browserObjects, ignoredCaseCounts } = buildBrowserObjects(
+    referenceMetrics,
+    caseCatalog,
+  );
+  const canvasObjects = buildCanvasObjects(canvasMetrics, caseCatalog);
+  const matchedObjects = matchContentObjects({
+    browserObjects,
+    canvasObjects,
+  });
+  const missingConversions = await findMissingConversions({
+    outDir: config.outDir,
+    referenceMetrics,
+    browserObjects,
+    matchedObjects,
+    caseCatalog,
+  });
+  const caseInventory = buildCaseInventory({
+    caseCatalog,
+    browserObjects,
+    canvasObjects,
+    missingConversions,
+    ignoredCaseCounts,
+  });
+  const matchedComparisons = await buildMatchedScreenshotPairs({
+    outDir: config.outDir,
     referenceMetrics,
     canvasMetrics,
-    alignedAnchors: aligned,
-    anchorDiffs,
-    allowlist,
-    diffDir: config.diffDir,
-    outDir: config.outDir,
+    matchedObjects,
+    browserObjects,
+    canvasObjects,
   });
 
   const report = {
     run: {
       generatedAt: new Date().toISOString(),
       tool: 'reader-render-diff',
+      mode: 'case_inventory_missing_conversion_matched_compare',
     },
     inputs: {
       epubPath: config.epubPath,
       sampleName: config.sampleName,
       viewport: config.viewport,
       devicePixelRatio: config.devicePixelRatio,
+      fullBook: config.fullBook,
       maxChapters: config.maxChapters,
       maxPagesPerChapter: config.maxPagesPerChapter,
       chapterIndices: config.chapterIndices,
       readerPreferences: config.readerPreferences,
     },
     summary: {
-      overallSeverity: scored.overallSeverity,
-      thresholdResult: scored.thresholdResult,
-      allowlistHitCount: scored.allowlistHits.length,
+      browserObjectCount: browserObjects.length,
+      canvasObjectCount: canvasObjects.length,
+      missingConversionCount: missingConversions.length,
+      matchedComparisonCount: matchedComparisons.length,
+      matchedObjectCount: matchedObjects.length,
+      observedBrowserCaseCount: caseInventory.filter((item) => item.observedInBrowser).length,
+      convertedCaseCount: caseInventory.filter((item) => item.convertedToNodes).length,
     },
-    chapterRanking: scored.chapterRanking,
-    pageRanking: scored.pageRanking,
-    anchorRanking: scored.anchorRanking,
-    allowlistHits: scored.allowlistHits,
-    reference: referenceMetrics,
-    canvas: canvasMetrics,
+    caseCatalog: caseCatalog.entries,
+    caseInventory,
+    browserObjects,
+    canvasObjects,
+    missingConversions,
+    matchedComparisons,
   };
+
+  await writeArtifacts(config, {
+    caseCatalog: caseCatalog.entries,
+    caseInventory,
+    browserObjects,
+    canvasObjects,
+    missingConversions,
+    matchedComparisons,
+    matchedObjects,
+  });
 
   const reportJsonPath = await writeJsonReport(config, report);
   const reportHtmlPath = await writeHtmlReport(config, report);
 
-  console.log(`Render diff complete.`);
+  console.log('Reader render diff complete.');
   console.log(`JSON report: ${reportJsonPath}`);
   console.log(`HTML report: ${reportHtmlPath}`);
-  console.log(`Threshold result: ${scored.thresholdResult.status}`);
+  console.log(`Browser objects: ${browserObjects.length}`);
+  console.log(`Canvas objects: ${canvasObjects.length}`);
+  console.log(`Missing conversions: ${missingConversions.length}`);
+  console.log(`Matched screenshot comparisons: ${matchedComparisons.length}`);
 }
 
 async function ensureDirs(config) {
@@ -109,6 +156,22 @@ async function extractEpubForReference(config) {
     throw new Error(`Unable to locate OPF path in ${containerXmlPath}`);
   }
   config.opfPath = match[1];
+}
+
+async function writeArtifacts(config, artifacts) {
+  const writes = [
+    ['case_catalog.json', artifacts.caseCatalog],
+    ['case_inventory.json', artifacts.caseInventory],
+    ['browser_objects.json', artifacts.browserObjects],
+    ['canvas_objects.json', artifacts.canvasObjects],
+    ['missing_conversions.json', artifacts.missingConversions],
+    ['matched_comparisons.json', artifacts.matchedComparisons],
+    ['matched_objects.debug.json', artifacts.matchedObjects],
+  ].map(([name, value]) =>
+    fs.writeFile(path.join(config.outDir, name), JSON.stringify(value, null, 2)),
+  );
+
+  await Promise.all(writes);
 }
 
 function runCommand(command, args, cwd) {

@@ -1,89 +1,102 @@
-export function normalizeText(text) {
-  return text
-    .replaceAll('\u00A0', ' ')
-    .replaceAll('\u200B', '')
-    .replaceAll('\r\n', '\n')
-    .replaceAll('\r', '\n')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
+import {
+  buildImageSignature,
+  canonicalizeText,
+  computeTextSignalScore,
+  normalizeText,
+  stableHash,
+} from '../shared/text_utils.mjs';
 
-export function stableHash(input) {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < input.length; index += 1) {
-    hash ^= input.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193) >>> 0;
-  }
-  return hash.toString(16).padStart(8, '0');
-}
+export {
+  buildImageSignature,
+  canonicalizeText,
+  computeTextSignalScore,
+  normalizeText,
+  stableHash,
+};
 
 export function buildReferencePageMetric(rawPage, screenshotPath) {
   const blocks = rawPage.blocks.map((block, order) => {
-    const normalized = normalizeText(block.text ?? '');
-    const anchorHash =
-      normalized.length === 0
+    const fullText = block.fullText ?? block.text ?? '';
+    const visibleText = block.visibleText ?? block.text ?? '';
+    const normalizedText = normalizeText(fullText);
+    const canonicalText = canonicalizeText(fullText);
+    const imageSignature =
+      block.imageInfo == null
         ? null
-        : stableHash(`${rawPage.chapterIndex}|${block.nodeType}|${normalized}`);
+        : buildImageSignature({
+            alt: block.imageInfo.alt,
+            width: block.imageInfo.naturalWidth,
+            height: block.imageInfo.naturalHeight,
+          });
+
     return {
       blockId: `reference-${rawPage.chapterIndex}-${rawPage.pageIndex}-${order}`,
       chapterIndex: rawPage.chapterIndex,
       pageIndex: rawPage.pageIndex,
       order,
-      nodeType: block.nodeType,
-      kind: block.kind,
-      styleSignature: buildReferenceStyleSignature(block),
+      tagName: block.tagName ?? block.nodeType?.toLowerCase() ?? '',
+      nodeType: block.nodeType ?? block.tagName?.toUpperCase() ?? '',
+      kind: block.kind ?? 'text',
+      domPath: block.domPath ?? '',
       rect: block.rect,
-      text: block.text || null,
-      normalizedText: normalized || null,
+      text: visibleText || null,
+      visibleText: visibleText || null,
+      fullText: fullText || null,
+      normalizedText: normalizedText || null,
+      canonicalText: canonicalText || null,
+      textSignalScore: computeTextSignalScore(fullText),
+      imageSignature,
+      styleSignature: buildReferenceStyleSignature(block),
+      computedStyleSummary: block.computedStyleSummary ?? null,
+      featureFlags: block.featureFlags ?? {},
+      featureCaseHints: block.featureCaseHints ?? [],
+      observedCaseHints: block.observedCaseHints ?? [],
+      listInfo: block.listInfo ?? null,
+      tableInfo: block.tableInfo ?? null,
+      imageInfo: block.imageInfo ?? null,
       lineCount: block.lineCount || null,
-      anchorHash,
+      appearanceKey:
+        block.domPath != null && block.domPath !== ''
+          ? stableHash(`${rawPage.chapterIndex}|${block.domPath}`)
+          : null,
     };
   });
-
-  const anchors = blocks
-    .filter((block) => block.anchorHash != null)
-    .map((block) => ({
-      anchorHash: block.anchorHash,
-      chapterIndex: block.chapterIndex,
-      pageIndex: block.pageIndex,
-      order: block.order,
-      nodeType: block.nodeType,
-      text: block.text ?? '',
-      normalizedText: block.normalizedText,
-      styleSignature: block.styleSignature,
-      rect: block.rect,
-      lineCount: block.lineCount ?? 0,
-    }));
 
   return {
     chapterIndex: rawPage.chapterIndex,
     pageIndex: rawPage.pageIndex,
     screenshotPath,
-    normalizedText: normalizeText(blocks.map((block) => block.normalizedText ?? '').join(' ')),
+    normalizedText: normalizeText(
+      blocks.map((block) => block.visibleText ?? '').join(' '),
+    ),
     blocks,
-    anchors,
     href: rawPage.href,
     locationKey: rawPage.locationKey,
   };
 }
 
 function buildReferenceStyleSignature(block) {
+  const style = block.computedStyleSummary ?? {};
   const parts = [
-    `node=${block.nodeType}`,
-    `kind=${block.kind}`,
+    `node=${block.nodeType ?? block.tagName ?? ''}`,
+    `kind=${block.kind ?? 'text'}`,
   ];
-  if (block.fontSize != null) {
-    parts.push(`size=${Number(block.fontSize).toFixed(2)}`);
+
+  if (style.fontSizePx != null) {
+    parts.push(`size=${Number(style.fontSizePx).toFixed(2)}`);
   }
-  parts.push(`weight=${block.fontWeight ?? 400}`);
-  parts.push(`italic=${Boolean(block.italic)}`);
-  parts.push(`underline=${Boolean(block.underline)}`);
-  parts.push(`strike=${Boolean(block.strike)}`);
-  if (block.colorHex) {
-    parts.push(`color=${block.colorHex}`);
+  parts.push(`weight=${style.fontWeight ?? 400}`);
+  parts.push(`italic=${style.fontStyle === 'italic' || style.fontStyle === 'oblique'}`);
+  parts.push(`underline=${Boolean(block.featureFlags?.underline)}`);
+  parts.push(`strike=${Boolean(block.featureFlags?.strikethrough)}`);
+  if (style.colorHex) {
+    parts.push(`color=${style.colorHex}`);
   }
-  if (block.backgroundHex) {
-    parts.push(`bg=${block.backgroundHex}`);
+  if (style.backgroundHex) {
+    parts.push(`bg=${style.backgroundHex}`);
+  }
+  if (style.textAlign) {
+    parts.push(`align=${style.textAlign}`);
   }
   parts.push(`lines=${block.lineCount ?? 0}`);
   return parts.join('|');

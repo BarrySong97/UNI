@@ -115,10 +115,50 @@ function matchAnchor(referenceAnchor, chapterAnchors, usedCanvasAnchors) {
     return exact;
   }
 
-  return chapterAnchors.find((anchor) => {
+  const sameText = chapterAnchors.find((anchor) => {
     const key = anchor.anchorHash + ':' + anchor.pageIndex + ':' + anchor.order;
     return !usedCanvasAnchors.has(key) && anchor.normalizedText === referenceAnchor.normalizedText;
   });
+  if (sameText != null) {
+    return sameText;
+  }
+
+  const containing = chapterAnchors
+    .filter((anchor) => {
+      const key = anchor.anchorHash + ':' + anchor.pageIndex + ':' + anchor.order;
+      return !usedCanvasAnchors.has(key) && textsSubstantiallyOverlap(referenceAnchor.normalizedText, anchor.normalizedText);
+    })
+    .sort((a, b) => overlapScore(referenceAnchor.normalizedText, b.normalizedText) - overlapScore(referenceAnchor.normalizedText, a.normalizedText))[0];
+  if (containing != null) {
+    return containing;
+  }
+
+  return null;
+}
+
+function textsSubstantiallyOverlap(a, b) {
+  if (!a || !b) {
+    return false;
+  }
+  if (a === b) {
+    return true;
+  }
+  if (a.length < 24 || b.length < 24) {
+    return false;
+  }
+  return a.includes(b) || b.includes(a);
+}
+
+function overlapScore(a, b) {
+  if (a === b) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+  const shorter = Math.min(a.length, b.length);
+  const longer = Math.max(a.length, b.length);
+  if (shorter === 0) {
+    return 0;
+  }
+  return shorter / longer;
 }
 
 function bboxDeltaRatio(a, b) {

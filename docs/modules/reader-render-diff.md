@@ -2,102 +2,114 @@
 
 ## Module Purpose
 
-Provides a developer-only offline harness that compares the current Canvas EPUB reader against a reference renderer based on `epub.js + Chromium`.
+Provides a developer-only offline EPUB audit harness for the Canvas reader.
 
-The module exists to help iterate the reader algorithm by producing repeatable screenshots, layout metrics, anchor-aligned diffs, and ranked reports for real EPUB samples under `./epubs`.
+The harness is no longer page-diff first. It now answers three narrower questions in order:
+
+1. What content cases actually appear in this EPUB sample
+2. Which browser-observed content objects were converted into `RenderNode` objects and which were missed
+3. For high-confidence one-to-one matches only, what do browser HTML rendering and Flutter Canvas rendering look like side by side
 
 ## Boundary
 
 ### In
-- Resolve EPUB inputs from `--epub`, `--sample`, or the default smoke sample under `./epubs`
-- Export chapter JSON from the Rust EPUB parser
-- Render reference pages with `epub.js + Chromium`
-- Render Canvas pages with the existing `RenderNode -> ReaderLayoutEngine -> ReaderCanvasPainter` pipeline
-- Capture screenshots and structured per-page / per-anchor metrics
-- Compare page-to-page output and anchor-aligned slices
-- Apply manual allowlist rules for known unsupported differences
-- Produce `report.json` and `report.html`
+- Resolve EPUB input from `--epub`, `--sample`, or the default smoke sample in `./epubs`
+- Export `book.json` and `chapter_N.json` through the Rust EPUB parser
+- Render the same EPUB in `epub.js + Chromium`
+- Reuse the real Canvas reader path:
+  - `RenderNode`
+  - `ReaderLayoutEngine`
+  - `ReaderCanvasPainter`
+- Build browser-side content-object inventory
+- Build Canvas-side converted-node inventory directly from the `RenderNode[]` tree
+- Generate three-stage report output:
+  - Case Inventory
+  - Missing Conversion
+  - Matched Screenshot Compare
+- Write developer artifacts:
+  - `browser_objects.json`
+  - `canvas_objects.json`
+  - `case_inventory.json`
+  - `missing_conversions.json`
+  - `matched_comparisons.json`
+  - `report.json`
+  - `report.html`
 
 ### Out
-- End-user reader UI
-- Real-time in-app debugging overlays
-- CI gating in the first iteration
-- Universal EPUB conformance claims
-- Fully automatic classification of every unsupported EPUB/CSS feature
+- Production reader UI changes
+- Automatic correctness judgment
+- Page-to-page parity as the primary diagnostic model
+- Weak fuzzy matching in the main report
+- Auto-fixing parser or renderer logic
 
 ## Core Flow
 
-1. Resolve the target EPUB:
-   - `--epub /absolute/path/to/book.epub`
-   - `--sample "<partial file name>"`
-   - default smoke sample from `./epubs`
-2. Create a run directory under `build/reader_render_diff/...`.
-3. Export Rust parser output into a cache directory (`book.json`, `chapter_N.json`).
-4. Launch Playwright + Chromium and render the EPUB with `epub.js`.
-5. Capture reference screenshots and structured metrics per chapter/page.
-6. Invoke the Flutter canvas harness test with a job JSON file.
-7. The Flutter harness loads cached chapter JSON, paginates it with the existing reader pipeline, paints PNGs, and emits structured metrics.
-8. Diff the two artifact sets in two modes:
-   - page-to-page
-   - anchor-aligned
-9. Apply allowlist rules, score differences, and rank the most severe mismatches.
-10. Write `report.json` and `report.html`.
-11. `report.html` presents browser vs Canvas screenshots side-by-side and includes a human-readable problem summary beside each page comparison.
+1. Resolve the target EPUB and output directory.
+2. Export Rust parser cache into the run-local `cache/` directory.
+3. Render the book in Chromium via `epub.js`.
+4. Capture reference page screenshots, visible semantic block objects, and ignored-by-design special-case counts.
+5. Run the Flutter harness test.
+6. The Flutter harness loads cached chapter JSON, paginates with the existing reader pipeline, paints PNGs, and exports:
+   - page screenshots
+   - page-level visible block appearances
+   - chapter-wide raw `RenderNode` inventory
+7. Stage 1: build the canonical case inventory.
+   - Browser objects are classified into block + inline/layout feature cases.
+   - Canvas objects are classified from raw `RenderNode` inventory, not from screenshots.
+8. Stage 2: find missing conversions.
+   - Only browser-observed supported or partial cases are considered.
+   - Ignored-by-design cases do not count as missing conversion.
+   - Missing cards show browser-only evidence.
+9. Stage 3: build matched screenshot compare cards.
+   - Matching is chapter-scoped and block-to-block only.
+   - Only `exact` and `canonical_exact` one-to-one matches enter the main gallery.
+   - Crops come from the first visible browser appearance and the first visible Canvas appearance of the same matched object.
+10. Write JSON artifacts and `report.html`.
+11. `report.html` uses single-column comparison cards so browser and Canvas crops stay large enough for manual review.
 
 ## Key State & Data
 
-- `tool/reader_render_diff/run.mjs` CLI inputs
-- `tool/reader_render_diff/allowlist.json`
-- Run directory:
-  - `input/`
-  - `cache/`
-  - `reference/`
-  - `canvas/`
-  - `diff/`
-  - `report.json`
-  - `report.html`
-- Flutter harness job spec:
-  - epub path
-  - cache dir
-  - output dir
-  - viewport
-  - device pixel ratio
-  - chapter filter / limit
-  - reader preferences
-- Structured metrics:
-  - page screenshot paths
-  - normalized page text
-  - block / image bounding boxes
-  - style signatures
-  - anchor records
-- HTML report sections:
-  - page comparison screenshots
-  - per-page issue summary
-  - anchor excerpt / mismatch context
+- `tool/reader_render_diff/case_catalog.json`
+- `tool/reader_render_diff/run.mjs`
+- Browser metrics:
+  - page screenshots
+  - semantic block captures
+  - special ignored-case counts
+- Canvas metrics:
+  - page screenshots
+  - page block appearances keyed by stable object ID
+  - chapter node inventory derived from raw `RenderNode[]`
+- Final report data:
+  - `caseCatalog`
+  - `caseInventory`
+  - `browserObjects`
+  - `canvasObjects`
+  - `missingConversions`
+  - `matchedComparisons`
 
 ## Interaction & Exceptions
 
-- Missing `./epubs` or missing default smoke sample should fail with a clear error.
-- Partial `--sample` matches must resolve to exactly one EPUB; zero or multiple matches are errors.
-- Filenames with spaces or non-ASCII characters are supported.
-- Reference and Canvas page counts can diverge; page-to-page diff remains informational.
-- Anchor matching may be partial when pagination or unsupported styling diverges heavily.
-- Allowlisted mismatches remain visible in reports but do not count toward hard failure.
-- The harness is local-first and may depend on developer fonts and Chromium version.
-- The HTML report should explain likely problems in prose instead of only exposing raw metrics.
+- Missing `./epubs` or missing default smoke sample must fail clearly.
+- Sample hint matching must resolve to exactly one EPUB.
+- Filenames with spaces and non-ASCII characters are supported.
+- Smoke runs may cap chapters and pages; `--full-book` removes those caps.
+- Browser and Canvas page counts may diverge heavily; the main report must not depend on equal pagination.
+- The main HTML compare gallery only accepts high-confidence one-to-one matched content objects.
+- Browser-only evidence is expected for unsupported, partial, or currently unconverted cases.
+- Ignored-by-design categories stay visible in Case Inventory but do not count as missing conversion.
 
 ## Acceptance Criteria
 
-- One local command can run the harness against a real EPUB from `./epubs`.
-- The default command uses the configured smoke sample when no input flags are provided.
-- The harness produces both reference and Canvas screenshots.
-- The harness emits page-level and anchor-level diagnostics.
-- The report ranks the most severe mismatches and explains them beside the screenshots instead of only showing raw screenshot dumps.
-- Known unsupported cases can be allowlisted without disappearing from the report.
+- One local command can run against a real EPUB from `./epubs`.
+- The first report section is Case Inventory, not page diff.
+- The harness shows browser-observed cases, converted-node coverage, and missing conversions.
+- Missing conversion cards include browser evidence without fake Canvas placeholders.
+- Matched screenshot compare only shows high-confidence one-to-one pairs.
+- The Canvas export comes from the real reader pipeline, not duplicated layout code.
 
 ## Non-Goals
 
-- Shipping this harness to production users
-- Treating reference output as a universal “correct” EPUB rendering
-- Achieving zero visual diff in the first iteration
-- Replacing focused unit tests for the layout engine
+- Treating browser output as a universal source of truth
+- Replacing targeted parser/layout tests
+- Shipping this harness to end users
+- Automatically deciding how reader logic should be changed after each run

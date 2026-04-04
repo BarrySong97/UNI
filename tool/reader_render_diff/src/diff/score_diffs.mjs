@@ -17,29 +17,33 @@ export async function scoreDiffs({
   const pageDiffs = await diffPages(referenceMetrics, canvasMetrics, diffDir, outDir);
   const allDiffs = [...pageDiffs, ...anchorDiffs];
   const { annotatedDiffs, allowlistHits } = applyAllowlist(allDiffs, allowlist);
-  const nonAllowlisted = annotatedDiffs.filter((diff) => !diff.allowlisted);
-  const overallSeverity =
-    nonAllowlisted.length === 0
+  const annotatedPageDiffs = annotatedDiffs.filter((diff) => diff.scope === 'page');
+  const annotatedAnchorDiffs = annotatedDiffs.filter((diff) => diff.scope === 'anchor');
+  const matchedPageDiffs = annotatedPageDiffs.filter(hasComparableScreenshots);
+  const unmatchedPageDiffs = annotatedPageDiffs.filter(
+    (diff) => !hasComparableScreenshots(diff),
+  );
+  const visualDistance =
+    annotatedDiffs.length === 0
       ? 0
-      : nonAllowlisted.reduce((sum, diff) => sum + diff.severity, 0) / nonAllowlisted.length;
-
-  const thresholdResult = {
-    status: nonAllowlisted.some((diff) => diff.severity >= 0.6) || overallSeverity >= 0.25
-      ? 'fail'
-      : 'pass',
-    overallSeverity,
-    nonAllowlistedCount: nonAllowlisted.length,
-  };
+      : annotatedDiffs.reduce((sum, diff) => sum + diff.severity, 0) / annotatedDiffs.length;
 
   return {
-    overallSeverity,
-    thresholdResult,
+    visualDistance,
     allowlistHits,
-    pageDiffs: annotatedDiffs.filter((diff) => diff.scope === 'page'),
-    anchorDiffs: annotatedDiffs.filter((diff) => diff.scope === 'anchor'),
-    chapterRanking: buildChapterRanking(annotatedDiffs),
-    pageRanking: sortBySeverity(annotatedDiffs.filter((diff) => diff.scope === 'page')),
-    anchorRanking: sortBySeverity(annotatedDiffs.filter((diff) => diff.scope === 'anchor')),
+    pageDiffs: annotatedPageDiffs,
+    matchedPageDiffs,
+    unmatchedPageDiffs,
+    anchorDiffs: annotatedAnchorDiffs,
+    chapterRanking: buildChapterRanking({
+      referenceMetrics,
+      canvasMetrics,
+      pageDiffs: annotatedPageDiffs,
+      anchorDiffs: annotatedAnchorDiffs,
+    }),
+    pageRanking: sortBySeverity(matchedPageDiffs),
+    unmatchedPageRanking: sortBySeverity(unmatchedPageDiffs),
+    anchorRanking: sortBySeverity(annotatedAnchorDiffs),
     alignedAnchors,
   };
 }
@@ -72,6 +76,12 @@ async function diffPages(referenceMetrics, canvasMetrics, diffDir, outDir) {
         details: {
           referencePresent: referencePage != null,
           canvasPresent: canvasPage != null,
+          referenceScreenshotPath: referencePage?.screenshotPath ?? null,
+          canvasScreenshotPath: canvasPage?.screenshotPath ?? null,
+          observation:
+            referencePage == null
+              ? 'Browser reference did not produce a comparable screenshot for this page key.'
+              : 'Canvas renderer did not produce a comparable screenshot for this page key.',
         },
       });
       continue;
@@ -107,6 +117,7 @@ async function diffPages(referenceMetrics, canvasMetrics, diffDir, outDir) {
         pixelDiffRatio,
         textMismatch,
         blockCountDelta,
+        observation: buildObservation({ pixelDiffRatio, textMismatch, blockCountDelta }),
         diffImagePath: path.relative(diffDir, diffImagePath),
         referenceScreenshotPath: referencePage.screenshotPath,
         canvasScreenshotPath: canvasPage.screenshotPath,
@@ -115,6 +126,24 @@ async function diffPages(referenceMetrics, canvasMetrics, diffDir, outDir) {
   }
 
   return diffs;
+}
+
+function buildObservation({ pixelDiffRatio, textMismatch, blockCountDelta }) {
+  const parts = [];
+  if (pixelDiffRatio > 0.08) {
+    parts.push('large visual delta');
+  } else if (pixelDiffRatio > 0.02) {
+    parts.push('visible visual delta');
+  } else {
+    parts.push('small visual delta');
+  }
+  if (textMismatch) {
+    parts.push('visible text differs');
+  }
+  if (blockCountDelta > 0) {
+    parts.push(`block count delta ${blockCountDelta}`);
+  }
+  return parts.join(', ');
 }
 
 async function buildPixelDiff(outDir, referenceRelativePath, canvasRelativePath, outputPath) {
@@ -184,19 +213,75 @@ function matchesAllowlistEntry(diff, entry) {
   return true;
 }
 
-function buildChapterRanking(diffs) {
+function buildChapterRanking({ referenceMetrics, canvasMetrics, pageDiffs, anchorDiffs }) {
+  const chapterIndices = new Set([
+    ...Object.keys(referenceMetrics.chapterPageCounts ?? {}).map(Number),
+    ...Object.keys(canvasMetrics.chapterPageCounts ?? {}).map(Number),
+    ...pageDiffs.map((diff) => diff.chapterIndex),
+    ...anchorDiffs.map((diff) => diff.chapterIndex),
+  ]);
   const ranking = new Map();
-  for (const diff of diffs) {
-    const entry = ranking.get(diff.chapterIndex) ?? { chapterIndex: diff.chapterIndex, severity: 0, count: 0 };
+
+  for (const chapterIndex of chapterIndices) {
+    ranking.set(chapterIndex, {
+      chapterIndex,
+      severity: 0,
+      count: 0,
+      matchedPageCount: 0,
+      unmatchedPageCount: 0,
+      anchorDiffCount: 0,
+      referencePageCount: Number(referenceMetrics.chapterPageCounts?.[String(chapterIndex)] ?? 0),
+      canvasPageCount: Number(canvasMetrics.chapterPageCounts?.[String(chapterIndex)] ?? 0),
+    });
+  }
+
+  for (const diff of [...pageDiffs, ...anchorDiffs]) {
+    const entry =
+      ranking.get(diff.chapterIndex) ?? {
+        chapterIndex: diff.chapterIndex,
+        severity: 0,
+        count: 0,
+        matchedPageCount: 0,
+        unmatchedPageCount: 0,
+        anchorDiffCount: 0,
+        referencePageCount: 0,
+        canvasPageCount: 0,
+      };
     entry.severity = Math.max(entry.severity, diff.severity);
-    entry.count += 1;
+    if (diff.scope === 'page') {
+      if (hasComparableScreenshots(diff)) {
+        entry.matchedPageCount += 1;
+      } else {
+        entry.unmatchedPageCount += 1;
+      }
+    } else if (diff.scope === 'anchor') {
+      entry.anchorDiffCount += 1;
+    }
+    entry.count = entry.matchedPageCount + entry.unmatchedPageCount;
     ranking.set(diff.chapterIndex, entry);
   }
-  return [...ranking.values()].sort((a, b) => b.severity - a.severity || b.count - a.count);
+
+  return [...ranking.values()].sort(
+    (a, b) =>
+      b.severity - a.severity ||
+      b.unmatchedPageCount - a.unmatchedPageCount ||
+      b.matchedPageCount - a.matchedPageCount ||
+      b.anchorDiffCount - a.anchorDiffCount,
+  );
 }
 
 function sortBySeverity(diffs) {
   return [...diffs].sort((a, b) => b.severity - a.severity);
+}
+
+function hasComparableScreenshots(diff) {
+  const details = diff.details ?? {};
+  return (
+    details.referenceScreenshotPath != null &&
+    details.referenceScreenshotPath !== '' &&
+    details.canvasScreenshotPath != null &&
+    details.canvasScreenshotPath !== ''
+  );
 }
 
 function pageKey(chapterIndex, pageIndex) {

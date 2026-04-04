@@ -26,6 +26,10 @@ test('scoreDiffs honors allowlist entries and produces diff artifacts', async ()
   await fs.writeFile(path.join(canvasDir, 'page_000.png'), bytes);
 
   const referenceMetrics = {
+    chapterPageCounts: {
+      '0': 1,
+      '1': 0,
+    },
     pages: [
       {
         chapterIndex: 0,
@@ -38,12 +42,24 @@ test('scoreDiffs honors allowlist entries and produces diff artifacts', async ()
     ],
   };
   const canvasMetrics = {
+    chapterPageCounts: {
+      '0': 2,
+      '1': 1,
+    },
     pages: [
       {
         chapterIndex: 0,
         pageIndex: 0,
         screenshotPath: path.join('screenshots', 'chapter_000', 'page_000.png'),
         normalizedText: 'alpha beta',
+        blocks: [],
+        anchors: [],
+      },
+      {
+        chapterIndex: 1,
+        pageIndex: 0,
+        screenshotPath: path.join('screenshots', 'chapter_000', 'page_000.png'),
+        normalizedText: 'gamma delta',
         blocks: [],
         anchors: [],
       },
@@ -79,6 +95,20 @@ test('scoreDiffs honors allowlist entries and produces diff artifacts', async ()
   });
 
   assert.equal(result.allowlistHits.length, 1);
-  assert.equal(result.thresholdResult.status, 'pass');
+  assert.equal(typeof result.visualDistance, 'number');
+  assert.equal(result.anchorDiffs[0].allowlisted, true);
+  assert.equal(result.pageRanking.length, 1);
+  assert.equal(result.unmatchedPageRanking.length, 1);
+  assert.equal(result.unmatchedPageRanking[0].diffType, 'missing-page');
+  assert.deepEqual(result.chapterRanking[0], {
+    chapterIndex: 1,
+    severity: 1,
+    count: 1,
+    matchedPageCount: 0,
+    unmatchedPageCount: 1,
+    anchorDiffCount: 0,
+    referencePageCount: 0,
+    canvasPageCount: 1,
+  });
   await fs.access(path.join(diffDir, 'pages', 'chapter_000', 'page_000.png'));
 });

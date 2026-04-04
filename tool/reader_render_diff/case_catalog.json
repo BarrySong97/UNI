@@ -1,0 +1,553 @@
+{
+  "entries": [
+    {
+      "caseId": "block.paragraph",
+      "layer": "block",
+      "label": "Paragraph",
+      "sourceHtmlTags": ["p"],
+      "expectedRenderNodeKinds": ["ParagraphNode"],
+      "status": "supported",
+      "notes": "Default prose block."
+    },
+    {
+      "caseId": "block.heading.h1",
+      "layer": "block",
+      "label": "Heading H1",
+      "sourceHtmlTags": ["h1"],
+      "expectedRenderNodeKinds": ["HeadingNode"],
+      "status": "supported",
+      "notes": "Heading level 1."
+    },
+    {
+      "caseId": "block.heading.h2",
+      "layer": "block",
+      "label": "Heading H2",
+      "sourceHtmlTags": ["h2"],
+      "expectedRenderNodeKinds": ["HeadingNode"],
+      "status": "supported",
+      "notes": "Heading level 2."
+    },
+    {
+      "caseId": "block.heading.h3",
+      "layer": "block",
+      "label": "Heading H3",
+      "sourceHtmlTags": ["h3"],
+      "expectedRenderNodeKinds": ["HeadingNode"],
+      "status": "supported",
+      "notes": "Heading level 3."
+    },
+    {
+      "caseId": "block.heading.h4",
+      "layer": "block",
+      "label": "Heading H4",
+      "sourceHtmlTags": ["h4"],
+      "expectedRenderNodeKinds": ["HeadingNode"],
+      "status": "supported",
+      "notes": "Heading level 4."
+    },
+    {
+      "caseId": "block.heading.h5",
+      "layer": "block",
+      "label": "Heading H5",
+      "sourceHtmlTags": ["h5"],
+      "expectedRenderNodeKinds": ["HeadingNode"],
+      "status": "supported",
+      "notes": "Heading level 5."
+    },
+    {
+      "caseId": "block.heading.h6",
+      "layer": "block",
+      "label": "Heading H6",
+      "sourceHtmlTags": ["h6"],
+      "expectedRenderNodeKinds": ["HeadingNode"],
+      "status": "supported",
+      "notes": "Heading level 6."
+    },
+    {
+      "caseId": "block.list.ul",
+      "layer": "block",
+      "label": "Unordered List",
+      "sourceHtmlTags": ["ul"],
+      "expectedRenderNodeKinds": ["ListNode"],
+      "status": "supported",
+      "notes": "Top-level unordered list."
+    },
+    {
+      "caseId": "block.list.ol",
+      "layer": "block",
+      "label": "Ordered List",
+      "sourceHtmlTags": ["ol"],
+      "expectedRenderNodeKinds": ["ListNode"],
+      "status": "supported",
+      "notes": "Top-level ordered list."
+    },
+    {
+      "caseId": "block.list.nested",
+      "layer": "block",
+      "label": "Nested List",
+      "sourceHtmlTags": ["ul", "ol"],
+      "expectedRenderNodeKinds": ["ListNode"],
+      "status": "supported",
+      "notes": "List nested under another list item."
+    },
+    {
+      "caseId": "block.table.basic",
+      "layer": "block",
+      "label": "Table",
+      "sourceHtmlTags": ["table"],
+      "expectedRenderNodeKinds": ["TableNode"],
+      "status": "supported",
+      "notes": "Basic table structure."
+    },
+    {
+      "caseId": "block.table.caption",
+      "layer": "block",
+      "label": "Table With Caption",
+      "sourceHtmlTags": ["table", "caption"],
+      "expectedRenderNodeKinds": ["TableNode"],
+      "status": "supported",
+      "notes": "Table contains a caption block."
+    },
+    {
+      "caseId": "block.table.header_row",
+      "layer": "block",
+      "label": "Table Header Row",
+      "sourceHtmlTags": ["table", "th"],
+      "expectedRenderNodeKinds": ["TableNode"],
+      "status": "supported",
+      "notes": "Table has header cells."
+    },
+    {
+      "caseId": "block.table.colspan",
+      "layer": "block",
+      "label": "Table Colspan",
+      "sourceHtmlTags": ["table", "td", "th"],
+      "expectedRenderNodeKinds": ["TableNode"],
+      "status": "partial",
+      "notes": "Table uses colspan."
+    },
+    {
+      "caseId": "block.table.rowspan",
+      "layer": "block",
+      "label": "Table Rowspan",
+      "sourceHtmlTags": ["table", "td", "th"],
+      "expectedRenderNodeKinds": ["TableNode"],
+      "status": "partial",
+      "notes": "Table uses rowspan."
+    },
+    {
+      "caseId": "block.blockquote",
+      "layer": "block",
+      "label": "Blockquote",
+      "sourceHtmlTags": ["blockquote"],
+      "expectedRenderNodeKinds": ["BlockQuoteNode"],
+      "status": "supported",
+      "notes": "Indented quotation block."
+    },
+    {
+      "caseId": "block.code.pre",
+      "layer": "block",
+      "label": "Code Block",
+      "sourceHtmlTags": ["pre"],
+      "expectedRenderNodeKinds": ["CodeBlockNode"],
+      "status": "supported",
+      "notes": "Preformatted code block."
+    },
+    {
+      "caseId": "block.image",
+      "layer": "block",
+      "label": "Block Image",
+      "sourceHtmlTags": ["img"],
+      "expectedRenderNodeKinds": ["ImageNode"],
+      "status": "partial",
+      "notes": "Image support still has placeholder risk."
+    },
+    {
+      "caseId": "block.horizontal_rule",
+      "layer": "block",
+      "label": "Horizontal Rule",
+      "sourceHtmlTags": ["hr"],
+      "expectedRenderNodeKinds": ["HorizontalRuleNode"],
+      "status": "supported",
+      "notes": "Rule divider."
+    },
+    {
+      "caseId": "block.definition_list.dt",
+      "layer": "block",
+      "label": "Definition Term",
+      "sourceHtmlTags": ["dt"],
+      "expectedRenderNodeKinds": ["ParagraphNode"],
+      "status": "partial",
+      "notes": "Definition term is currently lowered into paragraph-like output."
+    },
+    {
+      "caseId": "block.definition_list.dd",
+      "layer": "block",
+      "label": "Definition Description",
+      "sourceHtmlTags": ["dd"],
+      "expectedRenderNodeKinds": ["ParagraphNode"],
+      "status": "partial",
+      "notes": "Definition description is currently lowered into paragraph-like output."
+    },
+    {
+      "caseId": "block.bare_text_wrapped_paragraph",
+      "layer": "block",
+      "label": "Bare Text Wrapped Paragraph",
+      "sourceHtmlTags": ["#text"],
+      "expectedRenderNodeKinds": ["TextNode", "ParagraphNode"],
+      "status": "supported",
+      "notes": "Bare block text wrapped for layout."
+    },
+    {
+      "caseId": "inline.bold",
+      "layer": "inline",
+      "label": "Bold",
+      "sourceHtmlTags": ["strong", "b"],
+      "expectedRenderNodeKinds": ["TextNode"],
+      "status": "supported",
+      "notes": "Bold inline text."
+    },
+    {
+      "caseId": "inline.italic",
+      "layer": "inline",
+      "label": "Italic",
+      "sourceHtmlTags": ["em", "i", "cite", "dfn"],
+      "expectedRenderNodeKinds": ["TextNode"],
+      "status": "supported",
+      "notes": "Italic inline text."
+    },
+    {
+      "caseId": "inline.underline",
+      "layer": "inline",
+      "label": "Underline",
+      "sourceHtmlTags": ["u", "ins"],
+      "expectedRenderNodeKinds": ["TextNode"],
+      "status": "supported",
+      "notes": "Underlined inline text."
+    },
+    {
+      "caseId": "inline.strikethrough",
+      "layer": "inline",
+      "label": "Strikethrough",
+      "sourceHtmlTags": ["del", "s"],
+      "expectedRenderNodeKinds": ["TextNode"],
+      "status": "supported",
+      "notes": "Line-through inline text."
+    },
+    {
+      "caseId": "inline.link",
+      "layer": "inline",
+      "label": "Link",
+      "sourceHtmlTags": ["a"],
+      "expectedRenderNodeKinds": ["TextNode"],
+      "status": "supported",
+      "notes": "Hyperlink inline text."
+    },
+    {
+      "caseId": "inline.superscript",
+      "layer": "inline",
+      "label": "Superscript",
+      "sourceHtmlTags": ["sup"],
+      "expectedRenderNodeKinds": ["TextNode"],
+      "status": "supported",
+      "notes": "Superscript text."
+    },
+    {
+      "caseId": "inline.subscript",
+      "layer": "inline",
+      "label": "Subscript",
+      "sourceHtmlTags": ["sub"],
+      "expectedRenderNodeKinds": ["TextNode"],
+      "status": "supported",
+      "notes": "Subscript text."
+    },
+    {
+      "caseId": "inline.small",
+      "layer": "inline",
+      "label": "Small Text",
+      "sourceHtmlTags": ["small"],
+      "expectedRenderNodeKinds": ["TextNode"],
+      "status": "supported",
+      "notes": "Reduced-size inline text."
+    },
+    {
+      "caseId": "inline.mark",
+      "layer": "inline",
+      "label": "Marked Text",
+      "sourceHtmlTags": ["mark"],
+      "expectedRenderNodeKinds": ["TextNode"],
+      "status": "supported",
+      "notes": "Inline highlighted text."
+    },
+    {
+      "caseId": "inline.inline_code",
+      "layer": "inline",
+      "label": "Inline Code",
+      "sourceHtmlTags": ["code"],
+      "expectedRenderNodeKinds": ["TextNode"],
+      "status": "supported",
+      "notes": "Inline code styling."
+    },
+    {
+      "caseId": "inline.line_break",
+      "layer": "inline",
+      "label": "Line Break",
+      "sourceHtmlTags": ["br"],
+      "expectedRenderNodeKinds": ["LineBreakNode"],
+      "status": "supported",
+      "notes": "Explicit line break."
+    },
+    {
+      "caseId": "inline.inline_image_alt_fallback",
+      "layer": "inline",
+      "label": "Inline Image Alt Fallback",
+      "sourceHtmlTags": ["img"],
+      "expectedRenderNodeKinds": ["ImageNode", "TextNode"],
+      "status": "partial",
+      "notes": "Inline image currently may degrade to alt-text fallback."
+    },
+    {
+      "caseId": "layout.align.left",
+      "layer": "layout",
+      "label": "Left Align",
+      "sourceHtmlTags": ["p", "h1", "h2", "h3", "h4", "h5", "h6"],
+      "expectedRenderNodeKinds": ["ParagraphNode", "HeadingNode"],
+      "status": "supported",
+      "notes": "Left text alignment."
+    },
+    {
+      "caseId": "layout.align.center",
+      "layer": "layout",
+      "label": "Center Align",
+      "sourceHtmlTags": ["p", "h1", "h2", "h3", "h4", "h5", "h6"],
+      "expectedRenderNodeKinds": ["ParagraphNode", "HeadingNode"],
+      "status": "supported",
+      "notes": "Centered text alignment."
+    },
+    {
+      "caseId": "layout.align.right",
+      "layer": "layout",
+      "label": "Right Align",
+      "sourceHtmlTags": ["p", "h1", "h2", "h3", "h4", "h5", "h6"],
+      "expectedRenderNodeKinds": ["ParagraphNode", "HeadingNode"],
+      "status": "supported",
+      "notes": "Right-aligned text."
+    },
+    {
+      "caseId": "layout.align.justify",
+      "layer": "layout",
+      "label": "Justify",
+      "sourceHtmlTags": ["p"],
+      "expectedRenderNodeKinds": ["ParagraphNode"],
+      "status": "supported",
+      "notes": "Justified text alignment."
+    },
+    {
+      "caseId": "layout.margin",
+      "layer": "layout",
+      "label": "Margins",
+      "sourceHtmlTags": ["p", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote"],
+      "expectedRenderNodeKinds": ["ParagraphNode", "HeadingNode", "BlockQuoteNode"],
+      "status": "supported",
+      "notes": "Non-zero margins."
+    },
+    {
+      "caseId": "layout.text_indent",
+      "layer": "layout",
+      "label": "Text Indent",
+      "sourceHtmlTags": ["p"],
+      "expectedRenderNodeKinds": ["ParagraphNode"],
+      "status": "supported",
+      "notes": "Indented first line."
+    },
+    {
+      "caseId": "layout.line_height",
+      "layer": "layout",
+      "label": "Line Height",
+      "sourceHtmlTags": ["p", "h1", "h2", "h3", "h4", "h5", "h6"],
+      "expectedRenderNodeKinds": ["ParagraphNode", "HeadingNode"],
+      "status": "supported",
+      "notes": "Explicit line-height override."
+    },
+    {
+      "caseId": "layout.padding",
+      "layer": "layout",
+      "label": "Padding",
+      "sourceHtmlTags": ["p", "blockquote", "pre", "td", "th"],
+      "expectedRenderNodeKinds": ["ParagraphNode", "BlockQuoteNode", "CodeBlockNode", "TableNode"],
+      "status": "supported",
+      "notes": "Block padding."
+    },
+    {
+      "caseId": "layout.text_color",
+      "layer": "layout",
+      "label": "Text Color",
+      "sourceHtmlTags": ["p", "span", "a", "code"],
+      "expectedRenderNodeKinds": ["ParagraphNode", "HeadingNode", "TextNode"],
+      "status": "supported",
+      "notes": "Explicit text color."
+    },
+    {
+      "caseId": "layout.background_color",
+      "layer": "layout",
+      "label": "Background Color",
+      "sourceHtmlTags": ["p", "blockquote", "pre", "table", "td", "th"],
+      "expectedRenderNodeKinds": ["ParagraphNode", "BlockQuoteNode", "CodeBlockNode", "TableNode", "TextNode"],
+      "status": "supported",
+      "notes": "Block background fill."
+    },
+    {
+      "caseId": "layout.list_style.disc",
+      "layer": "layout",
+      "label": "List Style Disc",
+      "sourceHtmlTags": ["ul"],
+      "expectedRenderNodeKinds": ["ListNode"],
+      "status": "supported",
+      "notes": "Disc bullet list."
+    },
+    {
+      "caseId": "layout.list_style.circle",
+      "layer": "layout",
+      "label": "List Style Circle",
+      "sourceHtmlTags": ["ul"],
+      "expectedRenderNodeKinds": ["ListNode"],
+      "status": "supported",
+      "notes": "Circle bullet list."
+    },
+    {
+      "caseId": "layout.list_style.square",
+      "layer": "layout",
+      "label": "List Style Square",
+      "sourceHtmlTags": ["ul"],
+      "expectedRenderNodeKinds": ["ListNode"],
+      "status": "supported",
+      "notes": "Square bullet list."
+    },
+    {
+      "caseId": "layout.list_style.decimal",
+      "layer": "layout",
+      "label": "List Style Decimal",
+      "sourceHtmlTags": ["ol"],
+      "expectedRenderNodeKinds": ["ListNode"],
+      "status": "supported",
+      "notes": "Decimal ordered list."
+    },
+    {
+      "caseId": "layout.list_style.lower_alpha",
+      "layer": "layout",
+      "label": "List Style Lower Alpha",
+      "sourceHtmlTags": ["ol"],
+      "expectedRenderNodeKinds": ["ListNode"],
+      "status": "supported",
+      "notes": "Lower-alpha ordered list."
+    },
+    {
+      "caseId": "layout.list_style.upper_alpha",
+      "layer": "layout",
+      "label": "List Style Upper Alpha",
+      "sourceHtmlTags": ["ol"],
+      "expectedRenderNodeKinds": ["ListNode"],
+      "status": "supported",
+      "notes": "Upper-alpha ordered list."
+    },
+    {
+      "caseId": "layout.list_style.lower_roman",
+      "layer": "layout",
+      "label": "List Style Lower Roman",
+      "sourceHtmlTags": ["ol"],
+      "expectedRenderNodeKinds": ["ListNode"],
+      "status": "supported",
+      "notes": "Lower-roman ordered list."
+    },
+    {
+      "caseId": "layout.list_style.upper_roman",
+      "layer": "layout",
+      "label": "List Style Upper Roman",
+      "sourceHtmlTags": ["ol"],
+      "expectedRenderNodeKinds": ["ListNode"],
+      "status": "supported",
+      "notes": "Upper-roman ordered list."
+    },
+    {
+      "caseId": "layout.table.border",
+      "layer": "layout",
+      "label": "Table Border",
+      "sourceHtmlTags": ["table", "td", "th"],
+      "expectedRenderNodeKinds": ["TableNode"],
+      "status": "supported",
+      "notes": "Cell or table border styling."
+    },
+    {
+      "caseId": "layout.table.cell_background",
+      "layer": "layout",
+      "label": "Table Cell Background",
+      "sourceHtmlTags": ["td", "th"],
+      "expectedRenderNodeKinds": ["TableNode"],
+      "status": "supported",
+      "notes": "Table cell background fill."
+    },
+    {
+      "caseId": "layout.table.vertical_align",
+      "layer": "layout",
+      "label": "Table Cell Vertical Align",
+      "sourceHtmlTags": ["td", "th"],
+      "expectedRenderNodeKinds": ["TableNode"],
+      "status": "supported",
+      "notes": "Vertical-align on table cells."
+    },
+    {
+      "caseId": "layout.image.width_hint",
+      "layer": "layout",
+      "label": "Image Width Hint",
+      "sourceHtmlTags": ["img"],
+      "expectedRenderNodeKinds": ["ImageNode"],
+      "status": "partial",
+      "notes": "Image width constrained relative to container."
+    },
+    {
+      "caseId": "layout.image.native_size",
+      "layer": "layout",
+      "label": "Image Native Size",
+      "sourceHtmlTags": ["img"],
+      "expectedRenderNodeKinds": ["ImageNode"],
+      "status": "partial",
+      "notes": "Image native dimensions available."
+    },
+    {
+      "caseId": "special.flattened_container",
+      "layer": "special",
+      "label": "Flattened Container",
+      "sourceHtmlTags": ["div", "span", "section", "article", "body", "html", "main", "header", "footer", "nav", "aside"],
+      "expectedRenderNodeKinds": [],
+      "status": "ignored_by_design",
+      "notes": "Container semantics ignored; only children are read."
+    },
+    {
+      "caseId": "special.discarded_nonreading_content",
+      "layer": "special",
+      "label": "Discarded Non-Reading Content",
+      "sourceHtmlTags": ["script", "style", "link", "meta", "head", "form", "input", "iframe", "noscript", "audio", "video", "source", "object", "embed"],
+      "expectedRenderNodeKinds": [],
+      "status": "ignored_by_design",
+      "notes": "Explicitly discarded non-reading content."
+    },
+    {
+      "caseId": "special.out_of_flow_absolute_fixed",
+      "layer": "special",
+      "label": "Out Of Flow Absolute/Fixed",
+      "sourceHtmlTags": ["*"],
+      "expectedRenderNodeKinds": [],
+      "status": "ignored_by_design",
+      "notes": "Absolutely/fixed-positioned elements are ignored by the flow reader."
+    },
+    {
+      "caseId": "special.display_none",
+      "layer": "special",
+      "label": "Display None",
+      "sourceHtmlTags": ["*"],
+      "expectedRenderNodeKinds": [],
+      "status": "ignored_by_design",
+      "notes": "Elements hidden with display:none are ignored."
+    }
+  ]
+}

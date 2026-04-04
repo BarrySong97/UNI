@@ -27,7 +27,7 @@ Provides an immersive book reading experience using Canvas-based rendering. The 
 - Multi-chapter navigation with progress saving
 - Developer render diff support via `reader-render-diff`:
   - reuse `RenderNode -> ReaderLayoutEngine -> ReaderCanvasPainter`
-  - export Canvas screenshots and structured page metrics for offline comparison
+  - export Canvas screenshots, raw `RenderNode` inventory, and page-level object appearances for offline comparison
   - consume Rust-exported `book.json` / `chapter_N.json` caches without booting full reader UI
 
 ### Out
@@ -61,7 +61,7 @@ EPUB → parse_chapter()           RenderNode[] → paginate()           PageLay
    - Pre-decodes images recursively from nested node trees (list/table/blockquote/code children)
 5. **Canvas Painter** draws each `LayoutElement` (text, backgrounds, borders) onto `Canvas`
 6. **ReaderPage** wraps `CustomPaint` in `GestureDetector` for navigation
-7. **Reader render diff harness** can reuse the same cached chapter JSON + layout + painter path to export developer-only PNG artifacts and metrics for offline comparison against a reference renderer
+7. **Reader render diff harness** can reuse the same cached chapter JSON + layout + painter path to export developer-only PNG artifacts, raw node inventory, and page-level object appearances for offline comparison against a reference renderer
 
 ## File Structure
 
@@ -94,10 +94,12 @@ lib/
     epub_preparse_service.dart      # Calls Rust CLI --batch-export at import time
     debug/
       render_diff_job.dart          # Job spec used by the offline render diff harness
-      render_diff_metrics.dart      # Page / anchor metrics serialized for report generation
-      render_diff_text_normalizer.dart # Shared text normalization for anchor alignment
+      render_diff_metrics.dart      # Page blocks + raw node inventory serialized for report generation
+      render_diff_case_extractor.dart # RenderNode -> canonical case hints / feature hints
+      render_diff_node_inventory.dart # Chapter-wide converted-node inventory for audit
+      render_diff_text_normalizer.dart # Shared text normalization for audit matching
       render_diff_style_signature.dart # Stable style/block signatures for diagnostics
-      render_diff_canvas_exporter.dart # Canvas screenshot + metric export using existing layout/painter
+      render_diff_canvas_exporter.dart # Canvas screenshot + page/object export using existing layout/painter
   stores/reader/
     reader_store.dart               # ChangeNotifier: pagination, navigation, progress
     reader_store_manager.dart       # LRU cache of ReaderStore instances per book ID

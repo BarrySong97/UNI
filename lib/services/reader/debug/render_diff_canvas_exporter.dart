@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart';
 import 'package:path/path.dart' as p;
 
+import '../../../pages/reader/widgets/reader_canvas_painter.dart';
 import '../data/cached_chapter_data_source.dart';
 import '../layout/reader_layout_engine.dart';
 import '../models/page_layout.dart';
@@ -11,9 +12,9 @@ import '../models/parsed_chapter.dart';
 import '../models/render_node.dart';
 import 'render_diff_job.dart';
 import 'render_diff_metrics.dart';
+import 'render_diff_node_inventory.dart';
 import 'render_diff_style_signature.dart';
 import 'render_diff_text_normalizer.dart';
-import '../../../pages/reader/widgets/reader_canvas_painter.dart';
 
 class RenderDiffCanvasExporter {
   RenderDiffCanvasExporter({ReaderLayoutEngine? engine})
@@ -31,10 +32,21 @@ class RenderDiffCanvasExporter {
 
     final pages = <RenderDiffPageMetric>[];
     final chapterPageCounts = <String, int>{};
+    final nodeInventory = <RenderDiffNodeInventoryItem>[];
 
     for (final chapterIndex in chapterIndices) {
       final chapter = await dataSource.loadChapter(chapterIndex);
-      final chapterPages = await _renderChapter(job, chapter, outputDir.path);
+      final inventory = RenderDiffNodeInventory.extractChapter(
+        chapterIndex: chapter.index,
+        nodes: chapter.nodes,
+      );
+      nodeInventory.addAll(inventory.items);
+      final chapterPages = await _renderChapter(
+        job,
+        chapter,
+        outputDir.path,
+        inventory.byNode,
+      );
       chapterPageCounts[chapterIndex.toString()] = chapterPages.length;
       pages.addAll(chapterPages);
     }
@@ -48,6 +60,7 @@ class RenderDiffCanvasExporter {
       devicePixelRatio: job.devicePixelRatio,
       pages: pages,
       chapterPageCounts: chapterPageCounts,
+      nodeInventory: nodeInventory,
     );
 
     final metricsFile = File(p.join(outputDir.path, 'metrics.json'));
@@ -72,6 +85,7 @@ class RenderDiffCanvasExporter {
     RenderDiffJob job,
     ParsedChapter chapter,
     String outputDir,
+    Map<RenderNode, RenderDiffNodeInventoryItem> nodeInventoryByNode,
   ) async {
     final viewport = Size(job.viewportWidth, job.viewportHeight);
     final contentWidth =
@@ -99,25 +113,27 @@ class RenderDiffCanvasExporter {
         : rawPages.take(limit).toList();
 
     final chapterDir = Directory(
-      p.join(outputDir, 'screenshots', 'chapter_${chapter.index.toString().padLeft(3, '0')}'),
+      p.join(
+        outputDir,
+        'screenshots',
+        'chapter_${chapter.index.toString().padLeft(3, '0')}',
+      ),
     );
     await chapterDir.create(recursive: true);
 
     final metrics = <RenderDiffPageMetric>[];
     for (final page in pages) {
-      final fileName = 'page_${page.pageIndexInChapter.toString().padLeft(3, '0')}.png';
+      final fileName =
+          'page_${page.pageIndexInChapter.toString().padLeft(3, '0')}.png';
       final absolutePath = p.join(chapterDir.path, fileName);
       final relativePath = p.relative(absolutePath, from: outputDir);
-      await _paintPageToFile(
-        page: page,
-        job: job,
-        outputPath: absolutePath,
-      );
+      await _paintPageToFile(page: page, job: job, outputPath: absolutePath);
       metrics.add(
         _buildPageMetric(
           chapterIndex: chapter.index,
           page: page,
           screenshotPath: relativePath,
+          nodeInventoryByNode: nodeInventoryByNode,
         ),
       );
     }
@@ -157,45 +173,68 @@ class RenderDiffCanvasExporter {
     required int chapterIndex,
     required PageLayout page,
     required String screenshotPath,
+    required Map<RenderNode, RenderDiffNodeInventoryItem> nodeInventoryByNode,
   }) {
-    final grouped = <RenderNode, List<LayoutElement>>{};
+    final grouped = <String, _GroupedPageBlock>{};
+
     for (final element in page.elements) {
-      grouped.putIfAbsent(element.sourceNode, () => <LayoutElement>[]).add(element);
+      final inventory = nodeInventoryByNode[element.sourceNode];
+      if (inventory == null) {
+        continue;
+      }
+      final group = grouped.putIfAbsent(
+        inventory.objectId,
+        () => _GroupedPageBlock(
+          inventory: inventory,
+          sourceNode: element.sourceNode,
+        ),
+      );
+      group.elements.add(element);
     }
 
     final blocks = <RenderDiffBlockMetric>[];
     final anchors = <RenderDiffAnchor>[];
-    final blockEntries = grouped.entries.toList()
-      ..sort((a, b) => _compareElements(a.value.first.rect, b.value.first.rect));
+    final blockEntries = grouped.values.toList()
+      ..sort(
+        (a, b) =>
+            _compareElements(a.elements.first.rect, b.elements.first.rect),
+      );
 
     var order = 0;
     for (final entry in blockEntries) {
-      final elements = [...entry.value]
+      final elements = [...entry.elements]
         ..sort((a, b) => _compareElements(a.rect, b.rect));
       final rect = _unionRect(elements);
-      final plainText = renderNodePlainText(entry.key);
-      final normalizedText = RenderDiffTextNormalizer.normalize(plainText);
+      final plainText = _visibleTextForElements(elements);
+      final fallbackText = plainText.isEmpty
+          ? (entry.inventory.text ?? renderNodePlainText(entry.sourceNode))
+          : plainText;
+      final normalizedText = RenderDiffTextNormalizer.normalize(fallbackText);
       final lineCount = elements.fold<int>(
         0,
-        (sum, element) => sum + (element.ensurePainter()?.computeLineMetrics().length ?? 0),
+        (sum, element) =>
+            sum + (element.ensurePainter()?.computeLineMetrics().length ?? 0),
       );
       final styleSignature = RenderDiffStyleSignature.forLayoutBlock(
-        sourceNode: entry.key,
+        sourceNode: entry.sourceNode,
         elements: elements,
       );
-      final kind = elements.any((element) => element.image != null) ? 'image' : 'text';
+      final kind = elements.any((element) => element.image != null)
+          ? 'image'
+          : 'text';
       final blockId = 'canvas-$chapterIndex-${page.pageIndexInChapter}-$order';
       final anchorHash = normalizedText.isEmpty
           ? null
           : RenderDiffTextNormalizer.stableHash(
-              '$chapterIndex|${entry.key.runtimeType}|$normalizedText',
+              '$chapterIndex|$kind|$normalizedText',
             );
+
       final metric = RenderDiffBlockMetric(
         blockId: blockId,
         chapterIndex: chapterIndex,
         pageIndex: page.pageIndexInChapter,
         order: order,
-        nodeType: entry.key.runtimeType.toString(),
+        nodeType: entry.inventory.renderNodeKind,
         kind: kind,
         styleSignature: styleSignature,
         rect: RenderDiffRect(
@@ -204,7 +243,9 @@ class RenderDiffCanvasExporter {
           width: rect.width,
           height: rect.height,
         ),
-        text: plainText.isEmpty ? null : plainText,
+        objectId: entry.inventory.objectId,
+        nodePath: entry.inventory.nodePath,
+        text: fallbackText.isEmpty ? null : fallbackText,
         normalizedText: normalizedText.isEmpty ? null : normalizedText,
         lineCount: lineCount == 0 ? null : lineCount,
         anchorHash: anchorHash,
@@ -218,8 +259,8 @@ class RenderDiffCanvasExporter {
             chapterIndex: chapterIndex,
             pageIndex: page.pageIndexInChapter,
             order: order,
-            nodeType: entry.key.runtimeType.toString(),
-            text: plainText,
+            nodeType: entry.inventory.renderNodeKind,
+            text: fallbackText,
             normalizedText: normalizedText,
             styleSignature: styleSignature,
             rect: metric.rect,
@@ -232,10 +273,7 @@ class RenderDiffCanvasExporter {
     }
 
     final pageText = RenderDiffTextNormalizer.normalize(
-      blocks
-          .map((block) => block.normalizedText)
-          .whereType<String>()
-          .join(' '),
+      blocks.map((block) => block.normalizedText).whereType<String>().join(' '),
     );
 
     return RenderDiffPageMetric(
@@ -263,4 +301,25 @@ class RenderDiffCanvasExporter {
     }
     return rect;
   }
+
+  String _visibleTextForElements(List<LayoutElement> elements) {
+    final fragments = <String>[];
+    for (final element in elements) {
+      final painterText = element.ensurePainter()?.text?.toPlainText();
+      final fragment = painterText ?? element.deferredText;
+      if (fragment == null || fragment.isEmpty) {
+        continue;
+      }
+      fragments.add(fragment);
+    }
+    return fragments.join(' ');
+  }
+}
+
+class _GroupedPageBlock {
+  _GroupedPageBlock({required this.inventory, required this.sourceNode});
+
+  final RenderDiffNodeInventoryItem inventory;
+  final RenderNode sourceNode;
+  final List<LayoutElement> elements = <LayoutElement>[];
 }

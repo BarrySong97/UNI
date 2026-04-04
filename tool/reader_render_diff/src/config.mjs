@@ -17,8 +17,11 @@ export async function resolveConfig(argv) {
   const horizontalPadding = numberFlag(args['page-horizontal-padding'], 24);
   const verticalPadding = numberFlag(args['page-vertical-padding'], 40);
   const paragraphSpacing = numberFlag(args['paragraph-spacing'], 1.0);
-  const maxChapters = intFlag(args['max-chapters'], 1);
-  const maxPagesPerChapter = intFlag(args['max-pages-per-chapter'], 8);
+  const fullBook = Boolean(args['full-book']);
+  const maxChapters = fullBook ? null : limitFlag(args['max-chapters'], 1);
+  const maxPagesPerChapter = fullBook
+    ? null
+    : limitFlag(args['max-pages-per-chapter'], 8);
   const chapterIndices = parseChapterIndices(args.chapters);
 
   const sampleInfo = await resolveSample({
@@ -46,8 +49,10 @@ export async function resolveConfig(argv) {
     canvasDir: path.join(outDir, 'canvas'),
     diffDir: path.join(outDir, 'diff'),
     allowlistPath: path.join(repoRoot, 'tool', 'reader_render_diff', 'allowlist.json'),
+    caseCatalogPath: path.join(repoRoot, 'tool', 'reader_render_diff', 'case_catalog.json'),
     viewport,
     devicePixelRatio,
+    fullBook,
     maxChapters,
     maxPagesPerChapter,
     chapterIndices,
@@ -55,7 +60,7 @@ export async function resolveConfig(argv) {
     sampleName: sampleInfo.sampleName,
     readerPreferences: {
       baseFontSizePx: fontSize,
-      fontFamily: args['font-family'] ?? null,
+      fontFamily: args['font-family'] ?? 'Georgia',
       pageHorizontalPaddingPx: horizontalPadding,
       pageVerticalPaddingPx: verticalPadding,
       lineHeightMultiplier: lineHeight,
@@ -123,8 +128,18 @@ function numberFlag(input, fallback) {
   return parsed;
 }
 
-function intFlag(input, fallback) {
-  return Math.max(1, Math.trunc(numberFlag(input, fallback)));
+function limitFlag(input, fallback) {
+  if (input == null) {
+    return fallback;
+  }
+  if (typeof input === 'string' && input.toLowerCase() === 'all') {
+    return null;
+  }
+  const parsed = Math.trunc(numberFlag(input, fallback));
+  if (parsed <= 0) {
+    throw new Error(`Expected a positive integer or "all", received "${input}".`);
+  }
+  return parsed;
 }
 
 async function resolveSample({ epubsDir, explicitEpub, sampleHint }) {
