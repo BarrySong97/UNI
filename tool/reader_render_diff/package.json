@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "epubjs": "^0.3.93",
+    "linkedom": "^0.18.9",
     "pixelmatch": "^7.1.0",
     "playwright": "^1.59.0",
     "pngjs": "^7.0.0"
