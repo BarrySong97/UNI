@@ -83,9 +83,13 @@ export function findStructuralGaps({ xhtmlInventory, chapterJsons, caseCatalog }
         continue;
       }
 
-      // Skip whitespace-only text-bearing elements — parser intentionally strips
-      // empty paragraphs/headings. Non-text elements (img, hr) are never skipped.
-      if (!isNonTextElement(element) && isWhitespaceOnly(element.normalizedText)) {
+      // Skip whitespace-only text-bearing elements WITH no inline features —
+      // parser intentionally strips truly empty paragraphs/headings.
+      // Elements with inline features (e.g. <p><img></p> which has
+      // inline.inline_image_alt_fallback) are kept even if text is empty.
+      if (!isNonTextElement(element) &&
+          isWhitespaceOnly(element.normalizedText) &&
+          (element.featureCaseIds ?? []).length === 0) {
         continue;
       }
 
