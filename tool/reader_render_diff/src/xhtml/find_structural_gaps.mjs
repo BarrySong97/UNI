@@ -258,12 +258,17 @@ function collectText(node, parts) {
     }
   }
 
-  // List items
+  // List items — check both inline children and block sub_nodes
   if (Array.isArray(node.items)) {
     for (const item of node.items) {
       if (Array.isArray(item.children)) {
         for (const child of item.children) {
           collectText(child, parts);
+        }
+      }
+      if (Array.isArray(item.sub_nodes)) {
+        for (const subNode of item.sub_nodes) {
+          collectText(subNode, parts);
         }
       }
     }
@@ -320,6 +325,12 @@ function collectTextChildren(node, output) {
       if (Array.isArray(item.children)) {
         for (const child of item.children) {
           collectTextChildren(child, output);
+        }
+      }
+      // Block content inside list items (e.g. <li><p>text</p></li>)
+      if (Array.isArray(item.sub_nodes)) {
+        for (const subNode of item.sub_nodes) {
+          collectTextChildren(subNode, output);
         }
       }
     }
