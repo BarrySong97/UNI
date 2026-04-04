@@ -357,8 +357,13 @@ export function findBestMatch(element, parserNodes, alreadyMatched, expectedInde
     }
 
     const node = parserNodes[i];
-    const score = computeMatchScore(element, node);
+    let score = computeMatchScore(element, node);
     if (score > 0) {
+      // Add positional proximity bonus: nodes near expected position get up to +3
+      // This prevents distant nodes from "stealing" matches from nearby ones
+      const distance = Math.abs(i - expectedIndex);
+      const proximityBonus = Math.max(0, 3 - distance * 0.05);
+      score += proximityBonus;
       candidates.push({ index: i, node, score });
     }
   }
