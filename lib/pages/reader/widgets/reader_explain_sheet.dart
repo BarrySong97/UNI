@@ -726,8 +726,9 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
         Text(
           data.meaningExplain,
           style: const TextStyle(
-            fontSize: 16,
-            height: 1.5,
+            fontSize: 17,
+            height: 1.55,
+            fontWeight: FontWeight.w500,
             color: CommonDesignTokens.textPrimary,
             decoration: TextDecoration.none,
           ),
