@@ -77,6 +77,7 @@ export function findStructuralGaps({ xhtmlInventory, chapterJsons, caseCatalog }
     totalXhtmlElements += chapter.elements.length;
 
     // --- Element-level matching ---
+    let elementIdx = 0;
     for (const element of chapter.elements) {
       // Skip special.* cases — they are expected to have no RenderNode
       if (element.blockCaseId.startsWith('special.')) {
@@ -93,7 +94,8 @@ export function findStructuralGaps({ xhtmlInventory, chapterJsons, caseCatalog }
         continue;
       }
 
-      const match = findBestMatch(element, parserNodes, matchedParserNodeIndices);
+      const match = findBestMatch(element, parserNodes, matchedParserNodeIndices, elementIdx);
+      elementIdx += 1;
 
       if (match != null) {
         matchedParserNodeIndices.add(match.index);
@@ -346,7 +348,7 @@ function collectTextChildren(node, output) {
  * Find the best matching parser node for an XHTML element.
  * Returns { index, node } or null if no match.
  */
-export function findBestMatch(element, parserNodes, alreadyMatched) {
+export function findBestMatch(element, parserNodes, alreadyMatched, expectedIndex = 0) {
   const candidates = [];
 
   for (let i = 0; i < parserNodes.length; i++) {
@@ -365,8 +367,12 @@ export function findBestMatch(element, parserNodes, alreadyMatched) {
     return null;
   }
 
-  // Sort by score descending, then by DOM order proximity (index) ascending
-  candidates.sort((a, b) => b.score - a.score || a.index - b.index);
+  // Sort by score descending, then by positional proximity to expected index
+  candidates.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    // Prefer nodes closer to the expected DOM position
+    return Math.abs(a.index - expectedIndex) - Math.abs(b.index - expectedIndex);
+  });
   return candidates[0];
 }
 
