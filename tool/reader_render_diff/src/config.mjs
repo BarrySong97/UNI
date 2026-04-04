@@ -17,6 +17,7 @@ export async function resolveConfig(argv) {
   const horizontalPadding = numberFlag(args['page-horizontal-padding'], 24);
   const verticalPadding = numberFlag(args['page-vertical-padding'], 40);
   const paragraphSpacing = numberFlag(args['paragraph-spacing'], 1.0);
+  const structuralCheck = Boolean(args['structural-check']);
   const fullBook = Boolean(args['full-book']);
   const maxChapters = fullBook ? null : limitFlag(args['max-chapters'], 1);
   const maxPagesPerChapter = fullBook
@@ -50,6 +51,7 @@ export async function resolveConfig(argv) {
     diffDir: path.join(outDir, 'diff'),
     allowlistPath: path.join(repoRoot, 'tool', 'reader_render_diff', 'allowlist.json'),
     caseCatalogPath: path.join(repoRoot, 'tool', 'reader_render_diff', 'case_catalog.json'),
+    structuralCheck,
     viewport,
     devicePixelRatio,
     fullBook,
