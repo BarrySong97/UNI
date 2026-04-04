@@ -53,3 +53,6 @@ rust/epub_parser/output/
 # Local Node tooling
 tool/reader_render_diff/node_modules/
 tool/reader_render_diff/.npm/
+
+# Git worktrees
+.worktrees/
