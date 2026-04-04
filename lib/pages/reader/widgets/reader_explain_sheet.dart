@@ -420,6 +420,7 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: _isWordOrPhrase ? _buildWordHeader() : _buildTextPreview(),
           ),
+          const SizedBox(height: 20),
           // AI response
           Expanded(child: _buildResponseArea()),
           // Error
