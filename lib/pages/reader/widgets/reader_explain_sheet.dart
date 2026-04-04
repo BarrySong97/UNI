@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../../../services/ai/ai_settings_service.dart';
+import '../../../shared/constants/common-design-tokens.dart';
 import '../../../services/ai/openai_llm_provider.dart';
 import '../../../services/db/app-database.dart';
 import '../../../services/phonetics/phonetics_service.dart';
@@ -408,7 +409,7 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
+                  color: CommonDesignTokens.borderColor,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -418,10 +419,6 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: _isWordOrPhrase ? _buildWordHeader() : _buildTextPreview(),
-          ),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16),
-            child: Divider(height: 24),
           ),
           // AI response
           Expanded(child: _buildResponseArea()),
@@ -452,14 +449,15 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
       children: [
         // Word + refresh button on the same line
         Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Expanded(
               child: Text(
                 widget.selectedText,
                 style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                  color: CommonDesignTokens.textPrimary,
                   decoration: TextDecoration.none,
                 ),
               ),
@@ -467,10 +465,10 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
             if (!_isStreaming)
               GestureDetector(
                 onTap: _refresh,
-                child: Icon(
-                  Icons.refresh,
-                  size: 20,
-                  color: Colors.grey.shade500,
+                child: const Icon(
+                  Icons.sync,
+                  size: 22,
+                  color: CommonDesignTokens.textSecondary,
                 ),
               ),
           ],
@@ -478,11 +476,11 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
         // Phonetics row: IPA + play button (hidden when no IPA available).
         if (_phonetics != null &&
             (_phonetics!.us.isNotEmpty || _phonetics!.uk.isNotEmpty)) ...[
-          const SizedBox(height: 6),
+          const SizedBox(height: 12),
           _buildPhoneticsRow(),
         ],
         if (_containingSentence.isNotEmpty) ...[
-          const SizedBox(height: 8),
+          const SizedBox(height: 16),
           _buildSentenceWithBoldWord(_containingSentence, widget.selectedText),
         ],
       ],
@@ -525,75 +523,101 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
   Widget _buildAccentChip(String label, String ipa, String accent) {
     final isPlaying = _playingAccent == accent && widget.ttsService.isSpeaking;
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            color: Colors.grey.shade500,
-            decoration: TextDecoration.none,
-          ),
+    return GestureDetector(
+      onTap: () => _playPronunciation(accent),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: CommonDesignTokens.pageBackground,
+          borderRadius: BorderRadius.circular(20),
         ),
-        const SizedBox(width: 4),
-        Flexible(
-          child: Text(
-            '/$ipa/',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey.shade700,
-              decoration: TextDecoration.none,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: CommonDesignTokens.textSecondary,
+                decoration: TextDecoration.none,
+              ),
             ),
-          ),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                '/$ipa/',
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: CommonDesignTokens.textPrimary,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Icon(
+              isPlaying ? Icons.stop_circle_outlined : Icons.volume_up,
+              size: 18,
+              color: isPlaying
+                  ? CommonDesignTokens.textPrimary
+                  : CommonDesignTokens.headerLabelColor,
+            ),
+          ],
         ),
-        const SizedBox(width: 2),
-        GestureDetector(
-          onTap: () => _playPronunciation(accent),
-          child: Icon(
-            isPlaying ? Icons.stop_circle_outlined : Icons.volume_up_outlined,
-            size: 18,
-            color: isPlaying ? Colors.black87 : Colors.grey.shade600,
-          ),
-        ),
-      ],
+      ),
     );
   }
 
   Widget _buildSentenceWithBoldWord(String sentence, String word) {
     final index = sentence.indexOf(word);
+
+    Widget textContent;
     if (index < 0) {
-      return Text(
-        sentence,
-        style: TextStyle(
+      textContent = Text(
+        '"$sentence"',
+        style: const TextStyle(
           fontSize: 14,
-          color: Colors.grey.shade700,
-          height: 1.4,
+          color: CommonDesignTokens.textSecondary,
+          fontStyle: FontStyle.italic,
+          height: 1.5,
           decoration: TextDecoration.none,
+        ),
+      );
+    } else {
+      final before = sentence.substring(0, index);
+      final after = sentence.substring(index + word.length);
+      textContent = RichText(
+        text: TextSpan(
+          style: const TextStyle(
+            fontSize: 14,
+            color: CommonDesignTokens.textSecondary,
+            fontStyle: FontStyle.italic,
+            height: 1.5,
+          ),
+          children: [
+            TextSpan(text: '"$before'),
+            TextSpan(
+              text: word,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                color: CommonDesignTokens.textPrimary,
+              ),
+            ),
+            TextSpan(text: '$after"'),
+          ],
         ),
       );
     }
 
-    final before = sentence.substring(0, index);
-    final after = sentence.substring(index + word.length);
-
-    return RichText(
-      text: TextSpan(
-        style: TextStyle(
-          fontSize: 14,
-          color: Colors.grey.shade700,
-          height: 1.4,
-        ),
-        children: [
-          TextSpan(text: before),
-          TextSpan(
-            text: word,
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-          TextSpan(text: after),
-        ],
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: CommonDesignTokens.pageBackground,
+        borderRadius: BorderRadius.circular(12),
       ),
+      child: textContent,
     );
   }
 
@@ -607,10 +631,10 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
             if (!_isStreaming)
               GestureDetector(
                 onTap: _refresh,
-                child: Icon(
-                  Icons.refresh,
-                  size: 20,
-                  color: Colors.grey.shade500,
+                child: const Icon(
+                  Icons.sync,
+                  size: 22,
+                  color: CommonDesignTokens.textSecondary,
                 ),
               ),
           ],
@@ -618,18 +642,18 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
         const SizedBox(height: 4),
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: Colors.grey.shade100,
-            borderRadius: BorderRadius.circular(8),
+            color: CommonDesignTokens.pageBackground,
+            borderRadius: BorderRadius.circular(12),
           ),
           child: Text(
             widget.selectedText.length > 200
                 ? '${widget.selectedText.substring(0, 200)}...'
                 : widget.selectedText,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 13,
-              color: Colors.grey.shade700,
+              color: CommonDesignTokens.textSecondary,
               fontStyle: FontStyle.italic,
               decoration: TextDecoration.none,
             ),
@@ -667,7 +691,7 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
           p: const TextStyle(
             fontSize: 15,
             height: 1.5,
-            color: Colors.black87,
+            color: CommonDesignTokens.textPrimary,
             decoration: TextDecoration.none,
           ),
         ),
@@ -685,7 +709,7 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
           p: const TextStyle(
             fontSize: 15,
             height: 1.5,
-            color: Colors.black87,
+            color: CommonDesignTokens.textPrimary,
             decoration: TextDecoration.none,
           ),
         ),
@@ -695,87 +719,75 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildStructuredCard(
-          title: 'Meaning Explain',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                data.meaningExplain,
-                style: const TextStyle(
-                  fontSize: 18,
-                  height: 1.35,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black87,
-                  decoration: TextDecoration.none,
-                ),
-              ),
-            ],
-          ),
-        ),
+        // Meaning section header
+        _buildSectionHeader(Icons.menu_book_outlined, 'Meaning'),
         const SizedBox(height: 10),
-        _buildStructuredCard(
-          title: 'Detail Explain',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (final detail in data.detailExplain)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Text(
-                    '• $detail',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      height: 1.45,
-                      color: Colors.black87,
-                      decoration: TextDecoration.none,
-                    ),
-                  ),
-                ),
-              if (data.detailExplain.isEmpty)
-                const Text(
-                  'No extra detail.',
-                  style: TextStyle(
-                    fontSize: 14,
-                    height: 1.45,
-                    color: Colors.black54,
-                    decoration: TextDecoration.none,
-                  ),
-                ),
-            ],
+        // Meaning body
+        Text(
+          data.meaningExplain,
+          style: const TextStyle(
+            fontSize: 16,
+            height: 1.5,
+            color: CommonDesignTokens.textPrimary,
+            decoration: TextDecoration.none,
           ),
         ),
+        // Divider
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 20),
+          child: Divider(
+            height: 1,
+            thickness: 1,
+            color: CommonDesignTokens.pageBackground,
+          ),
+        ),
+        // Details & Usage section header
+        _buildSectionHeader(Icons.format_list_bulleted, 'Details & Usage'),
+        const SizedBox(height: 12),
+        // Detail bullets
+        for (final detail in data.detailExplain)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(
+              '• $detail',
+              style: const TextStyle(
+                fontSize: 15,
+                height: 1.5,
+                color: CommonDesignTokens.textPrimary,
+                decoration: TextDecoration.none,
+              ),
+            ),
+          ),
+        if (data.detailExplain.isEmpty)
+          const Text(
+            'No extra detail.',
+            style: TextStyle(
+              fontSize: 15,
+              height: 1.5,
+              color: CommonDesignTokens.textSecondary,
+              decoration: TextDecoration.none,
+            ),
+          ),
         const SizedBox(height: 8),
       ],
     );
   }
 
-  Widget _buildStructuredCard({required String title, required Widget child}) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: const Color(0xFFE6DCCF)),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title.toUpperCase(),
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.45,
-              color: Colors.grey.shade600,
-              decoration: TextDecoration.none,
-            ),
+  Widget _buildSectionHeader(IconData icon, String label) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: CommonDesignTokens.headerLabelColor),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: CommonDesignTokens.headerLabelColor,
+            decoration: TextDecoration.none,
           ),
-          const SizedBox(height: 8),
-          child,
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -826,7 +838,7 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
       child: Container(
         height: 14,
         decoration: BoxDecoration(
-          color: Colors.grey.shade200,
+          color: CommonDesignTokens.pageBackground,
           borderRadius: BorderRadius.circular(4),
         ),
       ),
