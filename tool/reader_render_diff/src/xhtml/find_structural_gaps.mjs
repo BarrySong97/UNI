@@ -175,6 +175,15 @@ function walkRenderNode(node, output) {
     return;
   }
 
+  // Skip standalone Text and LineBreak nodes — these are inline fragments
+  // that should be children of a block node, not top-level entries.
+  // The Rust parser sometimes emits them alongside HorizontalRule or as
+  // bare content. They are not block-level elements and should not participate
+  // in structural matching.
+  if (type === 'Text' || type === 'LineBreak') {
+    return;
+  }
+
   const descriptor = {
     renderNodeType: type,
     blockCaseId: resolveBlockCaseId(node),
