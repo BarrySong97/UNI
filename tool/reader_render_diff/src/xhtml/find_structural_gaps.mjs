@@ -83,6 +83,12 @@ export function findStructuralGaps({ xhtmlInventory, chapterJsons, caseCatalog }
         continue;
       }
 
+      // Skip whitespace-only text-bearing elements — parser intentionally strips
+      // empty paragraphs/headings. Non-text elements (img, hr) are never skipped.
+      if (!isNonTextElement(element) && isWhitespaceOnly(element.normalizedText)) {
+        continue;
+      }
+
       const match = findBestMatch(element, parserNodes, matchedParserNodeIndices);
 
       if (match != null) {
@@ -366,6 +372,8 @@ export function computeMatchScore(element, parserNode) {
   // Step 2: For text-bearing elements, check text similarity
   const elementCanonical = canonicalizeText(element.normalizedText);
   const nodeCanonical = parserNode.canonicalText;
+  const elementNormalized = normalizeText(element.normalizedText);
+  const nodeNormalized = parserNode.normalizedText;
 
   if (isNonTextElement(element)) {
     // Non-text elements: tag type match already gives base score.
@@ -375,14 +383,19 @@ export function computeMatchScore(element, parserNode) {
     // Exact canonical text match
     if (elementCanonical === nodeCanonical) {
       score += 10;
-    } else if (elementCanonical.length > 0 && nodeCanonical.length > 0) {
-      // Partial match — check if one contains the other
-      if (nodeCanonical.includes(elementCanonical) || elementCanonical.includes(nodeCanonical)) {
-        score += 5;
-      }
+    } else if (nodeCanonical.includes(elementCanonical) || elementCanonical.includes(nodeCanonical)) {
+      // Partial match — one contains the other
+      score += 5;
+    }
+  } else if (elementCanonical === '' && nodeCanonical === '' &&
+             elementNormalized !== '' && nodeNormalized !== '') {
+    // Both canonical texts are empty (symbol-only like "***"), fall back to
+    // normalizedText comparison to avoid false mismatches
+    if (elementNormalized === nodeNormalized) {
+      score += 8;
     }
   } else if (elementCanonical === '' && nodeCanonical === '') {
-    // Both empty text — weak match but still valid
+    // Both truly empty — weak match
     score += 1;
   }
 
@@ -422,6 +435,14 @@ function isBlockCaseCompatible(blockCaseId, parserNode) {
  */
 function isNonTextElement(element) {
   return element.tagName === 'hr' || element.tagName === 'img';
+}
+
+/**
+ * Whether text is whitespace-only (empty or contains only spaces/newlines/tabs).
+ * The Rust parser intentionally strips these elements.
+ */
+function isWhitespaceOnly(text) {
+  return text == null || text.trim() === '';
 }
 
 // ---------------------------------------------------------------------------
