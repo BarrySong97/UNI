@@ -23,6 +23,7 @@ class ReaderExplainSheet extends StatefulWidget {
     required this.database,
     required this.bookId,
     required this.chapterIndex,
+    this.bookLanguage,
   });
 
   final String selectedText;
@@ -41,6 +42,7 @@ class ReaderExplainSheet extends StatefulWidget {
   final AppDatabase database;
   final String bookId;
   final int chapterIndex;
+  final String? bookLanguage;
 
   static Future<void> show({
     required BuildContext context,
@@ -55,6 +57,7 @@ class ReaderExplainSheet extends StatefulWidget {
     required AppDatabase database,
     required String bookId,
     required int chapterIndex,
+    String? bookLanguage,
   }) {
     return showModalBottomSheet<void>(
       context: context,
@@ -75,6 +78,7 @@ class ReaderExplainSheet extends StatefulWidget {
         database: database,
         bookId: bookId,
         chapterIndex: chapterIndex,
+        bookLanguage: bookLanguage,
       ),
     );
   }
@@ -168,6 +172,14 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
 
     if (_isWordOrPhrase) _lookupPhonetics();
     _loadOrFetch();
+
+    // Auto read-aloud selected text when sheet opens (if enabled).
+    if (widget.aiSettings.autoReadAloud) {
+      widget.ttsService.speakForBookLanguage(
+        widget.selectedText,
+        widget.bookLanguage,
+      );
+    }
   }
 
   void _onTtsChanged() {

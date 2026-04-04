@@ -153,6 +153,45 @@ class _AiSettingsPageState extends State<AiSettingsPage> {
               ),
               const SizedBox(height: 28),
 
+              // BEHAVIOR section
+              const _SectionLabel(label: 'BEHAVIOR'),
+              const SizedBox(height: 12),
+              _buildCard(
+                children: [
+                  ListenableBuilder(
+                    listenable: widget.aiSettings,
+                    builder: (context, _) {
+                      return SwitchListTile.adaptive(
+                        title: const Text(
+                          'Auto Read Aloud',
+                          style: TextStyle(
+                            fontSize: FormDesignTokens.fieldLabelSize,
+                            fontWeight: FontWeight.w600,
+                            color: CommonDesignTokens.textPrimary,
+                          ),
+                        ),
+                        subtitle: const Text(
+                          'Automatically read selected text aloud when explain sheet opens.',
+                          style: TextStyle(
+                            fontSize: FormDesignTokens.helperSize,
+                            color: CommonDesignTokens.textSecondary,
+                            height: FormDesignTokens.helperLineHeight,
+                          ),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                        ),
+                        value: widget.aiSettings.autoReadAloud,
+                        onChanged: (value) {
+                          widget.aiSettings.setAutoReadAloud(value);
+                        },
+                      );
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 28),
+
               // LANGUAGES section
               const _SectionLabel(label: 'LANGUAGES'),
               const SizedBox(height: 12),

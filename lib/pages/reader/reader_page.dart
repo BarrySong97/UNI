@@ -1700,6 +1700,7 @@ class _ReaderPageState extends State<ReaderPage>
                   database: providers.database,
                   bookId: widget.book.id,
                   chapterIndex: _store.currentChapterIndex,
+                  bookLanguage: widget.book.language,
                 );
               },
             ),

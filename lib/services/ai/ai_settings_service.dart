@@ -74,6 +74,7 @@ class AiSettingsService extends ChangeNotifier {
   static const String _keyBaseUrl = 'ai_base_url';
   static const String _keyApiKey = 'ai_api_key';
   static const String _keyConfigMap = 'ai_config_map';
+  static const String _keyAutoReadAloud = 'ai_auto_read_aloud';
 
   // Legacy keys (for migration).
   static const String _keyLegacyModel = 'ai_model';
@@ -94,6 +95,7 @@ class AiSettingsService extends ChangeNotifier {
   // Global settings.
   String _baseUrl = defaultBaseUrl;
   String _apiKey = '';
+  bool _autoReadAloud = false;
 
   /// Per-language AI config: languageCode -> AiLanguageConfig.
   final Map<String, AiLanguageConfig> _configMap = {};
@@ -101,6 +103,7 @@ class AiSettingsService extends ChangeNotifier {
   String get baseUrl => _baseUrl;
   String get apiKey => _apiKey;
   bool get isConfigured => _apiKey.isNotEmpty;
+  bool get autoReadAloud => _autoReadAloud;
   Map<String, AiLanguageConfig> get configMap => Map.unmodifiable(_configMap);
 
   /// Get config for a specific language code (returns default if not set).
@@ -160,6 +163,7 @@ class AiSettingsService extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     _baseUrl = prefs.getString(_keyBaseUrl) ?? defaultBaseUrl;
     _apiKey = prefs.getString(_keyApiKey) ?? '';
+    _autoReadAloud = prefs.getBool(_keyAutoReadAloud) ?? false;
 
     final configMapJson = prefs.getString(_keyConfigMap);
     if (configMapJson != null) {
@@ -222,6 +226,14 @@ class AiSettingsService extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyBaseUrl, baseUrl);
     await prefs.setString(_keyApiKey, apiKey);
+    notifyListeners();
+  }
+
+  /// Toggle auto read-aloud when explain sheet opens.
+  Future<void> setAutoReadAloud(bool value) async {
+    _autoReadAloud = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyAutoReadAloud, value);
     notifyListeners();
   }
 
