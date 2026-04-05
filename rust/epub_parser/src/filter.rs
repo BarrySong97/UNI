@@ -25,12 +25,53 @@ pub fn is_out_of_flow(style: &crate::css::StyleProps) -> bool {
     matches!(style.position.as_deref(), Some("absolute") | Some("fixed"))
 }
 
+/// Some fixed-layout EPUBs position real reading content absolutely.
+/// Keep semantic content nodes and only skip generic/decorative wrappers.
+pub fn should_skip_out_of_flow(tag: &str, style: &crate::css::StyleProps) -> bool {
+    if !is_out_of_flow(style) {
+        return false;
+    }
+
+    !matches!(
+        tag,
+        "h1" | "h2"
+            | "h3"
+            | "h4"
+            | "h5"
+            | "h6"
+            | "p"
+            | "img"
+            | "figure"
+            | "figcaption"
+            | "blockquote"
+            | "pre"
+            | "code"
+            | "hr"
+            | "ol"
+            | "ul"
+            | "li"
+            | "table"
+            | "dl"
+            | "dt"
+            | "dd"
+    )
+}
+
 /// Container tags whose own semantics we ignore — we keep their children only.
 pub fn should_flatten(tag: &str) -> bool {
     matches!(
         tag,
-        "div" | "span" | "section" | "article" | "body" | "html" | "main" | "header" | "footer"
-            | "nav" | "aside"
+        "div"
+            | "span"
+            | "section"
+            | "article"
+            | "body"
+            | "html"
+            | "main"
+            | "header"
+            | "footer"
+            | "nav"
+            | "aside"
     )
 }
 

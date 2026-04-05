@@ -39,6 +39,15 @@ const LAYOUT_ALIGN_CHECKS = {
   'layout.align.justify': 'Justify',
 };
 
+const RENDERABLE_EMPTY_TEXT_FEATURES = new Set([
+  'inline.inline_image_alt_fallback',
+  'inline.line_break',
+]);
+
+const RENDERABLE_EMPTY_BLOCK_CASES = new Set([
+  'block.table.basic',
+]);
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -78,19 +87,10 @@ export function findStructuralGaps({ xhtmlInventory, chapterJsons, caseCatalog }
 
     // --- Element-level matching ---
     let elementIdx = 0;
-    for (const element of chapter.elements) {
-      // Skip special.* cases — they are expected to have no RenderNode
-      if (element.blockCaseId.startsWith('special.')) {
-        continue;
-      }
+    for (let elementIndex = 0; elementIndex < chapter.elements.length; elementIndex++) {
+      const element = chapter.elements[elementIndex];
 
-      // Skip whitespace-only text-bearing elements WITH no inline features —
-      // parser intentionally strips truly empty paragraphs/headings.
-      // Elements with inline features (e.g. <p><img></p> which has
-      // inline.inline_image_alt_fallback) are kept even if text is empty.
-      if (!isNonTextElement(element) &&
-          isWhitespaceOnly(element.normalizedText) &&
-          (element.featureCaseIds ?? []).length === 0) {
+      if (shouldSkipElementForStructuralComparison(element)) {
         continue;
       }
 
@@ -202,9 +202,18 @@ function walkRenderNode(node, output) {
 
   output.push(descriptor);
 
-  // For container nodes like BlockQuote that contain child nodes,
-  // we do NOT recurse — the BlockQuote itself IS the element to match.
-  // The Rust parser flattens children into the parent node's children array.
+  // List items can contain nested block nodes. For structural comparison we
+  // only need to surface nested lists, because other list-item child blocks
+  // are intentionally skipped by shouldSkipElementForStructuralComparison().
+  if (type === 'List' && Array.isArray(node.items)) {
+    for (const item of node.items) {
+      for (const subNode of item.sub_nodes ?? []) {
+        if (subNode?.type === 'List') {
+          walkRenderNode(subNode, output);
+        }
+      }
+    }
+  }
 }
 
 /**
@@ -478,6 +487,45 @@ function isNonTextElement(element) {
  */
 function isWhitespaceOnly(text) {
   return text == null || text.trim() === '';
+}
+
+function shouldSkipElementForStructuralComparison(element) {
+  if (element.blockCaseId.startsWith('special.')) {
+    return true;
+  }
+
+  if (isListItemChildBlock(element)) {
+    return true;
+  }
+
+  if (!isNonTextElement(element) && shouldSkipEmptyTextElement(element)) {
+    return true;
+  }
+
+  return false;
+}
+
+function shouldSkipEmptyTextElement(element) {
+  if (!isWhitespaceOnly(element.normalizedText)) {
+    return false;
+  }
+
+  if (RENDERABLE_EMPTY_BLOCK_CASES.has(element.blockCaseId)) {
+    return false;
+  }
+
+  return !(element.featureCaseIds ?? []).some(
+    (featureCaseId) => RENDERABLE_EMPTY_TEXT_FEATURES.has(featureCaseId),
+  );
+}
+
+function isListItemChildBlock(element) {
+  const domPath = element.domPath ?? '';
+  if (!/\bli(?=[: >]|$)/.test(domPath)) {
+    return false;
+  }
+
+  return !element.blockCaseId.startsWith('block.list.');
 }
 
 // ---------------------------------------------------------------------------

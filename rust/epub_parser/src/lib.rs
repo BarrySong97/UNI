@@ -1,8 +1,8 @@
-pub mod model;
-pub mod epub;
-pub mod html;
 pub mod css;
+pub mod epub;
 pub mod filter;
+pub mod html;
+pub mod model;
 
 pub fn parse_epub(path: &str) -> Result<model::ParsedBook, Box<dyn std::error::Error>> {
     epub::open_epub(path)

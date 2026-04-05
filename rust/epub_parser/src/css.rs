@@ -286,14 +286,30 @@ pub fn parse_declarations(decls: &str) -> StyleProps {
 fn parse_length_to_em(val: &str) -> Option<f32> {
     let val = val.trim();
     if val.ends_with("em") {
-        val.trim_end_matches("em").trim_end_matches('r').trim().parse().ok()
+        val.trim_end_matches("em")
+            .trim_end_matches('r')
+            .trim()
+            .parse()
+            .ok()
     } else if val.ends_with("px") {
-        val.trim_end_matches("px").trim().parse::<f32>().ok().map(|px| px / 16.0)
+        val.trim_end_matches("px")
+            .trim()
+            .parse::<f32>()
+            .ok()
+            .map(|px| px / 16.0)
     } else if val.ends_with("pt") {
         // 1pt = 1/72in, 1px = 1/96in → 1pt ≈ 1.333px → pt/12 em (assuming 16px base)
-        val.trim_end_matches("pt").trim().parse::<f32>().ok().map(|pt| pt / 12.0)
+        val.trim_end_matches("pt")
+            .trim()
+            .parse::<f32>()
+            .ok()
+            .map(|pt| pt / 12.0)
     } else if val.ends_with('%') {
-        val.trim_end_matches('%').trim().parse::<f32>().ok().map(|pct| pct / 100.0)
+        val.trim_end_matches('%')
+            .trim()
+            .parse::<f32>()
+            .ok()
+            .map(|pct| pct / 100.0)
     } else if val == "0" {
         Some(0.0)
     } else if val == "auto" {
@@ -327,7 +343,12 @@ fn parse_line_height(val: &str) -> Option<f32> {
         return val.trim_end_matches("em").trim().parse().ok();
     }
     if val.ends_with("px") {
-        return val.trim_end_matches("px").trim().parse::<f32>().ok().map(|px| px / 16.0);
+        return val
+            .trim_end_matches("px")
+            .trim()
+            .parse::<f32>()
+            .ok()
+            .map(|px| px / 16.0);
     }
     // Percentage support (e.g. "120%" → 1.2).
     if val.ends_with('%') {
@@ -353,7 +374,9 @@ fn parse_color(val: &str) -> Option<u32> {
                     expanded.push(c);
                     expanded.push(c);
                 }
-                u32::from_str_radix(&expanded, 16).ok().map(|rgb| 0xFF000000 | rgb)
+                u32::from_str_radix(&expanded, 16)
+                    .ok()
+                    .map(|rgb| 0xFF000000 | rgb)
             }
             4 => {
                 // #rgba → expand each digit, reorder to ARGB
@@ -364,7 +387,9 @@ fn parse_color(val: &str) -> Option<u32> {
                 let a = hex_pair(chars[3], chars[3])?;
                 Some(((a as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32))
             }
-            6 => u32::from_str_radix(hex, 16).ok().map(|rgb| 0xFF000000 | rgb),
+            6 => u32::from_str_radix(hex, 16)
+                .ok()
+                .map(|rgb| 0xFF000000 | rgb),
             8 => {
                 // #rrggbbaa → reorder to ARGB
                 let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
@@ -601,9 +626,9 @@ pub fn resolve_styles(
 
             // Check if child selector matches current element.
             let child_matches = child_sel == tag
-                || classes
-                    .iter()
-                    .any(|c| format!(".{}", c) == child_sel || format!("{}.{}", tag, c) == child_sel);
+                || classes.iter().any(|c| {
+                    format!(".{}", c) == child_sel || format!("{}.{}", tag, c) == child_sel
+                });
 
             if !child_matches {
                 continue;

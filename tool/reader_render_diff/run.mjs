@@ -198,11 +198,7 @@ async function ensureDirs(config) {
 }
 
 async function extractEpubForReference(config) {
-  await runCommand(
-    'unzip',
-    ['-o', '-q', config.epubPath, '-d', config.extractedDir],
-    config.repoRoot,
-  );
+  await extractEpub(config.epubPath, config.extractedDir, config.repoRoot);
   const containerXmlPath = path.join(
     config.extractedDir,
     'META-INF',
@@ -214,6 +210,26 @@ async function extractEpubForReference(config) {
     throw new Error(`Unable to locate OPF path in ${containerXmlPath}`);
   }
   config.opfPath = match[1];
+}
+
+async function extractEpub(epubPath, extractedDir, cwd) {
+  try {
+    await runCommand(
+      'unzip',
+      ['-o', '-q', epubPath, '-d', extractedDir],
+      cwd,
+    );
+  } catch (error) {
+    try {
+      await runCommand(
+        'ditto',
+        ['-x', '-k', epubPath, extractedDir],
+        cwd,
+      );
+    } catch {
+      throw error;
+    }
+  }
 }
 
 async function writeArtifacts(config, artifacts) {

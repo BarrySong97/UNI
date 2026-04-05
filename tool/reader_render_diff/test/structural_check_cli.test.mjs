@@ -147,6 +147,30 @@ test('resolveChapterXhtmlPaths handles hrefs without leading slash', async () =>
   await fs.rm(tmpDir, { recursive: true });
 });
 
+test('resolveChapterXhtmlPaths falls back to decoded filesystem paths', async () => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sc-test-'));
+  const cacheDir = path.join(tmpDir, 'cache');
+  const extractedDir = path.join(tmpDir, 'extracted');
+  await fs.mkdir(cacheDir, { recursive: true });
+  await fs.mkdir(path.join(extractedDir, 'OPS', 'xhtml'), { recursive: true });
+  await fs.writeFile(path.join(extractedDir, 'OPS', 'xhtml', '目次.xhtml'), '<html/>');
+
+  const bookJson = {
+    spine: [
+      { href: '/OPS/xhtml/%E7%9B%AE%E6%AC%A1.xhtml', index: 0 },
+    ],
+  };
+  await fs.writeFile(path.join(cacheDir, 'book.json'), JSON.stringify(bookJson));
+
+  const config = { cacheDir, extractedDir, maxChapters: null };
+  const paths = await resolveChapterXhtmlPaths(config);
+
+  assert.equal(paths.length, 1);
+  assert.equal(paths[0], path.join(extractedDir, 'OPS', 'xhtml', '目次.xhtml'));
+
+  await fs.rm(tmpDir, { recursive: true });
+});
+
 // ---------------------------------------------------------------------------
 // loadChapterJsons: load chapter_N.json from cache
 // ---------------------------------------------------------------------------

@@ -21,11 +21,29 @@ export async function resolveChapterXhtmlPaths(config) {
     spine = spine.slice(0, config.maxChapters);
   }
 
-  return spine.map((entry) => {
-    // Strip leading '/' from href and join to extractedDir
+  const resolvedPaths = [];
+  for (const entry of spine) {
     const relativePath = entry.href.replace(/^\//, '');
-    return path.join(config.extractedDir, relativePath);
-  });
+    const directPath = path.join(config.extractedDir, relativePath);
+
+    try {
+      await fs.access(directPath);
+      resolvedPaths.push(directPath);
+      continue;
+    } catch {}
+
+    let decodedPath = directPath;
+    try {
+      decodedPath = path.join(config.extractedDir, decodeURIComponent(relativePath));
+      await fs.access(decodedPath);
+      resolvedPaths.push(decodedPath);
+      continue;
+    } catch {}
+
+    resolvedPaths.push(directPath);
+  }
+
+  return resolvedPaths;
 }
 
 /**

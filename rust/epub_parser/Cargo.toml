@@ -11,3 +11,6 @@ serde_json = "1"
 base64 = "0.22"
 regex = "1"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
+percent-encoding = "2"
+tempfile = "3"
+zip = { version = "2", default-features = false, features = ["deflate"] }

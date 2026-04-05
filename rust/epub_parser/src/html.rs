@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use scraper::{Html, Node, ElementRef};
+use scraper::{ElementRef, Html, Node};
 
 use crate::css::{self, StyleProps};
 use crate::filter;
@@ -97,328 +97,336 @@ fn walk_children_of_node(elem: ElementRef, ctx: &mut WalkCtx, out: &mut Vec<Rend
                     });
                 }
             }
-            Node::Element(el) => {
-                let tag = el.name.local.as_ref().to_lowercase();
-
-                if filter::should_discard(&tag) {
-                    continue;
-                }
-
+            Node::Element(_) => {
                 let child_elem = ElementRef::wrap(child).unwrap();
-                let style = resolve_styles_with_inline(ctx, child_elem, &tag);
+                walk_block_element(child_elem, ctx, out);
+            }
+            _ => {}
+        }
+    }
+}
 
-                // Skip elements with display:none.
-                if style.display.as_deref() == Some("none") {
-                    continue;
-                }
+fn walk_block_element(elem: ElementRef, ctx: &mut WalkCtx, out: &mut Vec<RenderNode>) {
+    let tag = elem.value().name.local.as_ref().to_lowercase();
 
-                // Skip elements positioned out of normal flow (position: absolute/fixed).
-                // These are typically decorative images, logos, or watermarks.
-                if filter::is_out_of_flow(&style) {
-                    continue;
-                }
+    if filter::should_discard(&tag) {
+        return;
+    }
 
-                if filter::should_flatten(&tag) {
-                    let mut sub = inherit_ctx(ctx, &style);
-                    sub.ancestors.push(tag.clone());
-                    walk_children_of_node(child_elem, &mut sub, out);
-                    *ctx.char_offset = *sub.char_offset;
-                    continue;
-                }
+    if tag == "nav" && has_epub_type_token(elem, "landmarks") {
+        return;
+    }
 
-                match tag.as_str() {
-                    "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
-                        let level = filter::heading_level(&tag).unwrap_or(1);
-                        let children = collect_inline(child_elem, ctx, &style, &tag);
-                        if !children.is_empty() {
-                            out.push(RenderNode::Heading {
-                                level,
-                                children,
-                                margin_top_em: style.margin_top_em.unwrap_or(0.0),
-                                margin_bottom_em: style.margin_bottom_em.unwrap_or(0.0),
-                                margin_left_em: style.margin_left_em.unwrap_or(0.0),
-                                margin_right_em: style.margin_right_em.unwrap_or(0.0),
-                                align: style.text_align.unwrap_or(TextAlign::Left),
-                                color: style.color,
-                                text_indent_em: style.text_indent_em,
-                                line_height_em: style.line_height_em,
-                                padding_em: style.padding_em,
-                                background_color: style.background_color,
-                            });
-                        }
-                    }
+    let style = resolve_styles_with_inline(ctx, elem, &tag);
 
-                    "p" => {
-                        let children = collect_inline(child_elem, ctx, &style, &tag);
-                        if !children.is_empty() {
-                            out.push(RenderNode::Paragraph {
-                                children,
-                                margin_top_em: style.margin_top_em.unwrap_or(0.0),
-                                margin_bottom_em: style.margin_bottom_em.unwrap_or(0.5),
-                                margin_left_em: style.margin_left_em.unwrap_or(0.0),
-                                margin_right_em: style.margin_right_em.unwrap_or(0.0),
-                                align: style.text_align.unwrap_or(TextAlign::Left),
-                                text_indent_em: style.text_indent_em,
-                                line_height_em: style.line_height_em,
-                                padding_em: style.padding_em,
-                                background_color: style.background_color,
-                                color: style.color,
-                            });
-                        }
-                    }
+    // Skip elements with display:none.
+    if style.display.as_deref() == Some("none") {
+        return;
+    }
 
-                    // --- Inline formatting tags at block level ---
-                    "strong" | "b" => {
-                        let mut sub = inherit_ctx(ctx, &style);
-                        sub.bold = true;
-                        sub.ancestors.push(tag.clone());
-                        walk_children_of_node(child_elem, &mut sub, out);
-                        *ctx.char_offset = *sub.char_offset;
-                    }
-                    "em" | "i" | "cite" | "dfn" => {
-                        let mut sub = inherit_ctx(ctx, &style);
-                        sub.italic = true;
-                        sub.ancestors.push(tag.clone());
-                        walk_children_of_node(child_elem, &mut sub, out);
-                        *ctx.char_offset = *sub.char_offset;
-                    }
-                    "u" | "ins" => {
-                        let mut sub = inherit_ctx(ctx, &style);
-                        sub.underline = true;
-                        sub.ancestors.push(tag.clone());
-                        walk_children_of_node(child_elem, &mut sub, out);
-                        *ctx.char_offset = *sub.char_offset;
-                    }
-                    "del" | "s" => {
-                        let mut sub = inherit_ctx(ctx, &style);
-                        sub.line_through = true;
-                        sub.ancestors.push(tag.clone());
-                        walk_children_of_node(child_elem, &mut sub, out);
-                        *ctx.char_offset = *sub.char_offset;
-                    }
-                    "a" => {
-                        let mut sub = inherit_ctx(ctx, &style);
-                        sub.underline = true;
-                        sub.href = child_elem.value().attr("href").map(|s| s.to_string());
-                        sub.ancestors.push(tag.clone());
-                        walk_children_of_node(child_elem, &mut sub, out);
-                        *ctx.char_offset = *sub.char_offset;
-                    }
-                    "sup" => {
-                        let mut sub = inherit_ctx(ctx, &style);
-                        sub.font_size_em *= 0.7;
-                        sub.superscript = true;
-                        sub.ancestors.push(tag.clone());
-                        walk_children_of_node(child_elem, &mut sub, out);
-                        *ctx.char_offset = *sub.char_offset;
-                    }
-                    "sub" => {
-                        let mut sub = inherit_ctx(ctx, &style);
-                        sub.font_size_em *= 0.7;
-                        sub.subscript = true;
-                        sub.ancestors.push(tag.clone());
-                        walk_children_of_node(child_elem, &mut sub, out);
-                        *ctx.char_offset = *sub.char_offset;
-                    }
-                    "small" => {
-                        let mut sub = inherit_ctx(ctx, &style);
-                        sub.font_size_em *= 0.8;
-                        sub.ancestors.push(tag.clone());
-                        walk_children_of_node(child_elem, &mut sub, out);
-                        *ctx.char_offset = *sub.char_offset;
-                    }
-                    "mark" => {
-                        let mut sub = inherit_ctx(ctx, &style);
-                        if sub.background_color.is_none() {
-                            sub.background_color = Some(0xFFFFFF00);
-                        }
-                        sub.ancestors.push(tag.clone());
-                        walk_children_of_node(child_elem, &mut sub, out);
-                        *ctx.char_offset = *sub.char_offset;
-                    }
-                    "abbr" => {
-                        let mut sub = inherit_ctx(ctx, &style);
-                        sub.ancestors.push(tag.clone());
-                        walk_children_of_node(child_elem, &mut sub, out);
-                        *ctx.char_offset = *sub.char_offset;
-                    }
+    // Skip elements positioned out of normal flow (position: absolute/fixed).
+    // These are typically decorative images, logos, or watermarks.
+    if filter::should_skip_out_of_flow(&tag, &style) {
+        return;
+    }
 
-                    "br" => {
-                        out.push(RenderNode::LineBreak);
-                    }
+    if filter::should_flatten(&tag) {
+        let mut sub = inherit_ctx(ctx, &style);
+        sub.ancestors.push(tag.clone());
+        walk_children_of_node(elem, &mut sub, out);
+        *ctx.char_offset = *sub.char_offset;
+        return;
+    }
 
-                    "hr" => {
-                        out.push(RenderNode::HorizontalRule);
-                    }
+    match tag.as_str() {
+        "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
+            let level = filter::heading_level(&tag).unwrap_or(1);
+            let children = collect_inline(elem, ctx, &style, &tag);
+            if !children.is_empty() {
+                out.push(RenderNode::Heading {
+                    level,
+                    children,
+                    margin_top_em: style.margin_top_em.unwrap_or(0.0),
+                    margin_bottom_em: style.margin_bottom_em.unwrap_or(0.0),
+                    margin_left_em: style.margin_left_em.unwrap_or(0.0),
+                    margin_right_em: style.margin_right_em.unwrap_or(0.0),
+                    align: style.text_align.unwrap_or(TextAlign::Left),
+                    color: style.color,
+                    text_indent_em: style.text_indent_em,
+                    line_height_em: style.line_height_em,
+                    padding_em: style.padding_em,
+                    background_color: style.background_color,
+                });
+            }
+        }
 
-                    "img" => {
-                        let alt = child_elem.value().attr("alt").map(|s| s.to_string());
-                        let img = resolve_img(child_elem, ctx, Some(&style));
-                        out.push(RenderNode::Image {
-                            data_base64: img.data_base64,
-                            alt,
-                            width_hint: img.width_hint,
-                            width_px: img.width_px,
-                            height_px: img.height_px,
-                        });
-                    }
+        "p" => {
+            let children = collect_inline(elem, ctx, &style, &tag);
+            if !children.is_empty() {
+                out.push(RenderNode::Paragraph {
+                    children,
+                    margin_top_em: style.margin_top_em.unwrap_or(0.0),
+                    margin_bottom_em: style.margin_bottom_em.unwrap_or(0.5),
+                    margin_left_em: style.margin_left_em.unwrap_or(0.0),
+                    margin_right_em: style.margin_right_em.unwrap_or(0.0),
+                    align: style.text_align.unwrap_or(TextAlign::Left),
+                    text_indent_em: style.text_indent_em,
+                    line_height_em: style.line_height_em,
+                    padding_em: style.padding_em,
+                    background_color: style.background_color,
+                    color: style.color,
+                });
+            }
+        }
 
-                    "figure" | "figcaption" => {
-                        let mut sub = inherit_ctx(ctx, &style);
-                        sub.ancestors.push(tag.clone());
-                        walk_children_of_node(child_elem, &mut sub, out);
-                        *ctx.char_offset = *sub.char_offset;
-                    }
+        // --- Inline formatting tags at block level ---
+        "strong" | "b" => {
+            let mut sub = inherit_ctx(ctx, &style);
+            sub.bold = true;
+            sub.ancestors.push(tag.clone());
+            walk_children_of_node(elem, &mut sub, out);
+            *ctx.char_offset = *sub.char_offset;
+        }
+        "em" | "i" | "cite" | "dfn" => {
+            let mut sub = inherit_ctx(ctx, &style);
+            sub.italic = true;
+            sub.ancestors.push(tag.clone());
+            walk_children_of_node(elem, &mut sub, out);
+            *ctx.char_offset = *sub.char_offset;
+        }
+        "u" | "ins" => {
+            let mut sub = inherit_ctx(ctx, &style);
+            sub.underline = true;
+            sub.ancestors.push(tag.clone());
+            walk_children_of_node(elem, &mut sub, out);
+            *ctx.char_offset = *sub.char_offset;
+        }
+        "del" | "s" => {
+            let mut sub = inherit_ctx(ctx, &style);
+            sub.line_through = true;
+            sub.ancestors.push(tag.clone());
+            walk_children_of_node(elem, &mut sub, out);
+            *ctx.char_offset = *sub.char_offset;
+        }
+        "a" => {
+            let mut sub = inherit_ctx(ctx, &style);
+            sub.underline = true;
+            sub.href = elem.value().attr("href").map(|s| s.to_string());
+            sub.ancestors.push(tag.clone());
+            walk_children_of_node(elem, &mut sub, out);
+            *ctx.char_offset = *sub.char_offset;
+        }
+        "sup" => {
+            let mut sub = inherit_ctx(ctx, &style);
+            sub.font_size_em *= 0.7;
+            sub.superscript = true;
+            sub.ancestors.push(tag.clone());
+            walk_children_of_node(elem, &mut sub, out);
+            *ctx.char_offset = *sub.char_offset;
+        }
+        "sub" => {
+            let mut sub = inherit_ctx(ctx, &style);
+            sub.font_size_em *= 0.7;
+            sub.subscript = true;
+            sub.ancestors.push(tag.clone());
+            walk_children_of_node(elem, &mut sub, out);
+            *ctx.char_offset = *sub.char_offset;
+        }
+        "small" => {
+            let mut sub = inherit_ctx(ctx, &style);
+            sub.font_size_em *= 0.8;
+            sub.ancestors.push(tag.clone());
+            walk_children_of_node(elem, &mut sub, out);
+            *ctx.char_offset = *sub.char_offset;
+        }
+        "mark" => {
+            let mut sub = inherit_ctx(ctx, &style);
+            if sub.background_color.is_none() {
+                sub.background_color = Some(0xFFFFFF00);
+            }
+            sub.ancestors.push(tag.clone());
+            walk_children_of_node(elem, &mut sub, out);
+            *ctx.char_offset = *sub.char_offset;
+        }
+        "abbr" => {
+            let mut sub = inherit_ctx(ctx, &style);
+            sub.ancestors.push(tag.clone());
+            walk_children_of_node(elem, &mut sub, out);
+            *ctx.char_offset = *sub.char_offset;
+        }
 
-                    "ol" | "ul" => {
-                        let ordered = tag == "ol";
-                        let items = collect_list_items(child_elem, ctx, &tag);
-                        if !items.is_empty() {
-                            out.push(RenderNode::List {
-                                ordered,
-                                items,
-                                list_style: style.list_style_type,
-                            });
-                        }
-                    }
+        "br" => {
+            out.push(RenderNode::LineBreak);
+        }
 
-                    "li" => {
-                        let children = collect_inline(child_elem, ctx, &style, &tag);
-                        if !children.is_empty() {
-                            out.push(RenderNode::Paragraph {
-                                children,
-                                margin_top_em: 0.0,
-                                margin_bottom_em: 0.3,
-                                margin_left_em: style.margin_left_em.unwrap_or(0.0),
-                                margin_right_em: style.margin_right_em.unwrap_or(0.0),
-                                align: TextAlign::Left,
-                                text_indent_em: style.text_indent_em,
-                                line_height_em: style.line_height_em,
-                                padding_em: style.padding_em,
-                                background_color: style.background_color,
-                                color: style.color,
-                            });
-                        }
-                    }
+        "hr" => {
+            out.push(RenderNode::HorizontalRule);
+        }
 
-                    "table" => {
-                        let (rows, caption) = collect_table_rows(child_elem, ctx);
-                        if !rows.is_empty() {
-                            out.push(RenderNode::Table { rows, caption });
-                        }
-                    }
+        "img" => {
+            let alt = elem.value().attr("alt").map(|s| s.to_string());
+            let img = resolve_img(elem, ctx, Some(&style));
+            out.push(RenderNode::Image {
+                data_base64: img.data_base64,
+                alt,
+                width_hint: img.width_hint,
+                width_px: img.width_px,
+                height_px: img.height_px,
+            });
+        }
 
-                    "blockquote" => {
-                        let mut children = Vec::new();
-                        let mut sub = inherit_ctx(ctx, &style);
-                        sub.italic = true;
-                        sub.ancestors.push(tag.clone());
-                        walk_children_of_node(child_elem, &mut sub, &mut children);
-                        *ctx.char_offset = *sub.char_offset;
-                        if !children.is_empty() {
-                            out.push(RenderNode::BlockQuote {
-                                children,
-                                background_color: style.background_color,
-                                margin_top_em: style.margin_top_em.unwrap_or(0.5),
-                                margin_bottom_em: style.margin_bottom_em.unwrap_or(0.5),
-                                margin_left_em: style.margin_left_em.unwrap_or(2.0),
-                                margin_right_em: style.margin_right_em.unwrap_or(1.0),
-                            });
-                        }
-                    }
+        "figure" | "figcaption" => {
+            let mut sub = inherit_ctx(ctx, &style);
+            sub.ancestors.push(tag.clone());
+            walk_children_of_node(elem, &mut sub, out);
+            *ctx.char_offset = *sub.char_offset;
+        }
 
-                    "pre" => {
-                        // Walk inline children to preserve <span>/<code> styling.
-                        let mut children = Vec::new();
-                        let mut sub = inherit_ctx(ctx, &style);
-                        sub.font_size_em *= 0.85;
-                        sub.ancestors.push(tag.clone());
-                        walk_inline_children(child_elem, &mut sub, &mut children);
-                        *ctx.char_offset = *sub.char_offset;
-                        if !children.is_empty() {
-                            out.push(RenderNode::CodeBlock {
-                                children,
-                                background_color: style.background_color.or(Some(0xFFF5F5F5)),
-                                padding_em: style.padding_em.or(Some(0.5)),
-                            });
-                        }
-                    }
+        "ol" | "ul" => {
+            let ordered = tag == "ol";
+            let items = collect_list_items(elem, ctx, &tag);
+            if !items.is_empty() {
+                out.push(RenderNode::List {
+                    ordered,
+                    items,
+                    list_style: style.list_style_type,
+                });
+            }
+        }
 
-                    "code" => {
-                        let mut sub = inherit_ctx(ctx, &style);
-                        sub.bold = true;
-                        sub.ancestors.push(tag.clone());
-                        walk_children_of_node(child_elem, &mut sub, out);
-                        *ctx.char_offset = *sub.char_offset;
-                    }
+        "li" => {
+            let children = collect_inline(elem, ctx, &style, &tag);
+            if !children.is_empty() {
+                out.push(RenderNode::Paragraph {
+                    children,
+                    margin_top_em: 0.0,
+                    margin_bottom_em: 0.3,
+                    margin_left_em: style.margin_left_em.unwrap_or(0.0),
+                    margin_right_em: style.margin_right_em.unwrap_or(0.0),
+                    align: TextAlign::Left,
+                    text_indent_em: style.text_indent_em,
+                    line_height_em: style.line_height_em,
+                    padding_em: style.padding_em,
+                    background_color: style.background_color,
+                    color: style.color,
+                });
+            }
+        }
 
-                    "dl" => {
-                        // Definition list: <dt> → bold paragraph, <dd> → indented paragraph.
-                        ctx.ancestors.push(tag.clone());
-                        for dl_child in child_elem.children() {
-                            if let Some(dl_child_elem) = ElementRef::wrap(dl_child) {
-                                let dt_tag = dl_child_elem.value().name.local.as_ref().to_lowercase();
-                                let dl_style = resolve_styles_with_inline(ctx, dl_child_elem, &dt_tag);
-                                match dt_tag.as_str() {
-                                    "dt" => {
-                                        let mut sub = inherit_ctx(ctx, &dl_style);
-                                        sub.bold = true;
-                                        let children = collect_inline(dl_child_elem, &mut sub, &dl_style, &dt_tag);
-                                        *ctx.char_offset = *sub.char_offset;
-                                        if !children.is_empty() {
-                                            out.push(RenderNode::Paragraph {
-                                                children,
-                                                margin_top_em: dl_style.margin_top_em.unwrap_or(0.3),
-                                                margin_bottom_em: dl_style.margin_bottom_em.unwrap_or(0.1),
-                                                margin_left_em: dl_style.margin_left_em.unwrap_or(0.0),
-                                                margin_right_em: dl_style.margin_right_em.unwrap_or(0.0),
-                                                align: TextAlign::Left,
-                                                text_indent_em: None,
-                                                line_height_em: None,
-                                                padding_em: None,
-                                                background_color: None,
-                                                color: dl_style.color,
-                                            });
-                                        }
-                                    }
-                                    "dd" => {
-                                        let children = collect_inline(dl_child_elem, ctx, &dl_style, &dt_tag);
-                                        if !children.is_empty() {
-                                            out.push(RenderNode::Paragraph {
-                                                children,
-                                                margin_top_em: dl_style.margin_top_em.unwrap_or(0.0),
-                                                margin_bottom_em: dl_style.margin_bottom_em.unwrap_or(0.3),
-                                                margin_left_em: dl_style.margin_left_em.unwrap_or(2.0),
-                                                margin_right_em: dl_style.margin_right_em.unwrap_or(0.0),
-                                                align: TextAlign::Left,
-                                                text_indent_em: None,
-                                                line_height_em: None,
-                                                padding_em: None,
-                                                background_color: None,
-                                                color: dl_style.color,
-                                            });
-                                        }
-                                    }
-                                    _ => {
-                                        walk_children_of_node(dl_child_elem, ctx, out);
-                                    }
-                                }
+        "table" => {
+            let (rows, caption) = collect_table_rows(elem, ctx);
+            if !rows.is_empty() {
+                out.push(RenderNode::Table { rows, caption });
+            }
+        }
+
+        "blockquote" => {
+            let mut children = Vec::new();
+            let mut sub = inherit_ctx(ctx, &style);
+            sub.italic = true;
+            sub.ancestors.push(tag.clone());
+            walk_children_of_node(elem, &mut sub, &mut children);
+            *ctx.char_offset = *sub.char_offset;
+            if !children.is_empty() {
+                out.push(RenderNode::BlockQuote {
+                    children,
+                    background_color: style.background_color,
+                    margin_top_em: style.margin_top_em.unwrap_or(0.5),
+                    margin_bottom_em: style.margin_bottom_em.unwrap_or(0.5),
+                    margin_left_em: style.margin_left_em.unwrap_or(2.0),
+                    margin_right_em: style.margin_right_em.unwrap_or(1.0),
+                });
+            }
+        }
+
+        "pre" => {
+            // Walk inline children to preserve <span>/<code> styling.
+            let mut children = Vec::new();
+            let mut sub = inherit_ctx(ctx, &style);
+            sub.font_size_em *= 0.85;
+            sub.ancestors.push(tag.clone());
+            walk_inline_children(elem, &mut sub, &mut children);
+            *ctx.char_offset = *sub.char_offset;
+            if !children.is_empty() {
+                out.push(RenderNode::CodeBlock {
+                    children,
+                    background_color: style.background_color.or(Some(0xFFF5F5F5)),
+                    padding_em: style.padding_em.or(Some(0.5)),
+                });
+            }
+        }
+
+        "code" => {
+            let mut sub = inherit_ctx(ctx, &style);
+            sub.bold = true;
+            sub.ancestors.push(tag.clone());
+            walk_children_of_node(elem, &mut sub, out);
+            *ctx.char_offset = *sub.char_offset;
+        }
+
+        "dl" => {
+            // Definition list: <dt> → bold paragraph, <dd> → indented paragraph.
+            ctx.ancestors.push(tag.clone());
+            for dl_child in elem.children() {
+                if let Some(dl_child_elem) = ElementRef::wrap(dl_child) {
+                    let dt_tag = dl_child_elem.value().name.local.as_ref().to_lowercase();
+                    let dl_style = resolve_styles_with_inline(ctx, dl_child_elem, &dt_tag);
+                    match dt_tag.as_str() {
+                        "dt" => {
+                            let mut sub = inherit_ctx(ctx, &dl_style);
+                            sub.bold = true;
+                            let children =
+                                collect_inline(dl_child_elem, &mut sub, &dl_style, &dt_tag);
+                            *ctx.char_offset = *sub.char_offset;
+                            if !children.is_empty() {
+                                out.push(RenderNode::Paragraph {
+                                    children,
+                                    margin_top_em: dl_style.margin_top_em.unwrap_or(0.3),
+                                    margin_bottom_em: dl_style.margin_bottom_em.unwrap_or(0.1),
+                                    margin_left_em: dl_style.margin_left_em.unwrap_or(0.0),
+                                    margin_right_em: dl_style.margin_right_em.unwrap_or(0.0),
+                                    align: TextAlign::Left,
+                                    text_indent_em: None,
+                                    line_height_em: None,
+                                    padding_em: None,
+                                    background_color: None,
+                                    color: dl_style.color,
+                                });
                             }
                         }
-                        ctx.ancestors.pop();
-                    }
-
-                    "thead" | "tbody" | "tfoot" | "tr" | "td" | "th" | "caption"
-                    | "colgroup" | "col" => {
-                        walk_children_of_node(child_elem, ctx, out);
-                    }
-
-                    _ => {
-                        walk_children_of_node(child_elem, ctx, out);
+                        "dd" => {
+                            let children = collect_inline(dl_child_elem, ctx, &dl_style, &dt_tag);
+                            if !children.is_empty() {
+                                out.push(RenderNode::Paragraph {
+                                    children,
+                                    margin_top_em: dl_style.margin_top_em.unwrap_or(0.0),
+                                    margin_bottom_em: dl_style.margin_bottom_em.unwrap_or(0.3),
+                                    margin_left_em: dl_style.margin_left_em.unwrap_or(2.0),
+                                    margin_right_em: dl_style.margin_right_em.unwrap_or(0.0),
+                                    align: TextAlign::Left,
+                                    text_indent_em: None,
+                                    line_height_em: None,
+                                    padding_em: None,
+                                    background_color: None,
+                                    color: dl_style.color,
+                                });
+                            }
+                        }
+                        _ => {
+                            walk_children_of_node(dl_child_elem, ctx, out);
+                        }
                     }
                 }
             }
-            _ => {}
+            ctx.ancestors.pop();
+        }
+
+        "thead" | "tbody" | "tfoot" | "tr" | "td" | "th" | "caption" | "colgroup" | "col" => {
+            walk_children_of_node(elem, ctx, out);
+        }
+
+        _ => {
+            walk_children_of_node(elem, ctx, out);
         }
     }
 }
@@ -465,124 +473,139 @@ fn walk_inline_children(elem: ElementRef, ctx: &mut WalkCtx, out: &mut Vec<Rende
                     });
                 }
             }
-            Node::Element(el) => {
-                let tag = el.name.local.as_ref().to_lowercase();
-                if filter::should_discard(&tag) {
-                    continue;
-                }
-
+            Node::Element(_) => {
                 let child_elem = ElementRef::wrap(child).unwrap();
-                let style = resolve_styles_with_inline(ctx, child_elem, &tag);
-
-                // Skip elements with display:none.
-                if style.display.as_deref() == Some("none") {
-                    continue;
-                }
-
-                // Skip positioned-out-of-flow elements in inline context too.
-                if filter::is_out_of_flow(&style) {
-                    continue;
-                }
-
-                match tag.as_str() {
-                    "br" => out.push(RenderNode::LineBreak),
-                    "img" => {
-                        let alt = child_elem.value().attr("alt").map(|s| s.to_string());
-                        let img = resolve_img(child_elem, ctx, Some(&style));
-                        out.push(RenderNode::Image {
-                            data_base64: img.data_base64,
-                            alt,
-                            width_hint: img.width_hint,
-                            width_px: img.width_px,
-                            height_px: img.height_px,
-                        });
-                    }
-                    "strong" | "b" => {
-                        let mut sub = inherit_ctx(ctx, &style);
-                        sub.bold = true;
-                        sub.ancestors.push(tag.clone());
-                        walk_inline_children(child_elem, &mut sub, out);
-                        *ctx.char_offset = *sub.char_offset;
-                    }
-                    "em" | "i" | "cite" | "dfn" => {
-                        let mut sub = inherit_ctx(ctx, &style);
-                        sub.italic = true;
-                        sub.ancestors.push(tag.clone());
-                        walk_inline_children(child_elem, &mut sub, out);
-                        *ctx.char_offset = *sub.char_offset;
-                    }
-                    "u" | "ins" => {
-                        let mut sub = inherit_ctx(ctx, &style);
-                        sub.underline = true;
-                        sub.ancestors.push(tag.clone());
-                        walk_inline_children(child_elem, &mut sub, out);
-                        *ctx.char_offset = *sub.char_offset;
-                    }
-                    "del" | "s" => {
-                        let mut sub = inherit_ctx(ctx, &style);
-                        sub.line_through = true;
-                        sub.ancestors.push(tag.clone());
-                        walk_inline_children(child_elem, &mut sub, out);
-                        *ctx.char_offset = *sub.char_offset;
-                    }
-                    "a" => {
-                        let mut sub = inherit_ctx(ctx, &style);
-                        sub.underline = true;
-                        sub.href = child_elem.value().attr("href").map(|s| s.to_string());
-                        sub.ancestors.push(tag.clone());
-                        walk_inline_children(child_elem, &mut sub, out);
-                        *ctx.char_offset = *sub.char_offset;
-                    }
-                    "sup" => {
-                        let mut sub = inherit_ctx(ctx, &style);
-                        sub.font_size_em *= 0.7;
-                        sub.superscript = true;
-                        sub.ancestors.push(tag.clone());
-                        walk_inline_children(child_elem, &mut sub, out);
-                        *ctx.char_offset = *sub.char_offset;
-                    }
-                    "sub" => {
-                        let mut sub = inherit_ctx(ctx, &style);
-                        sub.font_size_em *= 0.7;
-                        sub.subscript = true;
-                        sub.ancestors.push(tag.clone());
-                        walk_inline_children(child_elem, &mut sub, out);
-                        *ctx.char_offset = *sub.char_offset;
-                    }
-                    "small" => {
-                        let mut sub = inherit_ctx(ctx, &style);
-                        sub.font_size_em *= 0.8;
-                        sub.ancestors.push(tag.clone());
-                        walk_inline_children(child_elem, &mut sub, out);
-                        *ctx.char_offset = *sub.char_offset;
-                    }
-                    "mark" => {
-                        let mut sub = inherit_ctx(ctx, &style);
-                        if sub.background_color.is_none() {
-                            sub.background_color = Some(0xFFFFFF00);
-                        }
-                        sub.ancestors.push(tag.clone());
-                        walk_inline_children(child_elem, &mut sub, out);
-                        *ctx.char_offset = *sub.char_offset;
-                    }
-                    "code" => {
-                        let mut sub = inherit_ctx(ctx, &style);
-                        sub.bold = true;
-                        sub.ancestors.push(tag.clone());
-                        walk_inline_children(child_elem, &mut sub, out);
-                        *ctx.char_offset = *sub.char_offset;
-                    }
-                    _ => {
-                        let mut sub = inherit_ctx(ctx, &style);
-                        sub.ancestors.push(tag.clone());
-                        walk_inline_children(child_elem, &mut sub, out);
-                        *ctx.char_offset = *sub.char_offset;
-                    }
-                }
+                walk_inline_element(child_elem, ctx, out);
             }
             _ => {}
         }
     }
+}
+
+fn walk_inline_element(elem: ElementRef, ctx: &mut WalkCtx, out: &mut Vec<RenderNode>) {
+    let tag = elem.value().name.local.as_ref().to_lowercase();
+    if filter::should_discard(&tag) {
+        return;
+    }
+
+    let style = resolve_styles_with_inline(ctx, elem, &tag);
+
+    // Skip elements with display:none.
+    if style.display.as_deref() == Some("none") {
+        return;
+    }
+
+    // Skip positioned-out-of-flow elements in inline context too.
+    if filter::should_skip_out_of_flow(&tag, &style) {
+        return;
+    }
+
+    match tag.as_str() {
+        "br" => out.push(RenderNode::LineBreak),
+        "img" => {
+            let alt = elem.value().attr("alt").map(|s| s.to_string());
+            let img = resolve_img(elem, ctx, Some(&style));
+            out.push(RenderNode::Image {
+                data_base64: img.data_base64,
+                alt,
+                width_hint: img.width_hint,
+                width_px: img.width_px,
+                height_px: img.height_px,
+            });
+        }
+        "strong" | "b" => {
+            let mut sub = inherit_ctx(ctx, &style);
+            sub.bold = true;
+            sub.ancestors.push(tag.clone());
+            walk_inline_children(elem, &mut sub, out);
+            *ctx.char_offset = *sub.char_offset;
+        }
+        "em" | "i" | "cite" | "dfn" => {
+            let mut sub = inherit_ctx(ctx, &style);
+            sub.italic = true;
+            sub.ancestors.push(tag.clone());
+            walk_inline_children(elem, &mut sub, out);
+            *ctx.char_offset = *sub.char_offset;
+        }
+        "u" | "ins" => {
+            let mut sub = inherit_ctx(ctx, &style);
+            sub.underline = true;
+            sub.ancestors.push(tag.clone());
+            walk_inline_children(elem, &mut sub, out);
+            *ctx.char_offset = *sub.char_offset;
+        }
+        "del" | "s" => {
+            let mut sub = inherit_ctx(ctx, &style);
+            sub.line_through = true;
+            sub.ancestors.push(tag.clone());
+            walk_inline_children(elem, &mut sub, out);
+            *ctx.char_offset = *sub.char_offset;
+        }
+        "a" => {
+            let mut sub = inherit_ctx(ctx, &style);
+            sub.underline = true;
+            sub.href = elem.value().attr("href").map(|s| s.to_string());
+            sub.ancestors.push(tag.clone());
+            walk_inline_children(elem, &mut sub, out);
+            *ctx.char_offset = *sub.char_offset;
+        }
+        "sup" => {
+            let mut sub = inherit_ctx(ctx, &style);
+            sub.font_size_em *= 0.7;
+            sub.superscript = true;
+            sub.ancestors.push(tag.clone());
+            walk_inline_children(elem, &mut sub, out);
+            *ctx.char_offset = *sub.char_offset;
+        }
+        "sub" => {
+            let mut sub = inherit_ctx(ctx, &style);
+            sub.font_size_em *= 0.7;
+            sub.subscript = true;
+            sub.ancestors.push(tag.clone());
+            walk_inline_children(elem, &mut sub, out);
+            *ctx.char_offset = *sub.char_offset;
+        }
+        "small" => {
+            let mut sub = inherit_ctx(ctx, &style);
+            sub.font_size_em *= 0.8;
+            sub.ancestors.push(tag.clone());
+            walk_inline_children(elem, &mut sub, out);
+            *ctx.char_offset = *sub.char_offset;
+        }
+        "mark" => {
+            let mut sub = inherit_ctx(ctx, &style);
+            if sub.background_color.is_none() {
+                sub.background_color = Some(0xFFFFFF00);
+            }
+            sub.ancestors.push(tag.clone());
+            walk_inline_children(elem, &mut sub, out);
+            *ctx.char_offset = *sub.char_offset;
+        }
+        "code" => {
+            let mut sub = inherit_ctx(ctx, &style);
+            sub.bold = true;
+            sub.ancestors.push(tag.clone());
+            walk_inline_children(elem, &mut sub, out);
+            *ctx.char_offset = *sub.char_offset;
+        }
+        _ => {
+            let mut sub = inherit_ctx(ctx, &style);
+            sub.ancestors.push(tag.clone());
+            walk_inline_children(elem, &mut sub, out);
+            *ctx.char_offset = *sub.char_offset;
+        }
+    }
+}
+
+fn has_epub_type_token(elem: ElementRef, needle: &str) -> bool {
+    elem.value()
+        .attr("epub:type")
+        .map(|value| {
+            value
+                .split_whitespace()
+                .any(|token| token.eq_ignore_ascii_case(needle))
+        })
+        .unwrap_or(false)
 }
 
 // ---------------------------------------------------------------------------
@@ -593,8 +616,19 @@ fn walk_inline_children(elem: ElementRef, ctx: &mut WalkCtx, out: &mut Vec<Rende
 fn is_block_tag(tag: &str) -> bool {
     matches!(
         tag,
-        "p" | "div" | "ul" | "ol" | "blockquote" | "pre" | "table"
-            | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "dl"
+        "p" | "div"
+            | "ul"
+            | "ol"
+            | "blockquote"
+            | "pre"
+            | "table"
+            | "h1"
+            | "h2"
+            | "h3"
+            | "h4"
+            | "h5"
+            | "h6"
+            | "dl"
     )
 }
 
@@ -646,13 +680,18 @@ fn collect_list_items(elem: ElementRef, ctx: &mut WalkCtx, list_tag: &str) -> Ve
                             }
                             Node::Element(_) => {
                                 if let Some(li_child_elem) = ElementRef::wrap(li_child) {
-                                    let t = li_child_elem.value().name.local.as_ref().to_lowercase();
+                                    let t =
+                                        li_child_elem.value().name.local.as_ref().to_lowercase();
                                     if is_block_tag(&t) {
-                                        // Block child → walk into sub_nodes.
-                                        walk_children_of_node(li_child_elem, &mut sub, &mut sub_nodes);
+                                        // Block child → preserve the wrapper node itself.
+                                        walk_block_element(li_child_elem, &mut sub, &mut sub_nodes);
                                     } else {
-                                        // Inline child → walk into inline_children.
-                                        walk_inline_children(li_child_elem, &mut sub, &mut inline_children);
+                                        // Inline child → preserve element formatting like <a>.
+                                        walk_inline_element(
+                                            li_child_elem,
+                                            &mut sub,
+                                            &mut inline_children,
+                                        );
                                     }
                                 }
                             }
@@ -774,11 +813,7 @@ fn collect_table_cells(elem: ElementRef, ctx: &mut WalkCtx) -> (Vec<TableCell>, 
 // ---------------------------------------------------------------------------
 
 /// Resolve CSS styles for an element, merging stylesheet rules with inline `style` attribute.
-fn resolve_styles_with_inline(
-    ctx: &WalkCtx,
-    elem: ElementRef,
-    tag: &str,
-) -> StyleProps {
+fn resolve_styles_with_inline(ctx: &WalkCtx, elem: ElementRef, tag: &str) -> StyleProps {
     let classes = element_classes(elem);
     let id = elem.value().attr("id");
     let mut style = css::resolve_styles(ctx.css_map, tag, &classes, id, &ctx.ancestors);
@@ -903,9 +938,15 @@ fn resolve_img(elem: ElementRef, ctx: &WalkCtx, style: Option<&StyleProps>) -> R
                 return None;
             }
             if w.ends_with('%') {
-                w.trim_end_matches('%').parse::<f32>().ok().map(|v| v / 100.0)
+                w.trim_end_matches('%')
+                    .parse::<f32>()
+                    .ok()
+                    .map(|v| v / 100.0)
             } else if w.ends_with("px") {
-                w.trim_end_matches("px").parse::<f32>().ok().map(|px| (px / 600.0).min(1.0))
+                w.trim_end_matches("px")
+                    .parse::<f32>()
+                    .ok()
+                    .map(|px| (px / 600.0).min(1.0))
             } else {
                 w.parse::<f32>().ok().map(|px| (px / 600.0).min(1.0))
             }

@@ -118,8 +118,25 @@ export async function buildXhtmlInventory({ epubPath, xhtmlPaths, caseCatalog })
  * Exported for direct use in tests without file I/O.
  */
 export function buildChapterInventory({ chapterIndex, xhtmlPath, xhtmlContent, caseCatalog }) {
+  if (!isMarkupSpinePath(xhtmlPath)) {
+    return {
+      chapterIndex,
+      xhtmlPath,
+      elements: [],
+      specialCaseCounts: {},
+    };
+  }
+
   const document = parseXhtmlDom(xhtmlContent);
   const body = document.body ?? document.querySelector('body') ?? document.documentElement;
+  if (body == null) {
+    return {
+      chapterIndex,
+      xhtmlPath,
+      elements: [],
+      specialCaseCounts: {},
+    };
+  }
 
   const elements = [];
   const specialCaseCounts = {};
@@ -144,6 +161,11 @@ export function buildChapterInventory({ chapterIndex, xhtmlPath, xhtmlContent, c
   };
 }
 
+function isMarkupSpinePath(xhtmlPath) {
+  const extension = path.extname(xhtmlPath).toLowerCase();
+  return ['.xhtml', '.html', '.htm', '.svg', '.xml'].includes(extension);
+}
+
 // ---------------------------------------------------------------------------
 // DOM walker
 // ---------------------------------------------------------------------------
@@ -154,6 +176,7 @@ function walkDom(node, ctx) {
   }
 
   const tagName = (node.tagName ?? '').toLowerCase();
+  const epubType = node.getAttribute?.('epub:type') ?? '';
 
   // Special: discarded non-reading content — count and skip entirely
   if (DISCARDED_TAGS.has(tagName)) {
@@ -174,6 +197,11 @@ function walkDom(node, ctx) {
   }
 
   // Flattened container — count, then recurse into children
+  if (tagName === 'nav' && /\blandmarks\b/i.test(epubType)) {
+    increment(ctx.specialCaseCounts, 'special.landmarks_nav');
+    return;
+  }
+
   if (FLATTENED_CONTAINER_TAGS.has(tagName)) {
     increment(ctx.specialCaseCounts, 'special.flattened_container');
     walkChildren(node, ctx);
@@ -297,13 +325,35 @@ function walkInlineChildren(node, features, insidePre) {
     }
 
     const inlineCaseId = INLINE_TAG_MAP[tag];
-    if (inlineCaseId != null) {
+    if (inlineCaseId != null && inlineNodeHasRenderableContent(child)) {
       features.push(inlineCaseId);
     }
 
     // Recurse to find nested inline features (e.g. <strong><em>text</em></strong>)
     walkInlineChildren(child, features, insidePre);
   }
+}
+
+function inlineNodeHasRenderableContent(node) {
+  const tag = (node.tagName ?? '').toLowerCase();
+  if (tag === 'br' || tag === 'img') {
+    return true;
+  }
+
+  if (normalizeText(node.textContent ?? '') !== '') {
+    return true;
+  }
+
+  for (const child of node.childNodes ?? []) {
+    if (child.nodeType !== 1) {
+      continue;
+    }
+    if (inlineNodeHasRenderableContent(child)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 // ---------------------------------------------------------------------------

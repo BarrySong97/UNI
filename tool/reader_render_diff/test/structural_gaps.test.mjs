@@ -313,6 +313,38 @@ test('buildParserInventory: builds flat list from chapter JSON', () => {
   assert.equal(inventory[2].blockCaseId, 'block.horizontal_rule');
 });
 
+test('buildParserInventory: includes nested list sub_nodes for structural matching', () => {
+  const chapterJson = makeChapterJson(0, [
+    {
+      type: 'List',
+      ordered: true,
+      items: [
+        {
+          children: [{ type: 'Text', content: 'Parent item' }],
+          sub_nodes: [
+            {
+              type: 'List',
+              ordered: false,
+              items: [
+                {
+                  children: [{ type: 'Text', content: 'Nested child' }],
+                  sub_nodes: [],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ]);
+
+  const inventory = buildParserInventory(chapterJson);
+  assert.deepEqual(
+    inventory.map((node) => node.blockCaseId),
+    ['block.list.ol', 'block.list.ul'],
+  );
+});
+
 test('buildParserInventory: handles empty chapter', () => {
   const chapterJson = makeChapterJson(0, []);
   const inventory = buildParserInventory(chapterJson);
@@ -955,6 +987,128 @@ test('findStructuralGaps: definition list dt matches ParagraphNode', () => {
   const result = findStructuralGaps({ xhtmlInventory: inventory, chapterJsons, caseCatalog });
   assert.equal(result.summary.matchedElements, 1);
   assert.equal(result.summary.missingElements, 0);
+});
+
+test('findStructuralGaps: skips block wrappers inside list items', () => {
+  const inventory = makeXhtmlInventory([
+    [
+      makeXhtmlElement({
+        elementId: 'ch0_ul_0_list',
+        tagName: 'ul',
+        blockCaseId: 'block.list.ul',
+        normalizedText: 'Nested item',
+        featureCaseIds: ['inline.italic'],
+      }),
+      makeXhtmlElement({
+        elementId: 'ch0_p_1_item',
+        domPath: 'body > ul > li > p',
+        normalizedText: 'Nested item',
+        featureCaseIds: ['inline.italic'],
+      }),
+    ],
+  ]);
+  const chapterJsons = [
+    makeChapterJson(0, [
+      {
+        type: 'List',
+        ordered: false,
+        items: [
+          {
+            children: [],
+            sub_nodes: [
+              { type: 'Text', content: 'Nested item', italic: true },
+            ],
+          },
+        ],
+      },
+    ]),
+  ];
+
+  const result = findStructuralGaps({ xhtmlInventory: inventory, chapterJsons, caseCatalog });
+  assert.equal(result.summary.matchedElements, 1);
+  assert.equal(result.summary.missingElements, 0);
+  assert.equal(result.summary.featureGaps, 0);
+  assert.equal(result.summary.overConvertedNodes, 0);
+});
+
+test('findStructuralGaps: skips empty text-bearing elements without renderable content', () => {
+  const inventory = makeXhtmlInventory([
+    [
+      makeXhtmlElement({
+        elementId: 'ch0_h1_0_empty',
+        tagName: 'h1',
+        blockCaseId: 'block.heading.h1',
+        normalizedText: '',
+        featureCaseIds: ['inline.link'],
+        domPath: 'body > h1',
+        status: 'supported',
+      }),
+    ],
+  ]);
+  const chapterJsons = [makeChapterJson(0, [])];
+
+  const result = findStructuralGaps({ xhtmlInventory: inventory, chapterJsons, caseCatalog });
+  assert.equal(result.summary.missingElements, 0);
+  assert.equal(result.summary.featureGaps, 0);
+  assert.equal(result.gaps.length, 0);
+});
+
+test('findStructuralGaps: keeps empty table elements in structural matching', () => {
+  const inventory = makeXhtmlInventory([
+    [
+      makeXhtmlElement({
+        elementId: 'ch0_table_0_empty',
+        tagName: 'table',
+        blockCaseId: 'block.table.basic',
+        normalizedText: '',
+        domPath: 'body > table',
+        status: 'supported',
+      }),
+    ],
+  ]);
+  const chapterJsons = [
+    makeChapterJson(0, [
+      {
+        type: 'Table',
+        rows: [{ cells: [{ children: [] }], is_header: false }],
+      },
+    ]),
+  ];
+
+  const result = findStructuralGaps({ xhtmlInventory: inventory, chapterJsons, caseCatalog });
+  assert.equal(result.summary.missingElements, 0);
+  assert.equal(result.summary.overConvertedNodes, 0);
+  assert.equal(result.summary.matchedElements, 1);
+});
+
+test('findStructuralGaps: keeps empty paragraphs with line breaks in structural matching', () => {
+  const inventory = makeXhtmlInventory([
+    [
+      makeXhtmlElement({
+        elementId: 'ch0_p_0_break',
+        tagName: 'p',
+        blockCaseId: 'block.paragraph',
+        normalizedText: '',
+        featureCaseIds: ['inline.line_break'],
+        domPath: 'body > p',
+        status: 'supported',
+      }),
+    ],
+  ]);
+  const chapterJsons = [
+    makeChapterJson(0, [
+      {
+        type: 'Paragraph',
+        children: [{ type: 'LineBreak' }],
+        align: 'Left',
+      },
+    ]),
+  ];
+
+  const result = findStructuralGaps({ xhtmlInventory: inventory, chapterJsons, caseCatalog });
+  assert.equal(result.summary.missingElements, 0);
+  assert.equal(result.summary.overConvertedNodes, 0);
+  assert.equal(result.summary.matchedElements, 1);
 });
 
 // ===================================================================

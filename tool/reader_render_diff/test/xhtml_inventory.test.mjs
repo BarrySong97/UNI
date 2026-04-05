@@ -54,6 +54,18 @@ test('parseXhtmlDom returns a document with a body', () => {
   assert.equal(p.textContent, 'Hello');
 });
 
+test('buildChapterInventory returns empty chapter for non-markup spine resources', () => {
+  const result = buildChapterInventory({
+    chapterIndex: 0,
+    xhtmlPath: 'moby.json',
+    xhtmlContent: '{"novel":[{"para":"Call me Ishmael."}]}',
+    caseCatalog,
+  });
+
+  assert.equal(result.elements.length, 0);
+  assert.deepEqual(result.specialCaseCounts, {});
+});
+
 // ===================================================================
 // Block-level tag mapping
 // ===================================================================
@@ -145,6 +157,13 @@ test('bold detection (strong and b)', () => {
 test('italic detection (em, i, cite, dfn)', () => {
   const result = buildFromHtml('<p><em>a</em> <i>b</i> <cite>c</cite> <dfn>d</dfn></p>');
   assert.equal(result.elements[0].featureCaseIds.includes('inline.italic'), true);
+});
+
+test('empty inline formatting tags do not trigger features', () => {
+  const result = buildFromHtml('<p>Label:<i> </i><a href="#"></a><em></em><span>Text</span></p>');
+  const features = result.elements[0].featureCaseIds;
+  assert.equal(features.includes('inline.italic'), false);
+  assert.equal(features.includes('inline.link'), false);
 });
 
 test('underline detection (u, ins)', () => {
@@ -354,6 +373,21 @@ test('position:fixed elements are counted and skipped', () => {
   const result = buildFromHtml('<p style="position: fixed;">Fixed</p><p>Normal</p>');
   assert.equal(result.specialCaseCounts['special.out_of_flow_absolute_fixed'], 1);
   assert.equal(result.elements.length, 1);
+});
+
+test('landmarks nav is counted and skipped', () => {
+  const result = buildFromHtml(`
+    <nav epub:type="landmarks">
+      <h2>Guide</h2>
+      <ol><li><a href="cover.xhtml">Cover</a></li></ol>
+    </nav>
+    <nav epub:type="toc">
+      <ol><li><a href="chapter.xhtml">Start</a></li></ol>
+    </nav>
+  `);
+  assert.equal(result.specialCaseCounts['special.landmarks_nav'], 1);
+  assert.equal(result.elements.length, 1);
+  assert.equal(result.elements[0].blockCaseId, 'block.list.ol');
 });
 
 test('discarded elements are not descended into', () => {
