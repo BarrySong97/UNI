@@ -1701,6 +1701,8 @@ class _ReaderPageState extends State<ReaderPage>
                   bookId: widget.book.id,
                   chapterIndex: _store.currentChapterIndex,
                   bookLanguage: widget.book.language,
+                  isTablet: _store.isDualPage,
+                  selectionOnRightPage: _selectionOnRightPage,
                 );
               },
             ),

@@ -59,28 +59,94 @@ class ReaderExplainSheet extends StatefulWidget {
     required String bookId,
     required int chapterIndex,
     String? bookLanguage,
+    bool isTablet = false,
+    bool selectionOnRightPage = false,
   }) {
-    return showModalBottomSheet<void>(
+    final sheet = ReaderExplainSheet(
+      selectedText: selectedText,
+      pageContext: pageContext,
+      paragraphContext: paragraphContext,
+      aiSettings: aiSettings,
+      languageConfig: languageConfig,
+      bookTitle: bookTitle,
+      phoneticsService: phoneticsService,
+      ttsService: ttsService,
+      database: database,
+      bookId: bookId,
+      chapterIndex: chapterIndex,
+      bookLanguage: bookLanguage,
+    );
+
+    if (!isTablet) {
+      return showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.white,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        builder: (_) => sheet,
+      );
+    }
+
+    // Tablet mode: floating panel on the opposite side of the selection.
+    // Text on right page → panel slides in from the left.
+    // Text on left page → panel slides in from the right.
+    final showOnLeft = selectionOnRightPage;
+    const panelMargin = 20.0;
+
+    return showGeneralDialog<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (_) => ReaderExplainSheet(
-        selectedText: selectedText,
-        pageContext: pageContext,
-        paragraphContext: paragraphContext,
-        aiSettings: aiSettings,
-        languageConfig: languageConfig,
-        bookTitle: bookTitle,
-        phoneticsService: phoneticsService,
-        ttsService: ttsService,
-        database: database,
-        bookId: bookId,
-        chapterIndex: chapterIndex,
-        bookLanguage: bookLanguage,
-      ),
+      barrierDismissible: true,
+      barrierLabel: 'Dismiss explain sheet',
+      barrierColor: Colors.black26,
+      transitionDuration: const Duration(milliseconds: 300),
+      pageBuilder: (dialogContext, _, __) {
+        final mq = MediaQuery.of(dialogContext);
+        final screenWidth = mq.size.width;
+        final screenHeight = mq.size.height;
+        final panelWidth = screenWidth / 2 - panelMargin * 2;
+        final panelHeight = screenHeight * 0.85;
+
+        return Align(
+          alignment: showOnLeft
+              ? Alignment.centerLeft
+              : Alignment.centerRight,
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: showOnLeft ? panelMargin : 0,
+              right: showOnLeft ? 0 : panelMargin,
+              bottom: panelMargin,
+              top: panelMargin,
+            ),
+            child: Material(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              elevation: 12,
+              clipBehavior: Clip.antiAlias,
+              child: SizedBox(
+                width: panelWidth,
+                height: panelHeight,
+                child: sheet,
+              ),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (_, animation, __, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        );
+        // Slide horizontally from the corresponding edge.
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: Offset(showOnLeft ? -1 : 1, 0),
+            end: Offset.zero,
+          ).animate(curved),
+          child: child,
+        );
+      },
     );
   }
 
