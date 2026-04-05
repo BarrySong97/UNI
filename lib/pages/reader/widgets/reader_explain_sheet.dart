@@ -2,8 +2,10 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../services/ai/ai_settings_service.dart';
+import '../../../services/search/image_search_service.dart';
 import '../../../shared/constants/common-design-tokens.dart';
 import '../../../services/ai/openai_llm_provider.dart';
 import '../../../services/db/app-database.dart';
@@ -172,6 +174,10 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
   PhoneticsResult? _phonetics;
   String? _playingAccent;
 
+  // Image search state (word/phrase mode only).
+  List<ImageSearchResult>? _imageSearchResults;
+  bool _isImageSearching = false;
+
   static final _sentenceEndPattern = RegExp(r'[.!?。！？\n]');
 
   @override
@@ -237,7 +243,10 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
       model: config.model,
     );
 
-    if (_isWordOrPhrase) _lookupPhonetics();
+    if (_isWordOrPhrase) {
+      _lookupPhonetics();
+      _fetchImageSearchResults();
+    }
     _loadOrFetch();
 
     // Auto read-aloud selected text when sheet opens (if enabled).
@@ -260,6 +269,36 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
       final result = await widget.phoneticsService.lookup(widget.selectedText);
       if (mounted) setState(() => _phonetics = result);
     } catch (_) {}
+  }
+
+  Future<void> _fetchImageSearchResults() async {
+    setState(() => _isImageSearching = true);
+    try {
+      final results = await ImageSearchService.search(
+        widget.aiSettings.imageSearchEngine,
+        widget.selectedText,
+      );
+      if (mounted) {
+        setState(() {
+          _imageSearchResults = results;
+          _isImageSearching = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isImageSearching = false);
+    }
+  }
+
+  Future<void> _openImageSearchInBrowser() async {
+    final url = ImageSearchService.webSearchUrl(
+      widget.aiSettings.imageSearchEngine,
+      widget.selectedText,
+    );
+    try {
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (_) {
+      // Silently ignore — image search browser launch is non-critical.
+    }
   }
 
   Future<void> _playPronunciation(String accent) async {
@@ -735,25 +774,16 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
   }
 
   Widget _buildResponseArea() {
+    // AI content part: skeleton while loading, structured or markdown once
+    // available.  Visual Reference is always appended below regardless of
+    // whether the AI response succeeded, failed, or is still streaming.
+    Widget aiContent;
     if (_aiResponse.isEmpty && _isStreaming) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: _buildSkeleton(),
-      );
-    }
-
-    if (!_customPromptModeEnabled) {
-      return SingleChildScrollView(
-        controller: _scrollController,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: _buildStructuredContent(),
-      );
-    }
-
-    return SingleChildScrollView(
-      controller: _scrollController,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: MarkdownBody(
+      aiContent = _buildSkeleton();
+    } else if (!_customPromptModeEnabled) {
+      aiContent = _buildStructuredContent();
+    } else {
+      aiContent = MarkdownBody(
         data: _aiResponse,
         selectable: true,
         styleSheet: MarkdownStyleSheet(
@@ -764,6 +794,18 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
             decoration: TextDecoration.none,
           ),
         ),
+      );
+    }
+
+    return SingleChildScrollView(
+      controller: _scrollController,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          aiContent,
+          if (_isWordOrPhrase) _buildVisualReferenceSection(),
+        ],
       ),
     );
   }
@@ -858,6 +900,253 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
           ),
         ),
       ],
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Visual Reference (image search)
+  // ---------------------------------------------------------------------------
+
+  Widget _buildVisualReferenceSection() {
+    // Hide entirely when there is nothing to show and not loading.
+    final hasResults =
+        _imageSearchResults != null && _imageSearchResults!.isNotEmpty;
+    if (!_isImageSearching && !hasResults) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Divider
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 20),
+          child: Divider(
+            height: 1,
+            thickness: 1,
+            color: CommonDesignTokens.pageBackground,
+          ),
+        ),
+        // Section header: icon + label on left, pill button on right.
+        Row(
+          children: [
+            const Icon(
+              Icons.image_outlined,
+              size: 18,
+              color: CommonDesignTokens.headerLabelColor,
+            ),
+            const SizedBox(width: 6),
+            const Text(
+              'Visual Reference',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: CommonDesignTokens.headerLabelColor,
+                decoration: TextDecoration.none,
+              ),
+            ),
+            const Spacer(),
+            GestureDetector(
+              onTap: _openImageSearchInBrowser,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: CommonDesignTokens.pageBackground,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.search,
+                      size: 14,
+                      color: CommonDesignTokens.textSecondary,
+                    ),
+                    SizedBox(width: 4),
+                    Text(
+                      'More Images on Internet',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: CommonDesignTokens.textSecondary,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        // Content: loading skeleton or image row.
+        if (_isImageSearching)
+          _buildImageSearchSkeleton()
+        else if (hasResults)
+          _buildImageRow(),
+      ],
+    );
+  }
+
+  Widget _buildImageRow() {
+    return SizedBox(
+      height: 120,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: _imageSearchResults!.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final result = _imageSearchResults![index];
+          return GestureDetector(
+            onTap: () => _showImagePreview(result.sourceUrl),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.network(
+                result.thumbnailUrl,
+                width: 120,
+                height: 120,
+                fit: BoxFit.cover,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Container(
+                    width: 120,
+                    height: 120,
+                    color: CommonDesignTokens.pageBackground,
+                    alignment: Alignment.center,
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        value: loadingProgress.expectedTotalBytes != null
+                            ? loadingProgress.cumulativeBytesLoaded /
+                                loadingProgress.expectedTotalBytes!
+                            : null,
+                        color: CommonDesignTokens.headerLabelColor,
+                      ),
+                    ),
+                  );
+                },
+                errorBuilder: (_, __, ___) => Container(
+                  width: 120,
+                  height: 120,
+                  color: CommonDesignTokens.pageBackground,
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    Icons.broken_image_outlined,
+                    size: 24,
+                    color: CommonDesignTokens.textSecondary,
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _showImagePreview(String imageUrl) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return GestureDetector(
+          onTap: () => Navigator.of(dialogContext).pop(),
+          child: Scaffold(
+            backgroundColor: Colors.black87,
+            body: Stack(
+              children: [
+                // Zoomable / pannable full image.
+                Center(
+                  child: InteractiveViewer(
+                    minScale: 0.5,
+                    maxScale: 4.0,
+                    child: Image.network(
+                      imageUrl,
+                      fit: BoxFit.contain,
+                      loadingBuilder: (_, child, progress) {
+                        if (progress == null) return child;
+                        return Center(
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white70,
+                            value: progress.expectedTotalBytes != null
+                                ? progress.cumulativeBytesLoaded /
+                                    progress.expectedTotalBytes!
+                                : null,
+                          ),
+                        );
+                      },
+                      errorBuilder: (_, __, ___) => const Icon(
+                        Icons.broken_image_outlined,
+                        size: 48,
+                        color: Colors.white38,
+                      ),
+                    ),
+                  ),
+                ),
+                // Close button.
+                Positioned(
+                  top: MediaQuery.of(dialogContext).padding.top + 8,
+                  right: 12,
+                  child: IconButton(
+                    icon: const Icon(
+                      Icons.close,
+                      color: Colors.white70,
+                      size: 28,
+                    ),
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildImageSearchSkeleton() {
+    return AnimatedBuilder(
+      animation: _shimmerController,
+      builder: (context, child) {
+        final offset = _shimmerController.value * 2 - 0.5;
+        return ShaderMask(
+          shaderCallback: (bounds) {
+            return LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.centerRight,
+              colors: const [
+                Color(0xFFEBEBEB),
+                Color(0xFFF5F5F5),
+                Color(0xFFEBEBEB),
+              ],
+              stops: [
+                (offset - 0.3).clamp(0.0, 1.0),
+                offset.clamp(0.0, 1.0),
+                (offset + 0.3).clamp(0.0, 1.0),
+              ],
+            ).createShader(bounds);
+          },
+          blendMode: BlendMode.srcATop,
+          child: child,
+        );
+      },
+      child: Row(
+        children: List.generate(
+          3,
+          (index) => Padding(
+            padding: EdgeInsets.only(right: index < 2 ? 8.0 : 0),
+            child: Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                color: CommonDesignTokens.pageBackground,
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 

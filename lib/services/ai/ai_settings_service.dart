@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../search/image_search_service.dart';
+
 /// Detail level controls how verbose the AI explanation is.
 enum ExplanationDetail { brief, balanced, detailed }
 
@@ -75,6 +77,7 @@ class AiSettingsService extends ChangeNotifier {
   static const String _keyApiKey = 'ai_api_key';
   static const String _keyConfigMap = 'ai_config_map';
   static const String _keyAutoReadAloud = 'ai_auto_read_aloud';
+  static const String _keyImageSearchEngine = 'ai_image_search_engine';
 
   // Legacy keys (for migration).
   static const String _keyLegacyModel = 'ai_model';
@@ -96,6 +99,7 @@ class AiSettingsService extends ChangeNotifier {
   String _baseUrl = defaultBaseUrl;
   String _apiKey = '';
   bool _autoReadAloud = false;
+  ImageSearchEngine _imageSearchEngine = ImageSearchEngine.bing;
 
   /// Per-language AI config: languageCode -> AiLanguageConfig.
   final Map<String, AiLanguageConfig> _configMap = {};
@@ -104,6 +108,7 @@ class AiSettingsService extends ChangeNotifier {
   String get apiKey => _apiKey;
   bool get isConfigured => _apiKey.isNotEmpty;
   bool get autoReadAloud => _autoReadAloud;
+  ImageSearchEngine get imageSearchEngine => _imageSearchEngine;
   Map<String, AiLanguageConfig> get configMap => Map.unmodifiable(_configMap);
 
   /// Get config for a specific language code (returns default if not set).
@@ -164,6 +169,14 @@ class AiSettingsService extends ChangeNotifier {
     _baseUrl = prefs.getString(_keyBaseUrl) ?? defaultBaseUrl;
     _apiKey = prefs.getString(_keyApiKey) ?? '';
     _autoReadAloud = prefs.getBool(_keyAutoReadAloud) ?? false;
+
+    final engineName = prefs.getString(_keyImageSearchEngine);
+    if (engineName != null) {
+      _imageSearchEngine = ImageSearchEngine.values.firstWhere(
+        (e) => e.name == engineName,
+        orElse: () => ImageSearchEngine.bing,
+      );
+    }
 
     final configMapJson = prefs.getString(_keyConfigMap);
     if (configMapJson != null) {
@@ -234,6 +247,14 @@ class AiSettingsService extends ChangeNotifier {
     _autoReadAloud = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyAutoReadAloud, value);
+    notifyListeners();
+  }
+
+  /// Set the image search engine.
+  Future<void> setImageSearchEngine(ImageSearchEngine engine) async {
+    _imageSearchEngine = engine;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyImageSearchEngine, engine.name);
     notifyListeners();
   }
 

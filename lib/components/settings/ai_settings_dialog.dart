@@ -3,6 +3,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../../services/ai/ai_settings_service.dart';
 import '../../services/ai/openai_llm_provider.dart';
+import '../../services/search/image_search_service.dart';
 import '../../services/tts/tts_service.dart';
 import '../../services/tts/tts_voice_catalog.dart';
 import '../../shared/constants/common-design-tokens.dart';
@@ -185,6 +186,82 @@ class _AiSettingsPageState extends State<AiSettingsPage> {
                         onChanged: (value) {
                           widget.aiSettings.setAutoReadAloud(value);
                         },
+                      );
+                    },
+                  ),
+                  _buildDivider(),
+                  ListenableBuilder(
+                    listenable: widget.aiSettings,
+                    builder: (context, _) {
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: SizedBox(
+                          height: FormDesignTokens.fieldRowHeight,
+                          child: Row(
+                            children: [
+                              Container(
+                                width: SettingsDesignTokens
+                                    .settingsRowIconContainerSize,
+                                height: SettingsDesignTokens
+                                    .settingsRowIconContainerSize,
+                                decoration: BoxDecoration(
+                                  color: SettingsDesignTokens
+                                      .settingsRowIconContainerBg,
+                                  borderRadius: BorderRadius.circular(
+                                    SettingsDesignTokens
+                                        .settingsRowIconContainerRadius,
+                                  ),
+                                ),
+                                alignment: Alignment.center,
+                                child: const Icon(
+                                  Icons.image_search_outlined,
+                                  size: 20,
+                                  color: CommonDesignTokens.headerLabelColor,
+                                ),
+                              ),
+                              const SizedBox(
+                                width: FormDesignTokens.fieldIconGap,
+                              ),
+                              const Text(
+                                'Image Search',
+                                style: TextStyle(
+                                  fontSize: FormDesignTokens.fieldLabelSize,
+                                  fontWeight: FontWeight.w500,
+                                  color: CommonDesignTokens.textSecondary,
+                                ),
+                              ),
+                              const Spacer(),
+                              DropdownButton<ImageSearchEngine>(
+                                value: widget.aiSettings.imageSearchEngine,
+                                underline: const SizedBox.shrink(),
+                                style: const TextStyle(
+                                  fontSize: FormDesignTokens.fieldValueSize,
+                                  color: CommonDesignTokens.textPrimary,
+                                ),
+                                items: const [
+                                  DropdownMenuItem(
+                                    value: ImageSearchEngine.bing,
+                                    child: Text('Bing'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: ImageSearchEngine.google,
+                                    child: Text('Google'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: ImageSearchEngine.baidu,
+                                    child: Text('Baidu'),
+                                  ),
+                                ],
+                                onChanged: (engine) {
+                                  if (engine != null) {
+                                    widget.aiSettings
+                                        .setImageSearchEngine(engine);
+                                  }
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
                       );
                     },
                   ),
