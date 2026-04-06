@@ -163,6 +163,20 @@ class ReaderLayoutEngine {
   }) {
     switch (node) {
       case ParagraphNode():
+        // Paragraphs whose children are *only* LineBreakNodes (e.g. from
+        // `<p><br/></p>` in the EPUB source) carry no visible text.  Treating
+        // them as full paragraphs causes excessive blank space because the
+        // ParagraphLayouter adds minimum paragraph gaps *plus* the measured
+        // height of the '\n' TextSpan.  Instead, treat each one as a simple
+        // vertical spacer — equivalent to one blank line.
+        if (_isLineBreakOnlyParagraph(node)) {
+          if (!ctx.isPageEmpty) {
+            ctx.cursorY += ctx.preferences.baseFontSizePx *
+                ctx.preferences.lineHeightMultiplier;
+          }
+          break;
+        }
+
         // Override to justified only for flowing body text. Short paragraphs,
         // structured content (ISBN lists, TOC entries, poetry with forced
         // line breaks) stay left-aligned.
@@ -248,6 +262,14 @@ class ReaderLayoutEngine {
     final fontSize = ctx.preferences.baseFontSizePx;
     final charsPerLine = ctx.contentWidth / (fontSize * 0.5);
     return totalChars > charsPerLine * 1.5;
+  }
+
+  /// Whether a paragraph contains only [LineBreakNode] children (no actual
+  /// text content).  Such paragraphs typically originate from `<p><br/></p>`
+  /// in the EPUB source and are used as blank-line spacers.
+  static bool _isLineBreakOnlyParagraph(ParagraphNode node) {
+    if (node.children.isEmpty) return false;
+    return node.children.every((c) => c is LineBreakNode);
   }
 
   // ---------------------------------------------------------------------------
