@@ -25,6 +25,7 @@ Provides an immersive book reading experience using Canvas-based rendering. The 
 - Font settings panel: font size +/-, margin (small/medium/large), line spacing (tight/medium/loose), font family picker
 - Font family picker: curated system font list (iOS / Android), preview in-font, system default option
 - TOC bottom sheet with chapter list and current chapter highlight
+- Canvas-native annotations: selection tooltip can save `mark` annotations, persist them to SQLite, and restore/render them after repagination
 - Reading preferences: font size, font family, page margins, line height, paragraph spacing, theme
 - Progress persistence via `ReadingProgressEntity` (chapter index + page index)
 - Multi-chapter navigation with progress saving
@@ -35,7 +36,6 @@ Provides an immersive book reading experience using Canvas-based rendering. The 
 
 ### Out
 
-- Highlighting (not yet implemented in Canvas reader)
 - Audio/translation capabilities
 - TXT/PDF format support
 - flutter_rust_bridge FFI integration (Phase 2)
@@ -56,8 +56,8 @@ EPUB → parse_chapter()           RenderNode[] → paginate()           PageLay
 
 ### Data Flow
 
-1. **Import time**: `EpubPreparseService` calls Rust CLI `--batch-export` to pre-parse the entire EPUB into cached JSON files (`book.json` + `chapter_N.json` per spine entry)
-2. **Open book**: `ReaderEntryService` builds `CachedChapterDataSource` pointing to the cache directory, opens `ReaderPage` with `ReaderStore`
+1. **Import time**: `EpubPreparseService` calls Rust FFI `batchExport` to pre-parse the entire EPUB into cached JSON files (`book.json` + `chapter_N.json` per spine entry). `book.json` includes a `parser_version` integer that is checked on subsequent opens — if it doesn't match `EpubPreparseService.currentParserVersion`, the cache is deleted and re-parsed automatically (user data in SQLite is unaffected). Since parser version 3, block-level nodes also carry a stable `block_index` used by Canvas annotations.
+2. **Open book**: `ReaderEntryService` calls `EpubPreparseService.preparse()` (which validates or regenerates the cache), then builds `CachedChapterDataSource` pointing to the cache directory and opens `ReaderPage` with `ReaderStore`
 3. **ReaderStore** loads `book.json` for metadata/TOC/chapter count, then loads individual `chapter_N.json` on demand
 4. **Layout Engine** walks `RenderNode` tree, measures text with `TextPainter`, splits into `PageLayout[]`
    - For oversized table rows that exceed page height, applies continuation-row fallback pagination to avoid visual clipping
@@ -90,6 +90,12 @@ lib/
     selection/
       page_hit_test.dart              # Hit-testing, selection rects, text extraction
       cross_page_selection.dart       # BookPosition, CrossPageSelection (multi-page model)
+    annotation/
+      annotation_models.dart          # AnnotationAnchorV1, runtime resolved segment models
+      annotation_text_utils.dart      # Text normalization, hash, color helpers
+      annotation_projection.dart      # Block text → laid-out fragment projection
+      selection_to_annotation_mapper.dart # CrossPageSelection -> AnnotationAnchorV1
+      reader_annotation_resolver.dart # Exact/fallback restore + page projection
     data/
       chapter_data_source.dart      # Abstract interface for chapter loading
       cached_chapter_data_source.dart # Reads pre-parsed JSON from cache dir
@@ -192,9 +198,11 @@ Invalidated by: font size/family change, line height change, page margin change,
   - `bookPositionPercent`: position-based percent (first page = 0%, last page = 100%) for in-reader UI display and slider value.
   - `bookReadPercent`: read-based percent (first page > 0%, last page = 100%) for persistence/statistics.
 - `ReadingTimeTracker`: tracks active reading time only while Reader is foregrounded and the user has interacted within the last 30 seconds; flushes whole seconds to DB on a timer, on background, and on dispose.
+- `AnnotationStore`: caches per-book `AnnotationEntity` items and notifies Reader when marks are created/deleted
 - `ReaderPreferences`: baseFontSizePx, fontFamily, pageHorizontalPaddingPx, pageVerticalPaddingPx, lineHeightMultiplier, paragraphSpacingMultiplier, theme
 - `ReadingProgressEntity(bookId, locatorJson, percent, updatedAt, prefsJson, pageCountsJson)`: locatorJson stores `{"chapterIndex": N, "pageIndex": M}`, `percent` stores read-based progress (`bookReadPercent`), prefsJson stores per-book ReaderPreferences as JSON, pageCountsJson stores persisted page count cache with layout parameter validation
 - `ChapterPagination`: cached per chapter, invalidated on layout parameter changes
+- `AnnotationEntity(bookId, kind, quoteText, anchorJson, color, note, createdAt, updatedAt)`: persisted in `annotations`; `anchorJson` stores versioned Canvas-native block anchors instead of Readium CFI
 - `BookStatsTable(book_id, explain_count, phonetics_count, reading_time_seconds)`: per-book counters plus cumulative reading time in whole seconds (DB v16)
 - `ReadingTimeDailyTable(book_id, date_key, duration_seconds)`: per-book per-day aggregated reading time used by Shelf monthly statistics (DB v16)
 
@@ -207,6 +215,7 @@ Invalidated by: font size/family change, line height change, page margin change,
 - Tap left 30% = previous page, right 30% = next page, center 40% = toggle controls (tap and swipe coexist). Tap navigation reuses the swipe animation path (snapshotted pages + two-frame swap) to avoid one-frame flicker when switching between very different page types (e.g. image-only ↔ text-only).
 - Text selection via long-press: long-press to select a word, drag to extend. After release, two draggable handles appear for fine adjustment. Tap anywhere to clear selection. Selection is cleared on non-selection page navigation.
 - Cross-page selection: dragging a handle to the screen edge (40px zone) for 300ms triggers an animated page turn. The selection extends onto the new page with the anchor end preserved. A thin edge indicator shows when selection continues beyond the visible page. Supports multi-page and cross-chapter selection. Text extraction concatenates across all pages in the selection range.
+- Marked annotation: selecting text shows a tooltip with `Phonetics`, `Explain`, `Marked`, and `Read Aloud`. Tapping `Marked` immediately creates a persistent annotation and clears the transient selection. Reader keeps a separate persisted-mark overlay layer under the live selection layer. Annotation restore uses `blockIndex + raw offsets` first, then same-block / same-chapter text fallback with normalized `quoteText + prefix/suffix`.
 - AI Explain: selecting text shows a tooltip with "Explain" button. Tapping it opens a bottom sheet that calls an OpenAI-compatible LLM to explain the passage. In tablet (dual-page) mode, the sheet appears as a half-width side panel on the opposite side of the selection: text selected on the right page shows the panel on the left, and vice versa, so the selected text stays visible. For single words/phrases: shows word header + phonetics row + one context sentence (word highlighted). In built-in structured mode it prioritizes fast-in-context understanding with two cards (`Meaning Explain`, `Detail Explain`), and for compatibility it falls back to Markdown if structured JSON parsing fails. In custom-prompt mode, the sheet renders free-form Markdown output directly. Sentence extraction uses `renderNodePlainText()` on the original `ParagraphNode` (via `LayoutElement.sourceNode`) to get paragraph text with proper spacing, bypassing K-P / greedy layout fragmentation. `extractSelectedText()` also inserts spaces between K-P word fragments sharing the same `sourceNode`. Prompt detail levels: Brief (1-2 sentences), Balanced (short paragraph, default), Detailed (thorough but focused). Uses `ExplainAiService` backed by Genkit + OpenAI plugin. API credentials configured in Settings page via `AiSettingsService` (SharedPreferences). Each tap on Explain increments per-book `explain_count` in `book_stats` table.
 - Visual Reference: for word/phrase selections, the explain sheet includes a "Visual Reference" section that fetches image search results from the configured search engine (Bing, Google, or Baidu) by scraping their web pages (no API key required). Displays up to 10 thumbnails in a horizontal scrollable row. A "More Images on Internet" pill button opens the search engine's image search page in the device's default browser. Search engine configurable in AI Settings. Failures are silently ignored — the section simply hides without affecting the AI explanation.
 - Phonetics lookup count: each tap on the "Phonetics" tooltip button increments per-book `phonetics_count` in `book_stats` table (DB v15).
@@ -230,6 +239,7 @@ Invalidated by: font size/family change, line height change, page margin change,
 - Horizontal swipe page turning works with smooth animation and cross-chapter support
 - Text selection works: long-press selects word, drag extends, handles adjust range
 - Cross-page selection works: handle drag to screen edge triggers page turn, selection spans multiple pages
+- Marked annotation: selecting text → tap `Marked` persists an annotation and renders the saved mark again after reopening the book or changing ReaderPreferences
 - AI Explain: selecting text → tap Explain → bottom sheet shows word header, one context sentence, and AI explanation. Default mode uses built-in structured cards (`Meaning Explain`, `Detail Explain`); custom prompt mode (when enabled in settings) renders free-form Markdown. Unconfigured API key shows SnackBar prompt.
 - Font size adjustment causes repagination with correct results
 - Theme switching (light/sepia/mint/rose/dusk/dark/night) applies immediately
@@ -244,7 +254,6 @@ Invalidated by: font size/family change, line height change, page margin change,
 
 ## Non-Goals
 
-- Highlighting in Canvas reader (future work)
 - Audio/translation
 - TXT/PDF format support
 - flutter_rust_bridge FFI (Phase 2, currently using JSON CLI bridge)

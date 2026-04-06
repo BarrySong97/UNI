@@ -95,6 +95,7 @@ class ImageNode extends RenderNode {
 class ParagraphNode extends RenderNode {
   const ParagraphNode({
     required this.children,
+    this.blockIndex = 0,
     this.marginTopEm = 0.0,
     this.marginBottomEm = 0.5,
     this.marginLeftEm = 0.0,
@@ -108,6 +109,7 @@ class ParagraphNode extends RenderNode {
   });
 
   final List<RenderNode> children;
+  final int blockIndex;
   final double marginTopEm;
   final double marginBottomEm;
   final double marginLeftEm;
@@ -121,6 +123,7 @@ class ParagraphNode extends RenderNode {
 
   factory ParagraphNode.fromJson(Map<String, dynamic> json) => ParagraphNode(
     children: _parseChildren(json['children']),
+    blockIndex: json['block_index'] as int? ?? 0,
     marginTopEm: (json['margin_top_em'] as num?)?.toDouble() ?? 0.0,
     marginBottomEm: (json['margin_bottom_em'] as num?)?.toDouble() ?? 0.5,
     marginLeftEm: (json['margin_left_em'] as num?)?.toDouble() ?? 0.0,
@@ -138,6 +141,7 @@ class HeadingNode extends RenderNode {
   const HeadingNode({
     required this.level,
     required this.children,
+    this.blockIndex = 0,
     this.marginTopEm = 0.0,
     this.marginBottomEm = 0.0,
     this.marginLeftEm = 0.0,
@@ -152,6 +156,7 @@ class HeadingNode extends RenderNode {
 
   final int level; // 1-6
   final List<RenderNode> children;
+  final int blockIndex;
   final double marginTopEm;
   final double marginBottomEm;
   final double marginLeftEm;
@@ -166,6 +171,7 @@ class HeadingNode extends RenderNode {
   factory HeadingNode.fromJson(Map<String, dynamic> json) => HeadingNode(
     level: json['level'] as int? ?? 1,
     children: _parseChildren(json['children']),
+    blockIndex: json['block_index'] as int? ?? 0,
     marginTopEm: (json['margin_top_em'] as num?)?.toDouble() ?? 0.0,
     marginBottomEm: (json['margin_bottom_em'] as num?)?.toDouble() ?? 0.0,
     marginLeftEm: (json['margin_left_em'] as num?)?.toDouble() ?? 0.0,
@@ -180,10 +186,16 @@ class HeadingNode extends RenderNode {
 }
 
 class ListNode extends RenderNode {
-  const ListNode({required this.ordered, required this.items, this.listStyle});
+  const ListNode({
+    required this.ordered,
+    required this.items,
+    this.blockIndex = 0,
+    this.listStyle,
+  });
 
   final bool ordered;
   final List<ListItemNode> items;
+  final int blockIndex;
   final String? listStyle;
 
   factory ListNode.fromJson(Map<String, dynamic> json) => ListNode(
@@ -193,17 +205,16 @@ class ListNode extends RenderNode {
             ?.map((e) => ListItemNode.fromJson(e as Map<String, dynamic>))
             .toList() ??
         [],
+    blockIndex: json['block_index'] as int? ?? 0,
     listStyle: json['list_style'] as String?,
   );
 }
 
 class ListItemNode {
-  const ListItemNode({
-    required this.children,
-    this.subNodes = const [],
-  });
+  const ListItemNode({required this.children, this.subNodes = const []});
 
   final List<RenderNode> children;
+
   /// Block-level nodes found inside this list item (e.g. nested lists).
   final List<RenderNode> subNodes;
 
@@ -214,9 +225,10 @@ class ListItemNode {
 }
 
 class TableNode extends RenderNode {
-  const TableNode({required this.rows, this.caption});
+  const TableNode({required this.rows, this.blockIndex = 0, this.caption});
 
   final List<TableRowNode> rows;
+  final int blockIndex;
   final List<RenderNode>? caption;
 
   factory TableNode.fromJson(Map<String, dynamic> json) => TableNode(
@@ -225,8 +237,8 @@ class TableNode extends RenderNode {
             ?.map((e) => TableRowNode.fromJson(e as Map<String, dynamic>))
             .toList() ??
         [],
-    caption:
-        json['caption'] != null ? _parseChildren(json['caption']) : null,
+    blockIndex: json['block_index'] as int? ?? 0,
+    caption: json['caption'] != null ? _parseChildren(json['caption']) : null,
   );
 }
 
@@ -295,6 +307,7 @@ class BorderNode {
 class BlockQuoteNode extends RenderNode {
   const BlockQuoteNode({
     required this.children,
+    this.blockIndex = 0,
     this.backgroundColor,
     this.marginTopEm = 0.5,
     this.marginBottomEm = 0.5,
@@ -303,6 +316,7 @@ class BlockQuoteNode extends RenderNode {
   });
 
   final List<RenderNode> children;
+  final int blockIndex;
   final int? backgroundColor;
   final double marginTopEm;
   final double marginBottomEm;
@@ -311,6 +325,7 @@ class BlockQuoteNode extends RenderNode {
 
   factory BlockQuoteNode.fromJson(Map<String, dynamic> json) => BlockQuoteNode(
     children: _parseChildren(json['children']),
+    blockIndex: json['block_index'] as int? ?? 0,
     backgroundColor: json['background_color'] as int?,
     marginTopEm: (json['margin_top_em'] as num?)?.toDouble() ?? 0.5,
     marginBottomEm: (json['margin_bottom_em'] as num?)?.toDouble() ?? 0.5,
@@ -323,20 +338,24 @@ class CodeBlockNode extends RenderNode {
   const CodeBlockNode({
     this.content = '',
     this.children = const [],
+    this.blockIndex = 0,
     this.backgroundColor,
     this.paddingEm,
   });
 
   /// Legacy plain text content (for backward compatibility with old cache).
   final String content;
+
   /// Styled inline children (preferred over content when non-empty).
   final List<RenderNode> children;
+  final int blockIndex;
   final int? backgroundColor;
   final double? paddingEm;
 
   factory CodeBlockNode.fromJson(Map<String, dynamic> json) => CodeBlockNode(
     content: json['content'] as String? ?? '',
     children: _parseChildren(json['children']),
+    blockIndex: json['block_index'] as int? ?? 0,
     backgroundColor: json['background_color'] as int?,
     paddingEm: (json['padding_em'] as num?)?.toDouble(),
   );
@@ -386,6 +405,18 @@ String renderNodePlainText(RenderNode node) {
   return buffer.toString();
 }
 
+int? renderNodeBlockIndex(RenderNode node) {
+  return switch (node) {
+    ParagraphNode() => node.blockIndex,
+    HeadingNode() => node.blockIndex,
+    ListNode() => node.blockIndex,
+    TableNode() => node.blockIndex,
+    BlockQuoteNode() => node.blockIndex,
+    CodeBlockNode() => node.blockIndex,
+    _ => null,
+  };
+}
+
 void _collectPlainText(RenderNode node, StringBuffer buffer) {
   switch (node) {
     case TextNode():
@@ -409,6 +440,35 @@ void _collectPlainText(RenderNode node, StringBuffer buffer) {
         }
       } else {
         buffer.write(node.content);
+      }
+    case ListNode():
+      for (var i = 0; i < node.items.length; i++) {
+        final item = node.items[i];
+        for (final child in item.children) {
+          _collectPlainText(child, buffer);
+        }
+        for (final child in item.subNodes) {
+          _collectPlainText(child, buffer);
+        }
+        if (i < node.items.length - 1) {
+          buffer.write('\n');
+        }
+      }
+    case TableNode():
+      for (var rowIndex = 0; rowIndex < node.rows.length; rowIndex++) {
+        final row = node.rows[rowIndex];
+        for (var cellIndex = 0; cellIndex < row.cells.length; cellIndex++) {
+          final cell = row.cells[cellIndex];
+          for (final child in cell.children) {
+            _collectPlainText(child, buffer);
+          }
+          if (cellIndex < row.cells.length - 1) {
+            buffer.write('\t');
+          }
+        }
+        if (rowIndex < node.rows.length - 1) {
+          buffer.write('\n');
+        }
       }
     case LineBreakNode():
       buffer.write('\n');

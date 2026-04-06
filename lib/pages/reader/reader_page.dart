@@ -7,6 +7,9 @@ import '../../app/providers/app-providers.dart';
 import '../../app/routes/route-names.dart';
 import '../../entities/book-entity.dart';
 import '../../services/db/app-database.dart';
+import '../../services/reader/annotation/annotation_text_utils.dart';
+import '../../services/reader/annotation/reader_annotation_resolver.dart';
+import '../../services/reader/annotation/selection_to_annotation_mapper.dart';
 import '../../services/reader/data/chapter_data_source.dart';
 import '../../services/reader/models/page_layout.dart';
 import '../../services/reader/models/reader_preferences.dart';
@@ -14,6 +17,7 @@ import '../../services/reader/reading_time_tracker.dart';
 import '../../services/reader/selection/cross_page_selection.dart';
 import '../../services/reader/selection/page_hit_test.dart';
 import '../../shared/layout/responsive_layout.dart';
+import '../../stores/annotation/annotation-store.dart';
 import '../../stores/reader/reader_store.dart';
 import '../../stores/reader/reader_store_manager.dart';
 import 'reader_coordinate_helper.dart';
@@ -46,7 +50,12 @@ class _ReaderPageState extends State<ReaderPage>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final ReaderStore _store;
   late final AppDatabase _database;
+  late final AnnotationStore _annotationStore;
   late final ReadingTimeTracker _readingTimeTracker;
+  final SelectionToAnnotationMapper _annotationMapper =
+      const SelectionToAnnotationMapper();
+  final ReaderAnnotationResolver _annotationResolver =
+      const ReaderAnnotationResolver();
   bool _didInitDependencies = false;
 
   // -- Page swipe animation state --
@@ -94,6 +103,8 @@ class _ReaderPageState extends State<ReaderPage>
   // Cached page identity to detect page changes.
   int _lastChapterIndex = -1;
   int _lastPageIndex = -1;
+  Map<String, Map<Color, List<Rect>>> _annotationRectsByPageKey =
+      const <String, Map<Color, List<Rect>>>{};
 
   @override
   void initState() {
@@ -121,6 +132,8 @@ class _ReaderPageState extends State<ReaderPage>
     }
 
     _database = AppProvidersScope.of(context).database;
+    _annotationStore = AppProvidersScope.of(context).annotationStore;
+    _annotationStore.addListener(_onAnnotationStoreChanged);
     _readingTimeTracker = ReadingTimeTracker(onFlush: _flushReadingTime);
     _didInitDependencies = true;
   }
@@ -146,6 +159,11 @@ class _ReaderPageState extends State<ReaderPage>
       devicePixelRatio: mq.devicePixelRatio,
       isDualPage: isDual,
     );
+    await _annotationStore.loadAnnotations(widget.book.id);
+    if (!mounted) return;
+    setState(() {
+      _annotationRectsByPageKey = _buildAnnotationRectsByPageKey();
+    });
   }
 
   @override
@@ -211,7 +229,15 @@ class _ReaderPageState extends State<ReaderPage>
       }
     }
 
+    _annotationRectsByPageKey = _buildAnnotationRectsByPageKey();
     setState(() {});
+  }
+
+  void _onAnnotationStoreChanged() {
+    if (!mounted) return;
+    setState(() {
+      _annotationRectsByPageKey = _buildAnnotationRectsByPageKey();
+    });
   }
 
   @override
@@ -220,6 +246,7 @@ class _ReaderPageState extends State<ReaderPage>
     _store.removeListener(_onStoreChanged);
     WidgetsBinding.instance.removeObserver(this);
     if (_didInitDependencies) {
+      _annotationStore.removeListener(_onAnnotationStoreChanged);
       unawaited(_readingTimeTracker.dispose());
     }
     // Do NOT dispose the store — the ReaderStoreManager owns its lifecycle
@@ -785,6 +812,130 @@ class _ReaderPageState extends State<ReaderPage>
     return buffer.toString();
   }
 
+  Map<String, Map<Color, List<Rect>>> _buildAnnotationRectsByPageKey() {
+    final pagination = _store.currentChapterPagination;
+    if (pagination == null) {
+      return const <String, Map<Color, List<Rect>>>{};
+    }
+
+    final resolved = _annotationResolver.resolveChapterAnnotations(
+      pagination: pagination,
+      annotations: _annotationStore.state.items,
+    );
+    final rectsByPageKey = <String, Map<Color, List<Rect>>>{};
+
+    for (final segment in resolved) {
+      final page = _store.getPageLayout(
+        segment.chapterIndex,
+        segment.pageIndexInChapter,
+      );
+      if (page == null) {
+        continue;
+      }
+
+      final rects = getSelectionRects(page, segment.pageSelection);
+      if (rects.isEmpty) {
+        continue;
+      }
+
+      final pageKey = _annotationPageKey(
+        segment.chapterIndex,
+        segment.pageIndexInChapter,
+      );
+      final color = annotationColorFromHex(segment.color);
+      final pageBuckets = rectsByPageKey.putIfAbsent(
+        pageKey,
+        () => <Color, List<Rect>>{},
+      );
+      final bucket = pageBuckets.putIfAbsent(color, () => <Rect>[]);
+      bucket.addAll(rects);
+    }
+
+    return rectsByPageKey;
+  }
+
+  String _annotationPageKey(int chapterIndex, int pageIndexInChapter) {
+    return '$chapterIndex:$pageIndexInChapter';
+  }
+
+  Map<Color, List<Rect>>? _annotationRectsForPage(PageLayout? page) {
+    if (page == null) {
+      return null;
+    }
+    return _annotationRectsByPageKey[_annotationPageKey(
+      page.chapterIndex,
+      page.pageIndexInChapter,
+    )];
+  }
+
+  Future<void> _handleCreateMark() async {
+    final selection = _crossSelection;
+    if (selection == null) {
+      debugPrint('[Mark] Failed: selection is null');
+      return;
+    }
+
+    final selectedText = extractCrossPageText();
+    if (selectedText.isEmpty) {
+      debugPrint(
+        '[Mark] Failed: selectedText is empty for selection '
+        'start=${selection.start.chapterIndex}:${selection.start.pageIndexInChapter}:${selection.start.elementIndex}:${selection.start.charOffset} '
+        'end=${selection.end.chapterIndex}:${selection.end.pageIndexInChapter}:${selection.end.elementIndex}:${selection.end.charOffset}',
+      );
+      return;
+    }
+
+    final anchor = _annotationMapper.map(store: _store, selection: selection);
+    if (anchor == null || anchor.segments.isEmpty) {
+      debugPrint(
+        '[Mark] Failed to create anchor. '
+        'selectedTextLength=${selectedText.length} '
+        'selectedText="$selectedText" '
+        'start=${selection.start.chapterIndex}:${selection.start.pageIndexInChapter}:${selection.start.elementIndex}:${selection.start.charOffset} '
+        'end=${selection.end.chapterIndex}:${selection.end.pageIndexInChapter}:${selection.end.elementIndex}:${selection.end.charOffset}',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Failed to create mark.')));
+      return;
+    }
+
+    try {
+      await _annotationStore.createMark(
+        bookId: widget.book.id,
+        quoteText: selectedText,
+        anchor: anchor,
+      );
+    } catch (error, stackTrace) {
+      debugPrint(
+        '[Mark] Failed to persist mark. '
+        'bookId=${widget.book.id} '
+        'segments=${anchor.segments.length} '
+        'selectedText="$selectedText" '
+        'error=$error',
+      );
+      debugPrintStack(
+        label: '[Mark] Stack trace for persist failure',
+        stackTrace: stackTrace,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Failed to create mark.')));
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _clearSelection();
+      _annotationRectsByPageKey = _buildAnnotationRectsByPageKey();
+    });
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Marked.')));
+  }
+
   // ---------------------------------------------------------------------------
   // Tap handling
   // ---------------------------------------------------------------------------
@@ -1178,6 +1329,9 @@ class _ReaderPageState extends State<ReaderPage>
                         preferences: prefs,
                         safeAreaTop: mediaPadding.top,
                         safeAreaBottom: mediaPadding.bottom,
+                        annotationRectsByColor: _annotationRectsForPage(
+                          adjacentPage,
+                        ),
                       ),
                       size: Size.infinite,
                     ),
@@ -1205,6 +1359,9 @@ class _ReaderPageState extends State<ReaderPage>
                     preferences: prefs,
                     safeAreaTop: mediaPadding.top,
                     safeAreaBottom: mediaPadding.bottom,
+                    annotationRectsByColor: _annotationRectsForPage(
+                      displayPage,
+                    ),
                     selectionRects: _selectionRects.isNotEmpty
                         ? _selectionRects
                         : null,
@@ -1310,6 +1467,7 @@ class _ReaderPageState extends State<ReaderPage>
             preferences: prefs,
             safeAreaTop: mediaPadding.top,
             safeAreaBottom: mediaPadding.bottom,
+            annotationRectsByColor: _annotationRectsForPage(pg),
             selectionRects: selRects,
           ),
           size: Size.infinite,
@@ -1661,7 +1819,12 @@ class _ReaderPageState extends State<ReaderPage>
                   return;
                 }
 
-                final pageLayout = _store.currentPageLayout;
+                // In dual-page mode, use the page the selection is
+                // actually on so that sentence extraction works for
+                // both left and right pages.
+                final pageLayout = (_selectionOnRightPage && _store.isDualPage)
+                    ? _store.secondPageLayout
+                    : _store.currentPageLayout;
                 final pageContext = pageLayout != null
                     ? extractFullPageText(pageLayout)
                     : '';
@@ -1671,8 +1834,7 @@ class _ReaderPageState extends State<ReaderPage>
                 // layout fragmentation).
                 String paragraphContext = '';
                 if (pageLayout != null && _crossSelection != null) {
-                  final pageSel =
-                      _crossSelection!.projectOntoPage(pageLayout);
+                  final pageSel = _crossSelection!.projectOntoPage(pageLayout);
                   if (pageSel != null) {
                     paragraphContext = extractSelectionParagraphText(
                       pageLayout,
@@ -1704,6 +1866,13 @@ class _ReaderPageState extends State<ReaderPage>
                   isTablet: _store.isDualPage,
                   selectionOnRightPage: _selectionOnRightPage,
                 );
+              },
+            ),
+            Container(width: 1, height: 20, color: Colors.white24),
+            _tooltipButton(
+              'Marked',
+              onPressed: () async {
+                await _handleCreateMark();
               },
             ),
             Container(width: 1, height: 20, color: Colors.white24),

@@ -44,6 +44,7 @@ pub enum RenderNode {
     },
     Paragraph {
         children: Vec<RenderNode>,
+        block_index: usize,
         margin_top_em: f32,
         margin_bottom_em: f32,
         margin_left_em: f32,
@@ -63,6 +64,7 @@ pub enum RenderNode {
     Heading {
         level: u8,
         children: Vec<RenderNode>,
+        block_index: usize,
         margin_top_em: f32,
         margin_bottom_em: f32,
         margin_left_em: f32,
@@ -82,16 +84,19 @@ pub enum RenderNode {
     List {
         ordered: bool,
         items: Vec<ListItem>,
+        block_index: usize,
         #[serde(skip_serializing_if = "Option::is_none")]
         list_style: Option<ListStyle>,
     },
     Table {
         rows: Vec<TableRow>,
+        block_index: usize,
         #[serde(skip_serializing_if = "Option::is_none")]
         caption: Option<Vec<RenderNode>>,
     },
     BlockQuote {
         children: Vec<RenderNode>,
+        block_index: usize,
         #[serde(skip_serializing_if = "Option::is_none")]
         background_color: Option<u32>,
         margin_top_em: f32,
@@ -101,6 +106,7 @@ pub enum RenderNode {
     },
     CodeBlock {
         children: Vec<RenderNode>,
+        block_index: usize,
         #[serde(skip_serializing_if = "Option::is_none")]
         background_color: Option<u32>,
         #[serde(skip_serializing_if = "Option::is_none")]

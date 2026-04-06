@@ -109,6 +109,7 @@ fn batch_export(epub_path: &str, out_dir: &str) {
         .collect();
 
     let book_manifest = serde_json::json!({
+        "parser_version": 4,
         "metadata": book.metadata,
         "toc": book.toc,
         "chapter_count": chapter_count,

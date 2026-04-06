@@ -1,12 +1,14 @@
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
+import '../../dtos/db/annotation-dto.dart';
 import '../../dtos/db/book-dto.dart';
 import '../../dtos/db/chapter-dto.dart';
 import '../../dtos/db/highlight-dto.dart';
 import '../../entities/reading-time-entity.dart';
 import '../../entities/statistics-entity.dart';
 import '../../dtos/db/reading-progress-dto.dart';
+import 'tables/annotations-table.dart';
 import 'tables/books-table.dart';
 import 'tables/chapters-table.dart';
 import 'tables/explain-cache-table.dart';
@@ -27,7 +29,7 @@ class AppDatabase {
     final path = p.join(root, 'uni_reader.db');
     final database = await openDatabase(
       path,
-      version: 16,
+      version: 17,
       onCreate: (db, _) async {
         await db.execute('''
 CREATE TABLE ${BooksTable.tableName} (
@@ -66,22 +68,23 @@ CREATE TABLE ${ReadingProgressTable.tableName} (
 )
 ''');
         await db.execute('''
-CREATE TABLE ${HighlightsTable.tableName} (
-  ${HighlightsTable.id} TEXT PRIMARY KEY,
-  ${HighlightsTable.bookId} TEXT NOT NULL,
-  ${HighlightsTable.locatorJson} TEXT NOT NULL,
-  ${HighlightsTable.selectedText} TEXT NOT NULL,
-  ${HighlightsTable.color} TEXT NOT NULL,
-  ${HighlightsTable.note} TEXT,
-  ${HighlightsTable.createdAt} INTEGER NOT NULL,
-  ${HighlightsTable.updatedAt} INTEGER NOT NULL
+CREATE TABLE ${AnnotationsTable.tableName} (
+  ${AnnotationsTable.id} TEXT PRIMARY KEY,
+  ${AnnotationsTable.bookId} TEXT NOT NULL,
+  ${AnnotationsTable.kind} TEXT NOT NULL,
+  ${AnnotationsTable.quoteText} TEXT NOT NULL,
+  ${AnnotationsTable.anchorJson} TEXT NOT NULL,
+  ${AnnotationsTable.color} TEXT NOT NULL,
+  ${AnnotationsTable.note} TEXT,
+  ${AnnotationsTable.createdAt} INTEGER NOT NULL,
+  ${AnnotationsTable.updatedAt} INTEGER NOT NULL
 )
 ''');
         await db.execute(
           'CREATE INDEX idx_chapters_book_idx ON ${ChaptersTable.tableName} (${ChaptersTable.bookId}, ${ChaptersTable.idx})',
         );
         await db.execute(
-          'CREATE INDEX idx_highlights_book ON ${HighlightsTable.tableName} (${HighlightsTable.bookId})',
+          'CREATE INDEX idx_annotations_book_created ON ${AnnotationsTable.tableName} (${AnnotationsTable.bookId}, ${AnnotationsTable.createdAt})',
         );
         await db.execute('''
 CREATE TABLE ${ExplainCacheTable.tableName} (
@@ -141,6 +144,9 @@ CREATE TABLE ${ReadingTimeDailyTable.tableName} (
         }
         if (oldVersion < 16) {
           await _migrateToV16(db);
+        }
+        if (oldVersion < 17) {
+          await _migrateToV17(db);
         }
       },
     );
@@ -257,11 +263,31 @@ CREATE TABLE IF NOT EXISTS ${ReadingTimeDailyTable.tableName} (
 ''');
   }
 
+  static Future<void> _migrateToV17(DatabaseExecutor db) async {
+    await db.execute('DROP TABLE IF EXISTS ${HighlightsTable.tableName}');
+    await db.execute('''
+CREATE TABLE ${AnnotationsTable.tableName} (
+  ${AnnotationsTable.id} TEXT PRIMARY KEY,
+  ${AnnotationsTable.bookId} TEXT NOT NULL,
+  ${AnnotationsTable.kind} TEXT NOT NULL,
+  ${AnnotationsTable.quoteText} TEXT NOT NULL,
+  ${AnnotationsTable.anchorJson} TEXT NOT NULL,
+  ${AnnotationsTable.color} TEXT NOT NULL,
+  ${AnnotationsTable.note} TEXT,
+  ${AnnotationsTable.createdAt} INTEGER NOT NULL,
+  ${AnnotationsTable.updatedAt} INTEGER NOT NULL
+)
+''');
+    await db.execute(
+      'CREATE INDEX idx_annotations_book_created ON ${AnnotationsTable.tableName} (${AnnotationsTable.bookId}, ${AnnotationsTable.createdAt})',
+    );
+  }
+
   static Future<void> _migrateToV9(DatabaseExecutor db) async {
     // Drop reader-specific tables while preserving user data
     await db.execute('DROP TABLE IF EXISTS reader_preferences');
     await db.execute('DROP TABLE IF EXISTS reader_visual_pagination_cache');
-    // Note: reading_progress, highlights, books tables are preserved
+    // Note: reading_progress and books tables are preserved
   }
 
   Future<List<BookDto>> listBooks() => _backend.listBooks();
@@ -289,6 +315,19 @@ CREATE TABLE IF NOT EXISTS ${ReadingTimeDailyTable.tableName} (
 
   Future<void> upsertProgress(ReadingProgressDto progress) =>
       _backend.upsertProgress(progress);
+
+  Future<List<AnnotationDto>> listAnnotations(String bookId) {
+    return _backend.listAnnotations(bookId);
+  }
+
+  Future<void> upsertAnnotation(AnnotationDto annotation) =>
+      _backend.upsertAnnotation(annotation);
+
+  Future<void> deleteAnnotation(String annotationId) =>
+      _backend.deleteAnnotation(annotationId);
+
+  Future<AnnotationDto?> getAnnotation(String annotationId) =>
+      _backend.getAnnotation(annotationId);
 
   Future<List<HighlightDto>> listHighlights(
     String bookId, {
@@ -397,6 +436,10 @@ abstract class _DatabaseBackend {
   Future<ReadingProgressDto?> getProgress(String bookId);
   Future<List<ReadingProgressDto>> getAllProgress();
   Future<void> upsertProgress(ReadingProgressDto progress);
+  Future<List<AnnotationDto>> listAnnotations(String bookId);
+  Future<AnnotationDto?> getAnnotation(String annotationId);
+  Future<void> upsertAnnotation(AnnotationDto annotation);
+  Future<void> deleteAnnotation(String annotationId);
   Future<List<HighlightDto>> listHighlights(String bookId);
   Future<void> upsertHighlight(HighlightDto highlight);
   Future<void> deleteHighlight(String highlightId);
@@ -448,7 +491,7 @@ class _InMemoryBackend implements _DatabaseBackend {
   final Map<String, ChapterDto> _chapters = <String, ChapterDto>{};
   final Map<String, ReadingProgressDto> _progress =
       <String, ReadingProgressDto>{};
-  final Map<String, HighlightDto> _highlights = <String, HighlightDto>{};
+  final Map<String, AnnotationDto> _annotations = <String, AnnotationDto>{};
   // key: "bookId|chapterIndex|selectedText"
   final Map<String, String> _explainCache = <String, String>{};
   final Map<String, int> _explainCounts = <String, int>{};
@@ -473,7 +516,7 @@ class _InMemoryBackend implements _DatabaseBackend {
     _books.remove(bookId);
     _chapters.removeWhere((_, chapter) => chapter.bookId == bookId);
     _progress.remove(bookId);
-    _highlights.removeWhere((_, highlight) => highlight.bookId == bookId);
+    _annotations.removeWhere((_, annotation) => annotation.bookId == bookId);
     _explainCache.removeWhere((key, _) => key.startsWith('$bookId|'));
     _explainCounts.remove(bookId);
     _phoneticsCounts.remove(bookId);
@@ -515,21 +558,42 @@ class _InMemoryBackend implements _DatabaseBackend {
   }
 
   @override
-  Future<List<HighlightDto>> listHighlights(String bookId) async {
-    final filtered = _highlights.values.where((item) => item.bookId == bookId);
+  Future<List<AnnotationDto>> listAnnotations(String bookId) async {
+    final filtered = _annotations.values.where((item) => item.bookId == bookId);
     final list = filtered.toList(growable: false)
       ..sort((a, b) => a.createdAtMillis.compareTo(b.createdAtMillis));
     return list;
   }
 
   @override
+  Future<AnnotationDto?> getAnnotation(String annotationId) async {
+    return _annotations[annotationId];
+  }
+
+  @override
+  Future<void> upsertAnnotation(AnnotationDto annotation) async {
+    _annotations[annotation.id] = annotation;
+  }
+
+  @override
+  Future<void> deleteAnnotation(String annotationId) async {
+    _annotations.remove(annotationId);
+  }
+
+  @override
+  Future<List<HighlightDto>> listHighlights(String bookId) async {
+    final annotations = await listAnnotations(bookId);
+    return annotations.map(_highlightFromAnnotation).toList(growable: false);
+  }
+
+  @override
   Future<void> upsertHighlight(HighlightDto highlight) async {
-    _highlights[highlight.id] = highlight;
+    await upsertAnnotation(_annotationFromHighlight(highlight));
   }
 
   @override
   Future<void> deleteHighlight(String highlightId) async {
-    _highlights.remove(highlightId);
+    await deleteAnnotation(highlightId);
   }
 
   @override
@@ -821,8 +885,8 @@ class _SqfliteBackend implements _DatabaseBackend {
         whereArgs: <Object?>[bookId],
       );
       await txn.delete(
-        HighlightsTable.tableName,
-        where: '${HighlightsTable.bookId} = ?',
+        AnnotationsTable.tableName,
+        where: '${AnnotationsTable.bookId} = ?',
         whereArgs: <Object?>[bookId],
       );
       await txn.delete(
@@ -913,37 +977,68 @@ class _SqfliteBackend implements _DatabaseBackend {
   }
 
   @override
-  Future<List<HighlightDto>> listHighlights(String bookId) async {
+  Future<List<AnnotationDto>> listAnnotations(String bookId) async {
     final rows = await _database.query(
-      HighlightsTable.tableName,
-      where: '${HighlightsTable.bookId} = ?',
+      AnnotationsTable.tableName,
+      where: '${AnnotationsTable.bookId} = ?',
       whereArgs: <Object?>[bookId],
-      orderBy: '${HighlightsTable.createdAt} ASC',
+      orderBy: '${AnnotationsTable.createdAt} ASC',
     );
-    return rows.map(_highlightFromRow).toList(growable: false);
+    return rows.map(_annotationFromRow).toList(growable: false);
   }
 
   @override
-  Future<void> upsertHighlight(HighlightDto highlight) {
-    return _database.insert(HighlightsTable.tableName, <String, Object?>{
-      HighlightsTable.id: highlight.id,
-      HighlightsTable.bookId: highlight.bookId,
-      HighlightsTable.locatorJson: highlight.locatorJson,
-      HighlightsTable.selectedText: highlight.selectedText,
-      HighlightsTable.color: highlight.color,
-      HighlightsTable.note: highlight.note,
-      HighlightsTable.createdAt: highlight.createdAtMillis,
-      HighlightsTable.updatedAt: highlight.updatedAtMillis,
+  Future<AnnotationDto?> getAnnotation(String annotationId) async {
+    final rows = await _database.query(
+      AnnotationsTable.tableName,
+      where: '${AnnotationsTable.id} = ?',
+      whereArgs: <Object?>[annotationId],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return null;
+    }
+    return _annotationFromRow(rows.first);
+  }
+
+  @override
+  Future<void> upsertAnnotation(AnnotationDto annotation) {
+    return _database.insert(AnnotationsTable.tableName, <String, Object?>{
+      AnnotationsTable.id: annotation.id,
+      AnnotationsTable.bookId: annotation.bookId,
+      AnnotationsTable.kind: annotation.kind,
+      AnnotationsTable.quoteText: annotation.quoteText,
+      AnnotationsTable.anchorJson: annotation.anchorJson,
+      AnnotationsTable.color: annotation.color,
+      AnnotationsTable.note: annotation.note,
+      AnnotationsTable.createdAt: annotation.createdAtMillis,
+      AnnotationsTable.updatedAt: annotation.updatedAtMillis,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   @override
-  Future<void> deleteHighlight(String highlightId) {
+  Future<void> deleteAnnotation(String annotationId) {
     return _database.delete(
-      HighlightsTable.tableName,
-      where: '${HighlightsTable.id} = ?',
-      whereArgs: <Object?>[highlightId],
+      AnnotationsTable.tableName,
+      where: '${AnnotationsTable.id} = ?',
+      whereArgs: <Object?>[annotationId],
     );
+  }
+
+  @override
+  Future<List<HighlightDto>> listHighlights(String bookId) async {
+    final annotations = await listAnnotations(bookId);
+    return annotations.map(_highlightFromAnnotation).toList(growable: false);
+  }
+
+  @override
+  Future<void> upsertHighlight(HighlightDto highlight) {
+    return upsertAnnotation(_annotationFromHighlight(highlight));
+  }
+
+  @override
+  Future<void> deleteHighlight(String highlightId) {
+    return deleteAnnotation(highlightId);
   }
 
   BookDto _bookFromRow(Map<String, Object?> row) {
@@ -985,16 +1080,17 @@ class _SqfliteBackend implements _DatabaseBackend {
     );
   }
 
-  HighlightDto _highlightFromRow(Map<String, Object?> row) {
-    return HighlightDto(
-      id: row[HighlightsTable.id]! as String,
-      bookId: row[HighlightsTable.bookId]! as String,
-      locatorJson: row[HighlightsTable.locatorJson]! as String,
-      selectedText: row[HighlightsTable.selectedText]! as String,
-      color: row[HighlightsTable.color]! as String,
-      note: row[HighlightsTable.note] as String?,
-      createdAtMillis: row[HighlightsTable.createdAt]! as int,
-      updatedAtMillis: row[HighlightsTable.updatedAt]! as int,
+  AnnotationDto _annotationFromRow(Map<String, Object?> row) {
+    return AnnotationDto(
+      id: row[AnnotationsTable.id]! as String,
+      bookId: row[AnnotationsTable.bookId]! as String,
+      kind: row[AnnotationsTable.kind]! as String,
+      quoteText: row[AnnotationsTable.quoteText]! as String,
+      anchorJson: row[AnnotationsTable.anchorJson]! as String,
+      color: row[AnnotationsTable.color]! as String,
+      note: row[AnnotationsTable.note] as String?,
+      createdAtMillis: row[AnnotationsTable.createdAt]! as int,
+      updatedAtMillis: row[AnnotationsTable.updatedAt]! as int,
     );
   }
 
@@ -1265,6 +1361,33 @@ class _SqfliteBackend implements _DatabaseBackend {
     final day = value.day.toString().padLeft(2, '0');
     return '$year-$month-$day';
   }
+}
+
+AnnotationDto _annotationFromHighlight(HighlightDto highlight) {
+  return AnnotationDto(
+    id: highlight.id,
+    bookId: highlight.bookId,
+    kind: 'mark',
+    quoteText: highlight.selectedText,
+    anchorJson: highlight.locatorJson,
+    color: highlight.color,
+    note: highlight.note,
+    createdAtMillis: highlight.createdAtMillis,
+    updatedAtMillis: highlight.updatedAtMillis,
+  );
+}
+
+HighlightDto _highlightFromAnnotation(AnnotationDto annotation) {
+  return HighlightDto(
+    id: annotation.id,
+    bookId: annotation.bookId,
+    locatorJson: annotation.anchorJson,
+    selectedText: annotation.quoteText,
+    color: annotation.color,
+    note: annotation.note,
+    createdAtMillis: annotation.createdAtMillis,
+    updatedAtMillis: annotation.updatedAtMillis,
+  );
 }
 
 List<DailyReadingStat> _buildDailyStats({

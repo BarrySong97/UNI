@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+
 import '../models/parsed_chapter.dart';
 import 'chapter_data_source.dart';
 
@@ -33,8 +35,9 @@ class CachedChapterDataSource implements ChapterDataSource {
       // Read both files concurrently.
       final results = await Future.wait([
         bookFile.readAsString(),
-        chapterFile.exists().then((exists) =>
-            exists ? chapterFile.readAsString() : Future.value('')),
+        chapterFile.exists().then(
+          (exists) => exists ? chapterFile.readAsString() : Future.value(''),
+        ),
       ]);
       _bookJsonCache = results[0];
       if (results[1].isNotEmpty) {
@@ -47,8 +50,8 @@ class CachedChapterDataSource implements ChapterDataSource {
 
   @override
   Future<ParsedBook> loadBook() async {
-    final jsonStr = _bookJsonCache ??
-        await File('$cacheDir/book.json').readAsString();
+    final jsonStr =
+        _bookJsonCache ?? await File('$cacheDir/book.json').readAsString();
     _bookJsonCache = null; // Free memory after use.
     final json = jsonDecode(jsonStr) as Map<String, dynamic>;
 
@@ -66,16 +69,13 @@ class CachedChapterDataSource implements ChapterDataSource {
     final spineList = json['spine'] as List?;
 
     // Build lightweight chapter stubs with href from spine data.
-    final chapters = List.generate(
-      chapterCount,
-      (i) {
-        final spineEntry = (spineList != null && i < spineList.length)
-            ? spineList[i] as Map<String, dynamic>
-            : null;
-        final href = spineEntry?['href'] as String? ?? '';
-        return ParsedChapter(index: i, title: '', href: href, nodes: []);
-      },
-    );
+    final chapters = List.generate(chapterCount, (i) {
+      final spineEntry = (spineList != null && i < spineList.length)
+          ? spineList[i] as Map<String, dynamic>
+          : null;
+      final href = spineEntry?['href'] as String? ?? '';
+      return ParsedChapter(index: i, title: '', href: href, nodes: []);
+    });
 
     return ParsedBook(metadata: metadata, toc: toc, chapters: chapters);
   }
@@ -83,9 +83,9 @@ class CachedChapterDataSource implements ChapterDataSource {
   @override
   Future<ParsedChapter> loadChapter(int chapterIndex) async {
     final cachedStr = _chapterJsonCache.remove(chapterIndex);
-    final jsonStr = cachedStr ??
-        await _readChapterFile(chapterIndex);
+    final jsonStr = cachedStr ?? await _readChapterFile(chapterIndex);
     final json = jsonDecode(jsonStr) as Map<String, dynamic>;
+    _debugLogLegacyChapterShape(chapterIndex, json);
     return ParsedChapter.fromJson(json);
   }
 
@@ -95,5 +95,55 @@ class CachedChapterDataSource implements ChapterDataSource {
       throw Exception('Chapter $chapterIndex not found in cache: ${file.path}');
     }
     return file.readAsString();
+  }
+
+  void _debugLogLegacyChapterShape(
+    int chapterIndex,
+    Map<String, dynamic> json,
+  ) {
+    final nodes = json['nodes'];
+    if (nodes is! List || nodes.isEmpty) {
+      return;
+    }
+
+    const blockTypes = {
+      'Paragraph',
+      'Heading',
+      'List',
+      'Table',
+      'BlockQuote',
+      'CodeBlock',
+    };
+
+    final samples = <String>[];
+    var missingBlockIndexCount = 0;
+
+    for (final node in nodes) {
+      if (node is! Map<String, dynamic>) {
+        continue;
+      }
+      final type = node['type'] as String?;
+      if (type == null || !blockTypes.contains(type)) {
+        continue;
+      }
+      if (!node.containsKey('block_index')) {
+        missingBlockIndexCount++;
+        if (samples.length < 3) {
+          final childCount = (node['children'] as List?)?.length;
+          final itemsCount = (node['items'] as List?)?.length;
+          samples.add(
+            'type=$type childCount=${childCount ?? '-'} items=${itemsCount ?? '-'}',
+          );
+        }
+      }
+    }
+
+    if (missingBlockIndexCount > 0) {
+      debugPrint(
+        '[ReaderCache] Chapter $chapterIndex loaded from legacy cache '
+        'missing block_index on $missingBlockIndexCount nodes. '
+        'cacheDir=$cacheDir samples=$samples',
+      );
+    }
   }
 }

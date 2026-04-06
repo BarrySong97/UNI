@@ -105,6 +105,8 @@ class ReaderStore extends ChangeNotifier {
     return null;
   }
 
+  ChapterPagination? get currentChapterPagination => _currentPagination;
+
   ReaderPreferences get preferences => _preferences;
   bool get isLoading => _isLoading;
   String? get error => _error;
@@ -263,6 +265,10 @@ class ReaderStore extends ChangeNotifier {
       return null;
     }
     return pagination.pages[pageIndexInChapter];
+  }
+
+  ChapterPagination? getChapterPagination(int chapterIndex) {
+    return _cache[_cacheKey(chapterIndex)];
   }
 
   /// Number of pages in a cached chapter, or null if not cached.

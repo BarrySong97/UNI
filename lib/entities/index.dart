@@ -1,3 +1,4 @@
+export 'annotation-entity.dart';
 export 'book-entity.dart';
 export 'chapter-entity.dart';
 export 'highlight-entity.dart';

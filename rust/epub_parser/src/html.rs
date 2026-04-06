@@ -16,6 +16,7 @@ struct WalkCtx<'a> {
     /// Href of the current chapter (for resolving relative image paths).
     chapter_href: &'a str,
     char_offset: &'a mut usize,
+    block_index: &'a mut usize,
     bold: bool,
     italic: bool,
     underline: bool,
@@ -39,12 +40,14 @@ pub fn parse_xhtml(
     char_offset: &mut usize,
 ) -> Vec<RenderNode> {
     let document = Html::parse_document(xhtml);
+    let mut block_index = 0usize;
 
     let mut ctx = WalkCtx {
         css_map,
         image_map,
         chapter_href,
         char_offset,
+        block_index: &mut block_index,
         bold: false,
         italic: false,
         underline: false,
@@ -146,6 +149,7 @@ fn walk_block_element(elem: ElementRef, ctx: &mut WalkCtx, out: &mut Vec<RenderN
                 out.push(RenderNode::Heading {
                     level,
                     children,
+                    block_index: next_block_index(ctx),
                     margin_top_em: style.margin_top_em.unwrap_or(0.0),
                     margin_bottom_em: style.margin_bottom_em.unwrap_or(0.0),
                     margin_left_em: style.margin_left_em.unwrap_or(0.0),
@@ -165,6 +169,7 @@ fn walk_block_element(elem: ElementRef, ctx: &mut WalkCtx, out: &mut Vec<RenderN
             if !children.is_empty() {
                 out.push(RenderNode::Paragraph {
                     children,
+                    block_index: next_block_index(ctx),
                     margin_top_em: style.margin_top_em.unwrap_or(0.0),
                     margin_bottom_em: style.margin_bottom_em.unwrap_or(0.5),
                     margin_left_em: style.margin_left_em.unwrap_or(0.0),
@@ -293,6 +298,7 @@ fn walk_block_element(elem: ElementRef, ctx: &mut WalkCtx, out: &mut Vec<RenderN
                 out.push(RenderNode::List {
                     ordered,
                     items,
+                    block_index: next_block_index(ctx),
                     list_style: style.list_style_type,
                 });
             }
@@ -303,6 +309,7 @@ fn walk_block_element(elem: ElementRef, ctx: &mut WalkCtx, out: &mut Vec<RenderN
             if !children.is_empty() {
                 out.push(RenderNode::Paragraph {
                     children,
+                    block_index: next_block_index(ctx),
                     margin_top_em: 0.0,
                     margin_bottom_em: 0.3,
                     margin_left_em: style.margin_left_em.unwrap_or(0.0),
@@ -320,7 +327,11 @@ fn walk_block_element(elem: ElementRef, ctx: &mut WalkCtx, out: &mut Vec<RenderN
         "table" => {
             let (rows, caption) = collect_table_rows(elem, ctx);
             if !rows.is_empty() {
-                out.push(RenderNode::Table { rows, caption });
+                out.push(RenderNode::Table {
+                    rows,
+                    block_index: next_block_index(ctx),
+                    caption,
+                });
             }
         }
 
@@ -334,6 +345,7 @@ fn walk_block_element(elem: ElementRef, ctx: &mut WalkCtx, out: &mut Vec<RenderN
             if !children.is_empty() {
                 out.push(RenderNode::BlockQuote {
                     children,
+                    block_index: next_block_index(ctx),
                     background_color: style.background_color,
                     margin_top_em: style.margin_top_em.unwrap_or(0.5),
                     margin_bottom_em: style.margin_bottom_em.unwrap_or(0.5),
@@ -354,6 +366,7 @@ fn walk_block_element(elem: ElementRef, ctx: &mut WalkCtx, out: &mut Vec<RenderN
             if !children.is_empty() {
                 out.push(RenderNode::CodeBlock {
                     children,
+                    block_index: next_block_index(ctx),
                     background_color: style.background_color.or(Some(0xFFF5F5F5)),
                     padding_em: style.padding_em.or(Some(0.5)),
                 });
@@ -385,6 +398,7 @@ fn walk_block_element(elem: ElementRef, ctx: &mut WalkCtx, out: &mut Vec<RenderN
                             if !children.is_empty() {
                                 out.push(RenderNode::Paragraph {
                                     children,
+                                    block_index: next_block_index(ctx),
                                     margin_top_em: dl_style.margin_top_em.unwrap_or(0.3),
                                     margin_bottom_em: dl_style.margin_bottom_em.unwrap_or(0.1),
                                     margin_left_em: dl_style.margin_left_em.unwrap_or(0.0),
@@ -403,6 +417,7 @@ fn walk_block_element(elem: ElementRef, ctx: &mut WalkCtx, out: &mut Vec<RenderN
                             if !children.is_empty() {
                                 out.push(RenderNode::Paragraph {
                                     children,
+                                    block_index: next_block_index(ctx),
                                     margin_top_em: dl_style.margin_top_em.unwrap_or(0.0),
                                     margin_bottom_em: dl_style.margin_bottom_em.unwrap_or(0.3),
                                     margin_left_em: dl_style.margin_left_em.unwrap_or(2.0),
@@ -833,6 +848,7 @@ fn inherit_ctx<'a>(parent: &'a mut WalkCtx, style: &StyleProps) -> WalkCtx<'a> {
         image_map: parent.image_map,
         chapter_href: parent.chapter_href,
         char_offset: parent.char_offset,
+        block_index: parent.block_index,
         bold: style.bold.unwrap_or(parent.bold),
         italic: style.italic.unwrap_or(parent.italic),
         underline: style.underline.unwrap_or(parent.underline),
@@ -845,6 +861,12 @@ fn inherit_ctx<'a>(parent: &'a mut WalkCtx, style: &StyleProps) -> WalkCtx<'a> {
         subscript: parent.subscript,
         ancestors: parent.ancestors.clone(),
     }
+}
+
+fn next_block_index(ctx: &mut WalkCtx) -> usize {
+    let next = *ctx.block_index;
+    *ctx.block_index += 1;
+    next
 }
 
 /// Resolved image info: base64, width_hint, width_px, height_px.

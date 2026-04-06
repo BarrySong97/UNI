@@ -16,6 +16,7 @@ class ReaderCanvasPainter extends CustomPainter {
     required this.preferences,
     this.safeAreaTop = 0.0,
     this.safeAreaBottom = 0.0,
+    this.annotationRectsByColor,
     this.selectionRects,
   });
 
@@ -23,6 +24,7 @@ class ReaderCanvasPainter extends CustomPainter {
   final ReaderPreferences preferences;
   final double safeAreaTop;
   final double safeAreaBottom;
+  final Map<Color, List<Rect>>? annotationRectsByColor;
 
   /// Selection highlight rectangles in content-area coordinates.
   final List<Rect>? selectionRects;
@@ -40,7 +42,17 @@ class ReaderCanvasPainter extends CustomPainter {
       preferences.pageVerticalPaddingPx + safeAreaTop,
     );
 
-    // 3. Paint selection highlights (behind text).
+    // 3. Paint persisted annotation highlights (behind text).
+    if (annotationRectsByColor != null && annotationRectsByColor!.isNotEmpty) {
+      for (final entry in annotationRectsByColor!.entries) {
+        final annotationPaint = Paint()..color = entry.key;
+        for (final rect in entry.value) {
+          canvas.drawRect(rect, annotationPaint);
+        }
+      }
+    }
+
+    // 4. Paint active selection highlights above persisted marks.
     if (selectionRects != null && selectionRects!.isNotEmpty) {
       final selPaint = Paint()
         ..color = const Color(0x4D3B82F6); // semi-transparent blue
@@ -49,7 +61,7 @@ class ReaderCanvasPainter extends CustomPainter {
       }
     }
 
-    // 4. Paint each element.
+    // 5. Paint each element.
     for (final element in page.elements) {
       _paintElement(canvas, element);
     }
@@ -102,6 +114,7 @@ class ReaderCanvasPainter extends CustomPainter {
         oldDelegate.preferences != preferences ||
         oldDelegate.safeAreaTop != safeAreaTop ||
         oldDelegate.safeAreaBottom != safeAreaBottom ||
+        oldDelegate.annotationRectsByColor != annotationRectsByColor ||
         oldDelegate.selectionRects != selectionRects;
   }
 }

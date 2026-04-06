@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
@@ -41,43 +39,41 @@ class ReaderEntryService {
 
     // Resolve paths.
     final booksDir = p.join(providers.documentsDirectoryPath, 'books');
-    final cacheDir = p.join(booksDir, '${book.id}_parsed');
+    final epubPath = p.isAbsolute(book.epubFilePath!)
+        ? book.epubFilePath!
+        : p.join(providers.documentsDirectoryPath, book.epubFilePath!);
 
-    // If cache is missing, run preparse on the fly.
-    final manifest = File(p.join(cacheDir, 'book.json'));
-    final cacheExists = await manifest.exists();
-    debugPrint('[ReaderEntry] cacheDir check: ${sw.elapsedMilliseconds}ms, exists=$cacheExists');
-    if (!cacheExists) {
+    late final String cacheDir;
+    try {
+      debugPrint(
+        '[ReaderEntry] preparse start: ${sw.elapsedMilliseconds}ms '
+        'book=${book.id}',
+      );
+      cacheDir = await providers.epubPreparseService.preparse(
+        epubPath: epubPath,
+        booksDirectory: booksDir,
+        bookId: book.id,
+      );
+      debugPrint(
+        '[ReaderEntry] preparse done: ${sw.elapsedMilliseconds}ms '
+        'cacheDir=$cacheDir',
+      );
+    } catch (e) {
       if (!context.mounted) return;
-
-      // Resolve the EPUB file path.
-      final epubPath = p.isAbsolute(book.epubFilePath!)
-          ? book.epubFilePath!
-          : p.join(providers.documentsDirectoryPath, book.epubFilePath!);
-
-      try {
-        await providers.epubPreparseService.preparse(
-          epubPath: epubPath,
-          booksDirectory: booksDir,
-          bookId: book.id,
-        );
-      } catch (e) {
-        if (!context.mounted) return;
-        await showDialog<void>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Parse Error'),
-            content: Text('Failed to parse EPUB: $e'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('OK'),
-              ),
-            ],
-          ),
-        );
-        return;
-      }
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Parse Error'),
+          content: Text('Failed to parse EPUB: $e'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
     }
 
     if (!context.mounted) return;

@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../repositories/book/book-repository.dart';
 import '../../repositories/chapter/chapter-repository.dart';
+import '../../repositories/annotation/annotation-repository.dart';
 import '../../repositories/highlight/highlight-repository.dart';
 import '../../repositories/progress/progress-repository.dart';
 import '../../services/library/book-profile-entry-service.dart';
@@ -11,6 +12,7 @@ import '../../services/ai/ai_settings_service.dart';
 import '../../services/phonetics/phonetics_service.dart';
 import '../../services/tts/tts_service.dart';
 import '../../services/reader/reader-entry-service.dart';
+import '../../stores/annotation/annotation-store.dart';
 import '../../stores/highlight/highlight-store.dart';
 import '../../stores/library/library-store.dart';
 import '../../stores/reader/reader_store_manager.dart';
@@ -21,6 +23,7 @@ class AppProviders {
     required this.bookRepository,
     required this.chapterRepository,
     required this.progressRepository,
+    required this.annotationRepository,
     required this.highlightRepository,
     required this.bookProfileEntryService,
     required this.appLocaleController,
@@ -36,6 +39,7 @@ class AppProviders {
   final BookRepository bookRepository;
   final ChapterRepository chapterRepository;
   final ProgressRepository progressRepository;
+  final AnnotationRepository annotationRepository;
   final HighlightRepository highlightRepository;
   final BookProfileEntryService bookProfileEntryService;
   final AppLocaleController appLocaleController;
@@ -47,6 +51,7 @@ class AppProviders {
   final AppDatabase database;
   final ReaderEntryService readerEntryService;
 
+  late final AnnotationStore annotationStore;
   late final LibraryStore libraryStore;
   late final HighlightStore highlightStore;
   late final ReaderStoreManager readerStoreManager = ReaderStoreManager(
@@ -54,9 +59,11 @@ class AppProviders {
   );
 
   void registerStores({
+    required AnnotationStore annotationStore,
     required LibraryStore libraryStore,
     required HighlightStore highlightStore,
   }) {
+    this.annotationStore = annotationStore;
     this.libraryStore = libraryStore;
     this.highlightStore = highlightStore;
   }

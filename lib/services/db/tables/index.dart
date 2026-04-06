@@ -1,3 +1,4 @@
+export 'annotations-table.dart';
 export 'books-table.dart';
 export 'chapters-table.dart';
 export 'highlights-table.dart';

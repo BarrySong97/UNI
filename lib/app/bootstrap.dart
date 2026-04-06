@@ -3,11 +3,13 @@ import 'package:flutter/widgets.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 
+import '../repositories/annotation/annotation-repository-impl.dart';
 import '../repositories/book/book-repository-impl.dart';
 import '../repositories/chapter/chapter-repository-impl.dart';
 import '../repositories/highlight/highlight-repository-impl.dart';
 import '../repositories/progress/progress-repository-impl.dart';
 import '../services/db/app-database.dart';
+import '../services/db/daos/annotations-dao.dart';
 import '../services/db/daos/books-dao.dart';
 import '../services/db/daos/chapters-dao.dart';
 import '../services/db/daos/highlights-dao.dart';
@@ -20,6 +22,7 @@ import '../services/parser/book-import-service.dart';
 import '../services/reader/epub_preparse_service.dart';
 import '../src/rust/frb_generated.dart';
 import '../pages/onboarding/onboarding_flow.dart';
+import '../stores/annotation/annotation-store.dart';
 import '../stores/highlight/highlight-store.dart';
 import '../stores/library/library-store.dart';
 import 'app.dart';
@@ -40,11 +43,15 @@ class AppBootstrap {
     final booksDao = BooksDao(database: database);
     final chaptersDao = ChaptersDao(database: database);
     final progressDao = ProgressDao(database: database);
+    final annotationsDao = AnnotationsDao(database: database);
     final highlightsDao = HighlightsDao(database: database);
 
     final bookRepository = BookRepositoryImpl(booksDao: booksDao);
     final chapterRepository = ChapterRepositoryImpl(chaptersDao: chaptersDao);
     final progressRepository = ProgressRepositoryImpl(progressDao: progressDao);
+    final annotationRepository = AnnotationRepositoryImpl(
+      annotationsDao: annotationsDao,
+    );
     final highlightRepository = HighlightRepositoryImpl(
       highlightsDao: highlightsDao,
     );
@@ -78,6 +85,7 @@ class AppBootstrap {
       bookRepository: bookRepository,
       chapterRepository: chapterRepository,
       progressRepository: progressRepository,
+      annotationRepository: annotationRepository,
       highlightRepository: highlightRepository,
       bookProfileEntryService: bookProfileEntryService,
       appLocaleController: appLocale,
@@ -90,6 +98,9 @@ class AppBootstrap {
     );
 
     providers.registerStores(
+      annotationStore: AnnotationStore(
+        annotationRepository: annotationRepository,
+      ),
       libraryStore: LibraryStore(
         bookRepository: bookRepository,
         bookImportService: BookImportService(),
@@ -104,10 +115,7 @@ class AppBootstrap {
     final showOnboarding = !await OnboardingFlow.isCompleted();
 
     return AppBootstrapResult(
-      app: ImmersedApp(
-        providers: providers,
-        showOnboarding: showOnboarding,
-      ),
+      app: ImmersedApp(providers: providers, showOnboarding: showOnboarding),
     );
   }
 }
