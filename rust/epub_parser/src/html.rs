@@ -210,7 +210,11 @@ fn walk_block_element(elem: ElementRef, ctx: &mut WalkCtx, out: &mut Vec<RenderN
         }
         "a" => {
             let mut sub = inherit_ctx(ctx, &style);
-            sub.underline = true;
+            // Never set underline from <a> tags — the Flutter rendering
+            // layer decides link styling based on href type (external vs
+            // internal).  This also avoids the html5ever issue where
+            // self-closing `<a id="page_N"/>` is parsed as a non-void
+            // opening tag that swallows subsequent content.
             sub.href = elem.value().attr("href").map(|s| s.to_string());
             sub.ancestors.push(tag.clone());
             walk_children_of_node(elem, &mut sub, out);
@@ -543,7 +547,6 @@ fn walk_inline_element(elem: ElementRef, ctx: &mut WalkCtx, out: &mut Vec<Render
         }
         "a" => {
             let mut sub = inherit_ctx(ctx, &style);
-            sub.underline = true;
             sub.href = elem.value().attr("href").map(|s| s.to_string());
             sub.ancestors.push(tag.clone());
             walk_inline_children(elem, &mut sub, out);

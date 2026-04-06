@@ -96,16 +96,22 @@ class TextSpanBuilder {
         ? Color(node.color!)
         : defaultColor ?? prefs.theme.textColor;
 
-    // Link styling: blue color when href is set and no explicit color.
-    final isLink = node.href != null && node.href!.isNotEmpty;
-    final color = (isLink && node.color == null)
+    // Link styling: only external URLs (http/https/mailto) get the visible
+    // link treatment (blue + underline).  Internal EPUB cross-references
+    // (#fragment, relative paths) are rendered as plain text because the
+    // canvas reader does not support in-book navigation.
+    final href = node.href ?? '';
+    final isExternalLink = href.startsWith('http://') ||
+        href.startsWith('https://') ||
+        href.startsWith('mailto:');
+    final color = (isExternalLink && node.color == null)
         ? const Color(0xFF1A73E8)
         : baseColor;
 
     final decorations = <TextDecoration>[];
     if (node.underline) decorations.add(TextDecoration.underline);
     if (node.lineThrough) decorations.add(TextDecoration.lineThrough);
-    if (isLink) decorations.add(TextDecoration.underline);
+    if (isExternalLink) decorations.add(TextDecoration.underline);
 
     // Superscript / subscript font features.
     final fontFeatures = <FontFeature>[];
@@ -126,7 +132,7 @@ class TextSpanBuilder {
       decoration: decorations.isEmpty
           ? TextDecoration.none
           : TextDecoration.combine(decorations),
-      decorationColor: isLink ? color : null,
+      decorationColor: isExternalLink ? color : null,
       color: color,
       fontFamily: prefs.fontFamily,
       height: effectiveLineHeight,

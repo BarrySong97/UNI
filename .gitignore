@@ -47,7 +47,8 @@ app.*.map.json
 
 # Rust
 **/target/
-rust/epub_parser/output/
+rust/epub_parser/output*/
+rust/epub_parser/rust/
 .gstack/
 
 # Local Node tooling
