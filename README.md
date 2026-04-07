@@ -17,5 +17,34 @@ samples, guidance on mobile development, and a full API reference.
 
 # UNI
 
+## Android Release APK
+
+Build a release APK:
+
+```bash
+flutter pub get
+flutter build apk --release
+```
+
+Output APK:
+
+```text
+build/app/outputs/flutter-apk/app-release.apk
+```
+
+Install to a connected Android device or tablet:
+
+```bash
+adb install -r build/app/outputs/flutter-apk/app-release.apk
+```
+
+If you only want to rebuild after the first successful setup:
+
+```bash
+flutter build apk --release
+```
+
+## iOS Release
+
 flutter build ios --release
 ios-deploy --bundle build/ios/iphoneos/Runner.app

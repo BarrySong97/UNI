@@ -101,6 +101,8 @@ PODS:
     - FlutterMacOS
   - SwiftSoup (2.7.6)
   - SwiftyGif (5.4.5)
+  - url_launcher_ios (0.0.1):
+    - Flutter
 
 DEPENDENCIES:
   - audioplayers_darwin (from `.symlinks/plugins/audioplayers_darwin/darwin`)
@@ -119,6 +121,7 @@ DEPENDENCIES:
   - shared_preferences_foundation (from `.symlinks/plugins/shared_preferences_foundation/darwin`)
   - sherpa_onnx_ios (from `.symlinks/plugins/sherpa_onnx_ios/ios`)
   - sqflite_darwin (from `.symlinks/plugins/sqflite_darwin/darwin`)
+  - url_launcher_ios (from `.symlinks/plugins/url_launcher_ios/ios`)
 
 SPEC REPOS:
   trunk:
@@ -165,6 +168,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/sherpa_onnx_ios/ios"
   sqflite_darwin:
     :path: ".symlinks/plugins/sqflite_darwin/darwin"
+  url_launcher_ios:
+    :path: ".symlinks/plugins/url_launcher_ios/ios"
 
 SPEC CHECKSUMS:
   audioplayers_darwin: 835ced6edd4c9fc8ebb0a7cc9e294a91d99917d5
@@ -193,6 +198,7 @@ SPEC CHECKSUMS:
   sqflite_darwin: 20b2a3a3b70e43edae938624ce550a3cbf66a3d0
   SwiftSoup: 9ec2526c76ebc3fe5d3157c82b40b45a27eeb82d
   SwiftyGif: 706c60cf65fa2bc5ee0313beece843c8eb8194d4
+  url_launcher_ios: 7a95fa5b60cc718a708b8f2966718e93db0cef1b
 
 PODFILE CHECKSUM: b7b1d8e8b678ec2d51898ead0d9cb91c9ec4df26
 

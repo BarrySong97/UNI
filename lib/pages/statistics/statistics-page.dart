@@ -460,7 +460,13 @@ class _StatisticsPageState extends State<StatisticsPage> {
                         return GestureDetector(
                           onTap: () => Navigator.of(context).pop(candidate),
                           child: Container(
-                            width: (math.min(MediaQuery.of(context).size.width, kContentMaxWidth) - 72) / 3,
+                            width:
+                                (math.min(
+                                      MediaQuery.of(context).size.width,
+                                      kContentMaxWidth,
+                                    ) -
+                                    72) /
+                                3,
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             decoration: BoxDecoration(
                               color: isSelected
@@ -703,27 +709,23 @@ class _StatisticsSectionCard extends StatelessWidget {
     required this.title,
     required this.child,
     this.trailing,
-    this.trailingWidget,
   });
 
   final String title;
   final String? trailing;
-  final Widget? trailingWidget;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    final trailingContent =
-        trailingWidget ??
-        (trailing != null
-            ? Text(
-                trailing!,
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: CommonDesignTokens.textSecondary,
-                ),
-              )
-            : null);
+    final trailingContent = trailing != null
+        ? Text(
+            trailing!,
+            style: const TextStyle(
+              fontSize: 13,
+              color: CommonDesignTokens.textSecondary,
+            ),
+          )
+        : null;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
@@ -917,10 +919,7 @@ class _DailyMinutesProgressChart extends StatelessWidget {
           return Expanded(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 1.5),
-              child: _DailyMinutesTrack(
-                stat: stat,
-                trackHeight: _chartHeight,
-              ),
+              child: _DailyMinutesTrack(stat: stat, trackHeight: _chartHeight),
             ),
           );
         }),
@@ -1217,8 +1216,10 @@ class _HeatmapChart extends StatelessWidget {
                           height: cellSize,
                           margin: EdgeInsets.only(bottom: row == 6 ? 0 : 4),
                           decoration: BoxDecoration(
-                            color:
-                                _heatmapColor(stat?.seconds ?? 0, maxSeconds),
+                            color: _heatmapColor(
+                              stat?.seconds ?? 0,
+                              maxSeconds,
+                            ),
                             borderRadius: BorderRadius.circular(2),
                           ),
                         );

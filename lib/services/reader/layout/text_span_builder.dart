@@ -32,7 +32,13 @@ class TextSpanBuilder {
     final spans = <InlineSpan>[];
     for (final child in children) {
       _buildSpan(
-          child, prefs, headingLevel, lineHeightOverride, defaultColor, spans);
+        child,
+        prefs,
+        headingLevel,
+        lineHeightOverride,
+        defaultColor,
+        spans,
+      );
     }
     return TextSpan(children: spans);
   }
@@ -47,8 +53,15 @@ class TextSpanBuilder {
   ) {
     switch (node) {
       case TextNode():
-        out.add(_textNodeToSpan(
-            node, prefs, headingLevel, lineHeightOverride, defaultColor));
+        out.add(
+          _textNodeToSpan(
+            node,
+            prefs,
+            headingLevel,
+            lineHeightOverride,
+            defaultColor,
+          ),
+        );
       case LineBreakNode():
         out.add(const TextSpan(text: '\n'));
       case ImageNode():
@@ -101,7 +114,8 @@ class TextSpanBuilder {
     // (#fragment, relative paths) are rendered as plain text because the
     // canvas reader does not support in-book navigation.
     final href = node.href ?? '';
-    final isExternalLink = href.startsWith('http://') ||
+    final isExternalLink =
+        href.startsWith('http://') ||
         href.startsWith('https://') ||
         href.startsWith('mailto:');
     final color = (isExternalLink && node.color == null)
@@ -109,7 +123,11 @@ class TextSpanBuilder {
         : baseColor;
 
     final decorations = <TextDecoration>[];
-    if (node.underline) decorations.add(TextDecoration.underline);
+    final isLink = href.isNotEmpty;
+    // For linked text, underline is controlled solely by isExternalLink —
+    // ignore node.underline which may come from <a> tag styling in Rust.
+    // For non-linked text, honour the node flag (e.g. <u>, CSS underline).
+    if (node.underline && !isLink) decorations.add(TextDecoration.underline);
     if (node.lineThrough) decorations.add(TextDecoration.lineThrough);
     if (isExternalLink) decorations.add(TextDecoration.underline);
 

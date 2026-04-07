@@ -653,114 +653,117 @@ class ReaderStore extends ChangeNotifier {
     }
   }
 
-  Future<void> goToChapter(int index, {bool lastPage = false}) async {
+  Future<void> goToChapter(
+    int index, {
+    bool lastPage = false,
+    bool persistProgress = true,
+  }) async {
     if (index < 0 || index >= chapterCount) return;
-    // If this chapter was absorbed into a previous one, redirect there.
-    var target = index;
-    while (_absorbedChapters.contains(target) && target > 0) {
-      target--;
-    }
-    _currentChapterIndex = target;
-    _currentPageIndex = 0;
+    final pagination = await ensureChapterPagination(index);
+    final targetPage =
+        lastPage && pagination != null && pagination.pages.isNotEmpty
+        ? pagination.pages.length - 1
+        : 0;
+    await goToLocation(
+      chapterIndex: index,
+      pageIndexInChapter: targetPage,
+      persistProgress: persistProgress,
+    );
+  }
 
-    // Fast path: if cached, switch synchronously to avoid visual flash.
-    final cachedPagination = _cache[_cacheKey(target)];
+  Future<void> goToLocation({
+    required int chapterIndex,
+    required int pageIndexInChapter,
+    bool persistProgress = true,
+  }) async {
+    if (chapterIndex < 0 || chapterIndex >= chapterCount) return;
+    var targetChapter = chapterIndex;
+    while (_absorbedChapters.contains(targetChapter) && targetChapter > 0) {
+      targetChapter--;
+    }
+
+    final cachedPagination = _cache[_cacheKey(targetChapter)];
     if (cachedPagination != null) {
       _currentPagination = cachedPagination;
-      if (lastPage && cachedPagination.pages.isNotEmpty) {
-        _currentPageIndex = cachedPagination.pages.length - 1;
-      }
+      _currentChapterIndex = targetChapter;
       if (cachedPagination.pages.isNotEmpty) {
         _currentPageIndex = _strategy.alignPageIndex(
-          _currentPageIndex,
+          pageIndexInChapter.clamp(0, cachedPagination.pages.length - 1),
           cachedPagination.pages.length - 1,
         );
+      } else {
+        _currentPageIndex = 0;
       }
       _isLoading = false;
-      _debugChapterResolution('goToChapter(cache)');
+      _debugChapterResolution('goToLocation(cache)');
       notifyListeners();
-      _saveProgress();
-      _prefetchAdjacentChapters(target);
+      if (persistProgress) {
+        _saveProgress();
+      }
+      _prefetchAdjacentChapters(targetChapter);
       return;
     }
 
-    // Slow path: chapter not cached — show loading and load async.
+    _currentChapterIndex = targetChapter;
+    _currentPageIndex = 0;
     _isLoading = true;
     notifyListeners();
 
-    await _loadChapter(target);
-
-    if (lastPage && _currentPagination != null) {
-      _currentPageIndex = _currentPagination!.pages.length - 1;
-    }
-
-    // Align page index for the current display mode.
+    await _loadChapter(targetChapter);
     if (_currentPagination != null && _currentPagination!.pages.isNotEmpty) {
       _currentPageIndex = _strategy.alignPageIndex(
-        _currentPageIndex,
+        pageIndexInChapter.clamp(0, _currentPagination!.pages.length - 1),
         _currentPagination!.pages.length - 1,
       );
+    } else {
+      _currentPageIndex = 0;
     }
 
     _isLoading = false;
-    _debugChapterResolution('goToChapter(load)');
+    _debugChapterResolution('goToLocation(load)');
     notifyListeners();
-    _saveProgress();
+    if (persistProgress) {
+      _saveProgress();
+    }
   }
 
   /// Jump to an approximate position in the book by percent (0.0–1.0).
   ///
   /// The input uses position semantics:
   /// 0.0 = first page, 1.0 = last page.
-  Future<void> goToBookPercent(double percent) async {
+  Future<void> goToBookPercent(
+    double percent, {
+    bool persistProgress = true,
+  }) async {
     if (_bookData == null || chapterCount == 0) return;
     final clamped = percent.clamp(0.0, 1.0);
     final (targetChapter, targetPageInChapter) = _targetByPositionPercent(
       clamped,
     );
+    await goToLocation(
+      chapterIndex: targetChapter,
+      pageIndexInChapter: targetPageInChapter,
+      persistProgress: persistProgress,
+    );
+  }
 
-    // Fast path: if cached, switch synchronously to avoid visual flash.
-    final cachedPagination = _cache[_cacheKey(targetChapter)];
-    if (cachedPagination != null && cachedPagination.pages.isNotEmpty) {
-      _currentChapterIndex = targetChapter;
-      _currentPageIndex = targetPageInChapter.clamp(
-        0,
-        cachedPagination.pages.length - 1,
-      );
-      _currentPageIndex = _strategy.alignPageIndex(
-        _currentPageIndex,
-        cachedPagination.pages.length - 1,
-      );
-      _currentPagination = cachedPagination;
-      _isLoading = false;
-      notifyListeners();
-      _saveProgress();
-      _prefetchAdjacentChapters(targetChapter);
-      return;
+  Future<ChapterPagination?> ensureChapterPagination(int chapterIndex) async {
+    if (chapterIndex < 0 || chapterIndex >= chapterCount) {
+      return null;
+    }
+    var targetChapter = chapterIndex;
+    while (_absorbedChapters.contains(targetChapter) && targetChapter > 0) {
+      targetChapter--;
     }
 
-    // Slow path: chapter not cached — show loading and load async.
-    _isLoading = true;
-    notifyListeners();
-
-    await _loadChapter(targetChapter);
-
-    if (_currentPagination != null && _currentPagination!.pages.isNotEmpty) {
-      _currentChapterIndex = targetChapter;
-      _currentPageIndex = targetPageInChapter.clamp(
-        0,
-        _currentPagination!.pages.length - 1,
-      );
-      // Align page index for the current display mode.
-      _currentPageIndex = _strategy.alignPageIndex(
-        _currentPageIndex,
-        _currentPagination!.pages.length - 1,
-      );
+    final cacheKey = _cacheKey(targetChapter);
+    final cached = _cache[cacheKey];
+    if (cached != null) {
+      return cached;
     }
 
-    _isLoading = false;
-    notifyListeners();
-    _saveProgress();
+    await _loadChapter(targetChapter, prefetchOnly: true);
+    return _cache[cacheKey];
   }
 
   (int chapterIndex, int pageIndexInChapter) _targetByPositionPercent(

@@ -5,8 +5,11 @@ import 'package:flutter/services.dart';
 
 import '../../app/providers/app-providers.dart';
 import '../../app/routes/route-names.dart';
+import '../../entities/annotation-entity.dart';
 import '../../entities/book-entity.dart';
 import '../../services/db/app-database.dart';
+import '../../services/reader/annotation/annotation_models.dart';
+import '../../services/reader/annotation/annotation_overlap_detector.dart';
 import '../../services/reader/annotation/annotation_text_utils.dart';
 import '../../services/reader/annotation/reader_annotation_resolver.dart';
 import '../../services/reader/annotation/selection_to_annotation_mapper.dart';
@@ -22,6 +25,7 @@ import '../../stores/reader/reader_store.dart';
 import '../../stores/reader/reader_store_manager.dart';
 import 'reader_coordinate_helper.dart';
 import 'widgets/reader_canvas_painter.dart';
+import 'widgets/reader_annotation_sheet.dart';
 import 'widgets/reader_controls_overlay.dart';
 import 'widgets/reader_explain_sheet.dart';
 import 'widgets/reader_phonetics_sheet.dart';
@@ -105,6 +109,10 @@ class _ReaderPageState extends State<ReaderPage>
   int _lastPageIndex = -1;
   Map<String, Map<Color, List<Rect>>> _annotationRectsByPageKey =
       const <String, Map<Color, List<Rect>>>{};
+  Map<String, List<_AnnotationTapTarget>> _annotationTapTargetsByPageKey =
+      const <String, List<_AnnotationTapTarget>>{};
+  _PreviewReturnLocation? _previewReturnLocation;
+  _FocusedAnnotationOverlay? _focusedAnnotationOverlay;
 
   @override
   void initState() {
@@ -227,9 +235,11 @@ class _ReaderPageState extends State<ReaderPage>
       } else {
         _clearSelection();
       }
+      _clearFocusedAnnotationOverlay();
     }
 
     _annotationRectsByPageKey = _buildAnnotationRectsByPageKey();
+    _annotationTapTargetsByPageKey = _buildAnnotationTapTargetsByPageKey();
     setState(() {});
   }
 
@@ -237,6 +247,34 @@ class _ReaderPageState extends State<ReaderPage>
     if (!mounted) return;
     setState(() {
       _annotationRectsByPageKey = _buildAnnotationRectsByPageKey();
+      _annotationTapTargetsByPageKey = _buildAnnotationTapTargetsByPageKey();
+      if (_focusedAnnotationOverlay != null) {
+        final pageKey = _annotationPageKey(
+          _focusedAnnotationOverlay!.chapterIndex,
+          _focusedAnnotationOverlay!.pageIndexInChapter,
+        );
+        final refreshed = _annotationTapTargetsByPageKey[pageKey];
+        final replacement = refreshed
+            ?.where((target) {
+              final focusedIds = _focusedAnnotationOverlay!.annotations
+                  .map((item) => item.id)
+                  .toSet();
+              return target.annotations.any(
+                (item) => focusedIds.contains(item.id),
+              );
+            })
+            .toList(growable: false);
+        _focusedAnnotationOverlay = replacement == null || replacement.isEmpty
+            ? null
+            : _FocusedAnnotationOverlay(
+                chapterIndex: _focusedAnnotationOverlay!.chapterIndex,
+                pageIndexInChapter:
+                    _focusedAnnotationOverlay!.pageIndexInChapter,
+                isRightPage: _focusedAnnotationOverlay!.isRightPage,
+                annotations: replacement.first.annotations,
+                rects: replacement.first.rects,
+              );
+      }
     });
   }
 
@@ -318,9 +356,9 @@ class _ReaderPageState extends State<ReaderPage>
     // Keep adjacent-page snapshots alive.
 
     if (direction < 0) {
-      isSelectionTurn ? _store.nextSinglePage() : _store.nextPage();
+      _goNextPage(isSelectionTurn: isSelectionTurn);
     } else if (direction > 0) {
-      isSelectionTurn ? _store.previousSinglePage() : _store.previousPage();
+      _goPreviousPage(isSelectionTurn: isSelectionTurn);
     }
 
     // Complete the transition on the next frame.
@@ -378,6 +416,10 @@ class _ReaderPageState extends State<ReaderPage>
     _selectionOnRightPage = false;
   }
 
+  void _clearFocusedAnnotationOverlay() {
+    _focusedAnnotationOverlay = null;
+  }
+
   void _updateSelectionRects() {
     if (_crossSelection == null) {
       _selectionRects = const [];
@@ -407,6 +449,7 @@ class _ReaderPageState extends State<ReaderPage>
   }
 
   void _onLongPressStart(LongPressStartDetails details) {
+    _clearFocusedAnnotationOverlay();
     final (page, isRight) = _hitPageForTouch(details.globalPosition);
     if (page == null) return;
 
@@ -868,6 +911,104 @@ class _ReaderPageState extends State<ReaderPage>
     )];
   }
 
+  List<_AnnotationTapTarget> _annotationTapTargetsForPage(PageLayout? page) {
+    if (page == null) {
+      return const <_AnnotationTapTarget>[];
+    }
+    return _annotationTapTargetsByPageKey[_annotationPageKey(
+          page.chapterIndex,
+          page.pageIndexInChapter,
+        )] ??
+        const <_AnnotationTapTarget>[];
+  }
+
+  AnnotationAnchorV1? _currentSelectionAnchor() {
+    final selection = _crossSelection;
+    if (selection == null) {
+      return null;
+    }
+    return _annotationMapper.map(store: _store, selection: selection);
+  }
+
+  List<AnnotationEntity> _annotationsForCurrentSelection() {
+    final anchor = _currentSelectionAnchor();
+    if (anchor == null || anchor.segments.isEmpty) {
+      return const <AnnotationEntity>[];
+    }
+    return findOverlappingAnnotations(
+      candidate: anchor,
+      existingAnnotations: _annotationStore.state.items,
+    );
+  }
+
+  Map<String, List<_AnnotationTapTarget>>
+  _buildAnnotationTapTargetsByPageKey() {
+    final pagination = _store.currentChapterPagination;
+    if (pagination == null) {
+      return const <String, List<_AnnotationTapTarget>>{};
+    }
+
+    final resolved = _annotationResolver.resolveChapterAnnotations(
+      pagination: pagination,
+      annotations: _annotationStore.state.items,
+    );
+    final targetsByPageAndAnnotation = <String, _AnnotationTapTargetBuilder>{};
+    final annotationById = <String, AnnotationEntity>{
+      for (final annotation in _annotationStore.state.items)
+        annotation.id: annotation,
+    };
+
+    for (final segment in resolved) {
+      final page = _store.getPageLayout(
+        segment.chapterIndex,
+        segment.pageIndexInChapter,
+      );
+      if (page == null) {
+        continue;
+      }
+      final rects = getSelectionRects(page, segment.pageSelection);
+      if (rects.isEmpty) {
+        continue;
+      }
+      final annotation = annotationById[segment.annotationId];
+      if (annotation == null) {
+        continue;
+      }
+      final key =
+          '${_annotationPageKey(segment.chapterIndex, segment.pageIndexInChapter)}:${segment.annotationId}';
+      final builder = targetsByPageAndAnnotation.putIfAbsent(
+        key,
+        () => _AnnotationTapTargetBuilder(
+          chapterIndex: segment.chapterIndex,
+          pageIndexInChapter: segment.pageIndexInChapter,
+          annotations: <AnnotationEntity>[annotation],
+        ),
+      );
+      builder.rects.addAll(rects);
+    }
+
+    final byPageKey = <String, List<_AnnotationTapTarget>>{};
+    for (final builder in targetsByPageAndAnnotation.values) {
+      final pageKey = _annotationPageKey(
+        builder.chapterIndex,
+        builder.pageIndexInChapter,
+      );
+      final targets = byPageKey.putIfAbsent(
+        pageKey,
+        () => <_AnnotationTapTarget>[],
+      );
+      targets.add(
+        _AnnotationTapTarget(
+          chapterIndex: builder.chapterIndex,
+          pageIndexInChapter: builder.pageIndexInChapter,
+          annotations: builder.annotations,
+          rects: List<Rect>.unmodifiable(builder.rects),
+        ),
+      );
+    }
+    return byPageKey;
+  }
+
   Future<void> _handleCreateMark() async {
     final selection = _crossSelection;
     if (selection == null) {
@@ -898,6 +1039,26 @@ class _ReaderPageState extends State<ReaderPage>
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Failed to create mark.')));
+      return;
+    }
+
+    final overlapDecision = detectAnnotationOverlap(
+      candidate: anchor,
+      existingAnnotations: _annotationStore.state.items,
+    );
+    if (overlapDecision != AnnotationOverlapDecision.none) {
+      final message = overlapDecision == AnnotationOverlapDecision.duplicate
+          ? 'Already marked.'
+          : 'Overlaps an existing mark.';
+      debugPrint(
+        '[Mark] Skipped because selection overlaps an existing annotation. '
+        'decision=$overlapDecision '
+        'selectedText="$selectedText"',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
       return;
     }
 
@@ -936,6 +1097,30 @@ class _ReaderPageState extends State<ReaderPage>
     ).showSnackBar(const SnackBar(content: Text('Marked.')));
   }
 
+  Future<void> _handleRemoveMarks(List<AnnotationEntity> annotations) async {
+    if (annotations.isEmpty) {
+      return;
+    }
+
+    for (final annotation in annotations) {
+      await _annotationStore.deleteAnnotation(annotation.id);
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _clearSelection();
+      _clearFocusedAnnotationOverlay();
+      _annotationRectsByPageKey = _buildAnnotationRectsByPageKey();
+      _annotationTapTargetsByPageKey = _buildAnnotationTapTargetsByPageKey();
+    });
+    final message = annotations.length == 1
+        ? 'Mark removed.'
+        : '${annotations.length} marks removed.';
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
   // ---------------------------------------------------------------------------
   // Tap handling
   // ---------------------------------------------------------------------------
@@ -944,6 +1129,35 @@ class _ReaderPageState extends State<ReaderPage>
     // If selection is active, tap clears it.
     if (_crossSelection != null) {
       setState(() => _clearSelection());
+      return;
+    }
+
+    final (page, isRight) = _hitPageForTouch(details.globalPosition);
+    final contentOffset = page == null
+        ? null
+        : _toContentOffset(details.globalPosition, isRightPage: isRight);
+
+    if (page != null && contentOffset != null) {
+      final tappedAnnotation = _annotationTapTargetsForPage(page)
+          .where((target) => target.contains(contentOffset))
+          .toList(growable: false);
+      if (tappedAnnotation.isNotEmpty) {
+        setState(() {
+          _clearSelection();
+          _focusedAnnotationOverlay = _FocusedAnnotationOverlay(
+            chapterIndex: page.chapterIndex,
+            pageIndexInChapter: page.pageIndexInChapter,
+            isRightPage: isRight,
+            annotations: tappedAnnotation.first.annotations,
+            rects: tappedAnnotation.first.rects,
+          );
+        });
+        return;
+      }
+    }
+
+    if (_focusedAnnotationOverlay != null) {
+      setState(() => _clearFocusedAnnotationOverlay());
       return;
     }
 
@@ -1004,9 +1218,9 @@ class _ReaderPageState extends State<ReaderPage>
       _isSelectionPageTurn = false;
       _isSwapWarmupFrame = false;
       if (_animDirection < 0) {
-        isSelectionTurn ? _store.nextSinglePage() : _store.nextPage();
+        _goNextPage(isSelectionTurn: isSelectionTurn);
       } else if (_animDirection > 0) {
-        isSelectionTurn ? _store.previousSinglePage() : _store.previousPage();
+        _goPreviousPage(isSelectionTurn: isSelectionTurn);
       }
       _isAnimating = false;
       _animDirection = 0;
@@ -1130,6 +1344,141 @@ class _ReaderPageState extends State<ReaderPage>
     ).pushNamed(RouteNames.bookDetail, arguments: widget.book.id);
   }
 
+  void _acceptPreviewJump() {
+    if (_previewReturnLocation == null || !mounted) {
+      return;
+    }
+    setState(() {
+      _previewReturnLocation = null;
+    });
+  }
+
+  Future<void> _returnToPreviewLocation() async {
+    final target = _previewReturnLocation;
+    if (target == null) {
+      return;
+    }
+    await _store.goToLocation(
+      chapterIndex: target.chapterIndex,
+      pageIndexInChapter: target.pageIndexInChapter,
+      persistProgress: false,
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _previewReturnLocation = null;
+    });
+  }
+
+  Future<void> _openAnnotationsPanel() async {
+    _store.hideControls();
+    final selected = await ReaderAnnotationSheet.show(
+      context: context,
+      annotations: _annotationStore.state.items,
+      chapterTitleAt: _store.chapterTitleAt,
+      isTablet: _store.isDualPage,
+      showOnLeft: _store.isDualPage,
+    );
+    if (selected == null || !mounted) {
+      return;
+    }
+    await _jumpToAnnotationPreview(selected);
+  }
+
+  Future<void> _jumpToAnnotationPreview(AnnotationEntity annotation) async {
+    final anchor = AnnotationAnchorV1.tryParse(annotation.anchorJson);
+    if (anchor == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Failed to open mark.')));
+      return;
+    }
+
+    final pagination = await _store.ensureChapterPagination(
+      anchor.jumpTarget.chapterIndex,
+    );
+    if (pagination == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Failed to open mark.')));
+      return;
+    }
+
+    final resolved = _annotationResolver.resolveChapterAnnotations(
+      pagination: pagination,
+      annotations: <AnnotationEntity>[annotation],
+    );
+    final targetPage = resolved.isNotEmpty
+        ? resolved.first.pageIndexInChapter
+        : 0;
+    final isSamePage =
+        _store.currentChapterIndex == pagination.chapterIndex &&
+        _store.currentPageIndex == targetPage;
+
+    if (isSamePage) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Already on this mark.')));
+      return;
+    }
+
+    if (_previewReturnLocation == null) {
+      await _store.flushProgress();
+      if (!mounted) return;
+      setState(() {
+        _previewReturnLocation = _PreviewReturnLocation(
+          chapterIndex: _store.currentChapterIndex,
+          pageIndexInChapter: _store.currentPageIndex,
+        );
+      });
+    }
+
+    await _store.goToLocation(
+      chapterIndex: pagination.chapterIndex,
+      pageIndexInChapter: targetPage,
+      persistProgress: false,
+    );
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Jumped to mark.')));
+  }
+
+  void _goNextPage({bool isSelectionTurn = false}) {
+    _acceptPreviewJump();
+    isSelectionTurn ? _store.nextSinglePage() : _store.nextPage();
+  }
+
+  void _goPreviousPage({bool isSelectionTurn = false}) {
+    _acceptPreviewJump();
+    isSelectionTurn ? _store.previousSinglePage() : _store.previousPage();
+  }
+
+  Future<void> _goToChapterFromControls(int index) async {
+    _acceptPreviewJump();
+    await _store.goToChapter(index);
+  }
+
+  Future<void> _goToBookPercentFromControls(double percent) async {
+    _acceptPreviewJump();
+    await _store.goToBookPercent(percent);
+  }
+
+  bool get _shouldShowPreviewReturnButton {
+    final target = _previewReturnLocation;
+    if (target == null) {
+      return false;
+    }
+    return !(_store.currentChapterIndex == target.chapterIndex &&
+        _store.currentPageIndex == target.pageIndexInChapter);
+  }
+
   // ---------------------------------------------------------------------------
   // Build
   // ---------------------------------------------------------------------------
@@ -1178,6 +1527,8 @@ class _ReaderPageState extends State<ReaderPage>
                 _buildError(prefs)
               else
                 _buildReader(prefs),
+              if (_shouldShowPreviewReturnButton)
+                _buildPreviewReturnButton(prefs, mq.padding.top),
               // Controls overlay — rendered above loading/content so it stays
               // visible during chapter transitions triggered from the panel.
               if (_store.showControls && _store.book != null)
@@ -1196,9 +1547,9 @@ class _ReaderPageState extends State<ReaderPage>
                   chapters: _store.bookData?.chapters ?? const [],
                   currentChapterIndex: _store.currentDisplayChapterIndex,
                   chapterTitleForPercent: _store.chapterTitleAtPositionPercent,
-                  onChapterSelected: (index) => _store.goToChapter(index),
-                  onPercentChanged: (percent) =>
-                      _store.goToBookPercent(percent),
+                  onChapterSelected: _goToChapterFromControls,
+                  onPercentChanged: _goToBookPercentFromControls,
+                  onAnnotationsPressed: _openAnnotationsPanel,
                   onMorePressed: _onMorePressed,
                 ),
             ],
@@ -1211,6 +1562,65 @@ class _ReaderPageState extends State<ReaderPage>
   Widget _buildLoading(ReaderPreferences prefs) {
     return Center(
       child: CircularProgressIndicator(color: prefs.theme.textColor),
+    );
+  }
+
+  Widget _buildPreviewReturnButton(ReaderPreferences prefs, double safeTop) {
+    final topOffset = safeTop + (_store.showControls ? 72 : 18);
+    return Positioned(
+      top: topOffset,
+      left: 0,
+      right: 0,
+      child: IgnorePointer(
+        ignoring: false,
+        child: Center(
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(999),
+              onTap: _returnToPreviewLocation,
+              child: Ink(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: prefs.theme.isDark
+                      ? const Color(0xFF111827)
+                      : Colors.white,
+                  borderRadius: BorderRadius.circular(999),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.12),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.reply_rounded,
+                      size: 18,
+                      color: prefs.theme.textColor,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Back to previous location',
+                      style: TextStyle(
+                        color: prefs.theme.textColor,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -1380,6 +1790,10 @@ class _ReaderPageState extends State<ReaderPage>
           ..._buildSelectionHandles(handleColor),
           _buildSelectionTooltip(),
         ],
+        if (_focusedAnnotationOverlay != null &&
+            !_isLongPressing &&
+            _crossSelection == null)
+          _buildFocusedAnnotationTooltip(),
 
         // Chapter title at top.
         Positioned(
@@ -1575,6 +1989,10 @@ class _ReaderPageState extends State<ReaderPage>
           ..._buildSelectionHandles(handleColor),
           _buildSelectionTooltip(),
         ],
+        if (_focusedAnnotationOverlay != null &&
+            !_isLongPressing &&
+            _crossSelection == null)
+          _buildFocusedAnnotationTooltip(),
 
         // Chapter title at top (left page).
         Positioned(
@@ -1737,6 +2155,8 @@ class _ReaderPageState extends State<ReaderPage>
   /// Floating tooltip above the selection with placeholder action buttons.
   Widget _buildSelectionTooltip() {
     if (_selectionRects.isEmpty) return const SizedBox.shrink();
+    final matchedAnnotations = _annotationsForCurrentSelection();
+    final canUnmark = matchedAnnotations.isNotEmpty;
 
     final firstRect = _selectionRects.first;
     final lastRect = _selectionRects.last;
@@ -1870,8 +2290,12 @@ class _ReaderPageState extends State<ReaderPage>
             ),
             Container(width: 1, height: 20, color: Colors.white24),
             _tooltipButton(
-              'Marked',
+              canUnmark ? 'Unmark' : 'Marked',
               onPressed: () async {
+                if (canUnmark) {
+                  await _handleRemoveMarks(matchedAnnotations);
+                  return;
+                }
                 await _handleCreateMark();
               },
             ),
@@ -1915,6 +2339,69 @@ class _ReaderPageState extends State<ReaderPage>
     );
   }
 
+  Widget _buildFocusedAnnotationTooltip() {
+    final overlay = _focusedAnnotationOverlay;
+    if (overlay == null || overlay.rects.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final firstRect = overlay.rects.first;
+    final lastRect = overlay.rects.last;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final safeTop = MediaQuery.of(context).padding.top;
+
+    const tooltipHeight = 40.0;
+    const gap = 8.0;
+    const estimatedWidth = 160.0;
+
+    final selCenterX = (firstRect.left + lastRect.right) / 2;
+    final screenCenterX = _toScreenOffset(
+      Offset(selCenterX, 0),
+      isRightPage: overlay.isRightPage,
+    ).dx;
+    final aboveY =
+        _toScreenOffset(
+          firstRect.topLeft,
+          isRightPage: overlay.isRightPage,
+        ).dy -
+        gap -
+        tooltipHeight;
+    final belowY =
+        _toScreenOffset(
+          lastRect.bottomLeft,
+          isRightPage: overlay.isRightPage,
+        ).dy +
+        gap;
+    final tooltipY = aboveY >= safeTop ? aboveY : belowY;
+    final tooltipLeft = (screenCenterX - estimatedWidth / 2).clamp(
+      8.0,
+      screenWidth - estimatedWidth - 8.0,
+    );
+
+    return Positioned(
+      left: tooltipLeft,
+      top: tooltipY,
+      child: Container(
+        height: tooltipHeight,
+        decoration: BoxDecoration(
+          color: Colors.black87,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _tooltipButton(
+              'Unmark',
+              onPressed: () async {
+                await _handleRemoveMarks(overlay.annotations);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _tooltipButton(String label, {required VoidCallback onPressed}) {
     return GestureDetector(
       onTap: onPressed,
@@ -1933,4 +2420,66 @@ class _ReaderPageState extends State<ReaderPage>
       ),
     );
   }
+}
+
+class _PreviewReturnLocation {
+  const _PreviewReturnLocation({
+    required this.chapterIndex,
+    required this.pageIndexInChapter,
+  });
+
+  final int chapterIndex;
+  final int pageIndexInChapter;
+}
+
+class _AnnotationTapTargetBuilder {
+  _AnnotationTapTargetBuilder({
+    required this.chapterIndex,
+    required this.pageIndexInChapter,
+    required this.annotations,
+  });
+
+  final int chapterIndex;
+  final int pageIndexInChapter;
+  final List<AnnotationEntity> annotations;
+  final List<Rect> rects = <Rect>[];
+}
+
+class _AnnotationTapTarget {
+  const _AnnotationTapTarget({
+    required this.chapterIndex,
+    required this.pageIndexInChapter,
+    required this.annotations,
+    required this.rects,
+  });
+
+  final int chapterIndex;
+  final int pageIndexInChapter;
+  final List<AnnotationEntity> annotations;
+  final List<Rect> rects;
+
+  bool contains(Offset point) {
+    for (final rect in rects) {
+      if (rect.contains(point)) {
+        return true;
+      }
+    }
+    return false;
+  }
+}
+
+class _FocusedAnnotationOverlay {
+  const _FocusedAnnotationOverlay({
+    required this.chapterIndex,
+    required this.pageIndexInChapter,
+    required this.isRightPage,
+    required this.annotations,
+    required this.rects,
+  });
+
+  final int chapterIndex;
+  final int pageIndexInChapter;
+  final bool isRightPage;
+  final List<AnnotationEntity> annotations;
+  final List<Rect> rects;
 }

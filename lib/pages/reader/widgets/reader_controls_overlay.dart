@@ -31,6 +31,7 @@ class ReaderControlsOverlay extends StatefulWidget {
     required this.chapterTitleForPercent,
     required this.onChapterSelected,
     required this.onPercentChanged,
+    this.onAnnotationsPressed,
     this.onMorePressed,
   });
 
@@ -48,6 +49,7 @@ class ReaderControlsOverlay extends StatefulWidget {
   final String Function(double percent) chapterTitleForPercent;
   final ValueChanged<int> onChapterSelected;
   final ValueChanged<double> onPercentChanged;
+  final VoidCallback? onAnnotationsPressed;
   final VoidCallback? onMorePressed;
 
   @override
@@ -300,8 +302,11 @@ class _ReaderControlsOverlayState extends State<ReaderControlsOverlay>
             isActive: _activePanel == _ActivePanel.toc,
             onTap: () => _togglePanel(_ActivePanel.toc),
           ),
-          // 2. Annotation (placeholder)
-          _toolbarButton(icon: Icons.border_color_outlined, onTap: () {}),
+          // 2. Annotation list
+          _toolbarButton(
+            icon: Icons.bookmarks_outlined,
+            onTap: widget.onAnnotationsPressed ?? () {},
+          ),
           // 3. Progress
           _toolbarButton(
             icon: Icons.data_usage_outlined,
