@@ -40,6 +40,7 @@ void main() {
       id: id,
       bookId: 'book-1',
       kind: AnnotationKind.mark,
+      style: AnnotationStyle.highlight,
       quoteText: 'quote',
       anchorJson: anchor.encode(),
       color: '#FFE08A',

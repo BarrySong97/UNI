@@ -28,6 +28,7 @@ class AnnotationStore extends ChangeNotifier {
     required String quoteText,
     required AnnotationAnchorV1 anchor,
     String? color,
+    AnnotationStyle? style,
     String? note,
   }) async {
     final now = DateTime.now();
@@ -35,6 +36,7 @@ class AnnotationStore extends ChangeNotifier {
       id: '${bookId}_ann_${now.microsecondsSinceEpoch}',
       bookId: bookId,
       kind: AnnotationKind.mark,
+      style: style ?? _state.selectedStyle,
       quoteText: quoteText,
       anchorJson: anchor.encode(),
       color: color ?? _state.selectedColor,
@@ -48,6 +50,33 @@ class AnnotationStore extends ChangeNotifier {
     _state = _state.copyWith(items: next);
     notifyListeners();
     return created;
+  }
+
+  void setSelectedAppearance({String? color, AnnotationStyle? style}) {
+    _state = _state.copyWith(selectedColor: color, selectedStyle: style);
+    notifyListeners();
+  }
+
+  Future<AnnotationEntity> updateAnnotationAppearance({
+    required String annotationId,
+    required String color,
+    required AnnotationStyle style,
+  }) async {
+    final updated = await _annotationRepository.updateAppearance(
+      annotationId: annotationId,
+      color: color,
+      style: style,
+    );
+    final next = _state.items
+        .map((item) => item.id == annotationId ? updated : item)
+        .toList(growable: false);
+    _state = _state.copyWith(
+      items: next,
+      selectedColor: color,
+      selectedStyle: style,
+    );
+    notifyListeners();
+    return updated;
   }
 
   Future<void> deleteAnnotation(String annotationId) async {

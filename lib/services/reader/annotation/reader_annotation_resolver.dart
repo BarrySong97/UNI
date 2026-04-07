@@ -38,6 +38,7 @@ class ReaderAnnotationResolver {
           _projectToPages(
             annotationId: annotation.id,
             color: annotation.color,
+            style: annotation.style,
             pagination: pagination,
             projection: resolution.projection,
             rawStart: resolution.startOffset,
@@ -206,6 +207,7 @@ class ReaderAnnotationResolver {
   List<ResolvedAnnotationSegment> _projectToPages({
     required String annotationId,
     required String color,
+    required AnnotationStyle style,
     required ChapterPagination pagination,
     required BlockTextProjection projection,
     required int rawStart,
@@ -247,7 +249,7 @@ class ReaderAnnotationResolver {
 
     final pageIndexes = pageStart.keys.toList()..sort();
     return pageIndexes
-        .map((pageIndex) {
+        .map<ResolvedAnnotationSegment>((pageIndex) {
           return ResolvedAnnotationSegment(
             annotationId: annotationId,
             chapterIndex: pagination.chapterIndex,
@@ -257,6 +259,7 @@ class ReaderAnnotationResolver {
               end: pageEnd[pageIndex]!,
             ),
             color: color,
+            style: style,
           );
         })
         .toList(growable: false);

@@ -23,6 +23,23 @@ AnnotationOverlapDecision detectAnnotationOverlap({
   return AnnotationOverlapDecision.none;
 }
 
+List<AnnotationEntity> findExactMatchingAnnotations({
+  required AnnotationAnchorV1 candidate,
+  required Iterable<AnnotationEntity> existingAnnotations,
+}) {
+  final matches = <AnnotationEntity>[];
+  for (final annotation in existingAnnotations) {
+    final existing = AnnotationAnchorV1.tryParse(annotation.anchorJson);
+    if (existing == null) {
+      continue;
+    }
+    if (_anchorsEqual(existing, candidate)) {
+      matches.add(annotation);
+    }
+  }
+  return matches;
+}
+
 List<AnnotationEntity> findOverlappingAnnotations({
   required AnnotationAnchorV1 candidate,
   required Iterable<AnnotationEntity> existingAnnotations,

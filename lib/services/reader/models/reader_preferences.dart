@@ -1,5 +1,8 @@
 import 'dart:ui' show Color;
 
+import '../../../entities/annotation-entity.dart';
+import '../../../shared/constants/reader-constants.dart';
+
 class ReaderPreferences {
   const ReaderPreferences({
     this.baseFontSizePx = 18.0,
@@ -9,6 +12,8 @@ class ReaderPreferences {
     this.lineHeightMultiplier = 1.6,
     this.paragraphSpacingMultiplier = 1.0,
     this.theme = ReaderTheme.light,
+    this.defaultMarkColor = ReaderConstants.defaultHighlightColor,
+    this.defaultMarkStyle = AnnotationStyle.highlight,
   });
 
   final double baseFontSizePx;
@@ -18,6 +23,8 @@ class ReaderPreferences {
   final double lineHeightMultiplier;
   final double paragraphSpacingMultiplier;
   final ReaderTheme theme;
+  final String defaultMarkColor;
+  final AnnotationStyle defaultMarkStyle;
 
   /// Convert em units to logical pixels.
   double emToPx(double em) => em * baseFontSizePx;
@@ -32,6 +39,8 @@ class ReaderPreferences {
     double? lineHeightMultiplier,
     double? paragraphSpacingMultiplier,
     ReaderTheme? theme,
+    String? defaultMarkColor,
+    AnnotationStyle? defaultMarkStyle,
   }) {
     return ReaderPreferences(
       baseFontSizePx: baseFontSizePx ?? this.baseFontSizePx,
@@ -44,6 +53,8 @@ class ReaderPreferences {
       paragraphSpacingMultiplier:
           paragraphSpacingMultiplier ?? this.paragraphSpacingMultiplier,
       theme: theme ?? this.theme,
+      defaultMarkColor: defaultMarkColor ?? this.defaultMarkColor,
+      defaultMarkStyle: defaultMarkStyle ?? this.defaultMarkStyle,
     );
   }
 
@@ -65,6 +76,8 @@ class ReaderPreferences {
     'lineHeightMultiplier': lineHeightMultiplier,
     'paragraphSpacingMultiplier': paragraphSpacingMultiplier,
     'theme': theme.name,
+    'defaultMarkColor': defaultMarkColor,
+    'defaultMarkStyle': defaultMarkStyle.name,
   };
 
   factory ReaderPreferences.fromJson(Map<String, dynamic> json) {
@@ -79,12 +92,26 @@ class ReaderPreferences {
           (json['lineHeightMultiplier'] as num?)?.toDouble() ?? 1.6,
       paragraphSpacingMultiplier:
           (json['paragraphSpacingMultiplier'] as num?)?.toDouble() ?? 1.0,
+      defaultMarkColor:
+          json['defaultMarkColor'] as String? ??
+          ReaderConstants.defaultHighlightColor,
+      defaultMarkStyle: _annotationStyleFromName(
+        json['defaultMarkStyle'] as String?,
+      ),
       theme: ReaderTheme.values.firstWhere(
         (t) => t.name == json['theme'],
         orElse: () => ReaderTheme.light,
       ),
     );
   }
+}
+
+AnnotationStyle _annotationStyleFromName(String? raw) {
+  return switch (raw) {
+    'underline' => AnnotationStyle.underline,
+    'highlight' => AnnotationStyle.highlight,
+    _ => AnnotationStyle.highlight,
+  };
 }
 
 enum ReaderTheme {

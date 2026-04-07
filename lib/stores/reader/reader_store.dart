@@ -824,8 +824,12 @@ class ReaderStore extends ChangeNotifier {
   // ---------------------------------------------------------------------------
 
   Future<void> updatePreferences(ReaderPreferences newPrefs) async {
+    final defaultsChanged =
+        newPrefs.defaultMarkColor != _preferences.defaultMarkColor ||
+        newPrefs.defaultMarkStyle != _preferences.defaultMarkStyle;
     if (newPrefs.layoutHash == _preferences.layoutHash &&
-        newPrefs.theme == _preferences.theme) {
+        newPrefs.theme == _preferences.theme &&
+        !defaultsChanged) {
       return;
     }
 

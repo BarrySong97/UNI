@@ -37,10 +37,38 @@ class AnnotationRepositoryImpl implements AnnotationRepository {
       id: current.id,
       bookId: current.bookId,
       kind: current.kind,
+      style: current.style,
       quoteText: current.quoteText,
       anchorJson: current.anchorJson,
       color: current.color,
       note: note,
+      createdAtMillis: current.createdAtMillis,
+      updatedAtMillis: DateTime.now().millisecondsSinceEpoch,
+    );
+    await _annotationsDao.upsertAnnotation(updated);
+    return updated.toEntity();
+  }
+
+  @override
+  Future<AnnotationEntity> updateAppearance({
+    required String annotationId,
+    required String color,
+    required AnnotationStyle style,
+  }) async {
+    final current = await _annotationsDao.getById(annotationId);
+    if (current == null) {
+      throw StateError('Annotation not found: $annotationId');
+    }
+
+    final updated = AnnotationDto(
+      id: current.id,
+      bookId: current.bookId,
+      kind: current.kind,
+      style: style.name,
+      quoteText: current.quoteText,
+      anchorJson: current.anchorJson,
+      color: color,
+      note: current.note,
       createdAtMillis: current.createdAtMillis,
       updatedAtMillis: DateTime.now().millisecondsSinceEpoch,
     );

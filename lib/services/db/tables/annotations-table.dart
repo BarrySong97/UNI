@@ -3,6 +3,7 @@ abstract final class AnnotationsTable {
   static const String id = 'id';
   static const String bookId = 'book_id';
   static const String kind = 'kind';
+  static const String style = 'style';
   static const String quoteText = 'quote_text';
   static const String anchorJson = 'anchor_json';
   static const String color = 'color';

@@ -10,5 +10,11 @@ abstract class AnnotationRepository {
     required String? note,
   });
 
+  Future<AnnotationEntity> updateAppearance({
+    required String annotationId,
+    required String color,
+    required AnnotationStyle style,
+  });
+
   Future<void> deleteAnnotation(String annotationId);
 }

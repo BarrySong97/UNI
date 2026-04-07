@@ -1,8 +1,21 @@
 import 'package:flutter/rendering.dart';
 
+import '../../../entities/annotation-entity.dart';
 import '../../../services/reader/models/page_layout.dart';
 import '../../../services/reader/models/reader_preferences.dart';
 import '../../../services/reader/models/render_node.dart';
+
+class AnnotationPaintBucket {
+  const AnnotationPaintBucket({
+    required this.style,
+    required this.color,
+    required this.rects,
+  });
+
+  final AnnotationStyle style;
+  final Color color;
+  final List<Rect> rects;
+}
 
 /// Paints a single [PageLayout] onto a Canvas.
 ///
@@ -16,7 +29,7 @@ class ReaderCanvasPainter extends CustomPainter {
     required this.preferences,
     this.safeAreaTop = 0.0,
     this.safeAreaBottom = 0.0,
-    this.annotationRectsByColor,
+    this.annotationPaintBuckets,
     this.selectionRects,
   });
 
@@ -24,64 +37,90 @@ class ReaderCanvasPainter extends CustomPainter {
   final ReaderPreferences preferences;
   final double safeAreaTop;
   final double safeAreaBottom;
-  final Map<Color, List<Rect>>? annotationRectsByColor;
+  final List<AnnotationPaintBucket>? annotationPaintBuckets;
 
   /// Selection highlight rectangles in content-area coordinates.
   final List<Rect>? selectionRects;
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 1. Fill page background.
     final bgPaint = Paint()..color = preferences.theme.backgroundColor;
     canvas.drawRect(Offset.zero & size, bgPaint);
 
-    // 2. Translate to the content area origin (inside page padding + safe area).
     canvas.save();
     canvas.translate(
       preferences.pageHorizontalPaddingPx,
       preferences.pageVerticalPaddingPx + safeAreaTop,
     );
 
-    // 3. Paint persisted annotation highlights (behind text).
-    if (annotationRectsByColor != null && annotationRectsByColor!.isNotEmpty) {
-      for (final entry in annotationRectsByColor!.entries) {
-        final annotationPaint = Paint()..color = entry.key;
-        for (final rect in entry.value) {
-          canvas.drawRect(rect, annotationPaint);
-        }
-      }
-    }
+    _paintHighlightBuckets(canvas);
 
-    // 4. Paint active selection highlights above persisted marks.
     if (selectionRects != null && selectionRects!.isNotEmpty) {
-      final selPaint = Paint()
-        ..color = const Color(0x4D3B82F6); // semi-transparent blue
+      final selPaint = Paint()..color = const Color(0x4D3B82F6);
       for (final rect in selectionRects!) {
         canvas.drawRect(rect, selPaint);
       }
     }
 
-    // 5. Paint each element.
     for (final element in page.elements) {
       _paintElement(canvas, element);
     }
 
+    _paintUnderlineBuckets(canvas);
     canvas.restore();
   }
 
+  void _paintHighlightBuckets(Canvas canvas) {
+    final buckets = annotationPaintBuckets;
+    if (buckets == null || buckets.isEmpty) {
+      return;
+    }
+    for (final bucket in buckets) {
+      if (bucket.style != AnnotationStyle.highlight) {
+        continue;
+      }
+      final annotationPaint = Paint()..color = bucket.color;
+      for (final rect in bucket.rects) {
+        canvas.drawRect(rect, annotationPaint);
+      }
+    }
+  }
+
+  void _paintUnderlineBuckets(Canvas canvas) {
+    final buckets = annotationPaintBuckets;
+    if (buckets == null || buckets.isEmpty) {
+      return;
+    }
+    for (final bucket in buckets) {
+      if (bucket.style != AnnotationStyle.underline) {
+        continue;
+      }
+      final underlinePaint = Paint()
+        ..color = bucket.color
+        ..strokeWidth = 2.5
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round;
+      for (final rect in bucket.rects) {
+        final y = rect.bottom - 1.5;
+        canvas.drawLine(
+          Offset(rect.left, y),
+          Offset(rect.right, y),
+          underlinePaint,
+        );
+      }
+    }
+  }
+
   void _paintElement(Canvas canvas, LayoutElement element) {
-    // Background fill (paragraph bg, table cell bg, code block bg).
     if (element.backgroundPaint != null) {
       canvas.drawRect(element.rect, element.backgroundPaint!);
     }
 
-    // Text content.
     final tp = element.ensurePainter();
     if (tp != null) {
       tp.paint(canvas, element.rect.topLeft);
     }
 
-    // Image content.
     if (element.image != null) {
       paintImage(
         canvas: canvas,
@@ -91,7 +130,6 @@ class ReaderCanvasPainter extends CustomPainter {
       );
     }
 
-    // Horizontal rule: draw a thin line across the element rect.
     if (element.sourceNode is HorizontalRuleNode &&
         !element.hasText &&
         element.image == null &&
@@ -114,7 +152,7 @@ class ReaderCanvasPainter extends CustomPainter {
         oldDelegate.preferences != preferences ||
         oldDelegate.safeAreaTop != safeAreaTop ||
         oldDelegate.safeAreaBottom != safeAreaBottom ||
-        oldDelegate.annotationRectsByColor != annotationRectsByColor ||
+        oldDelegate.annotationPaintBuckets != annotationPaintBuckets ||
         oldDelegate.selectionRects != selectionRects;
   }
 }

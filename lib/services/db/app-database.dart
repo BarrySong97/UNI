@@ -29,7 +29,7 @@ class AppDatabase {
     final path = p.join(root, 'uni_reader.db');
     final database = await openDatabase(
       path,
-      version: 17,
+      version: 18,
       onCreate: (db, _) async {
         await db.execute('''
 CREATE TABLE ${BooksTable.tableName} (
@@ -72,6 +72,7 @@ CREATE TABLE ${AnnotationsTable.tableName} (
   ${AnnotationsTable.id} TEXT PRIMARY KEY,
   ${AnnotationsTable.bookId} TEXT NOT NULL,
   ${AnnotationsTable.kind} TEXT NOT NULL,
+  ${AnnotationsTable.style} TEXT NOT NULL,
   ${AnnotationsTable.quoteText} TEXT NOT NULL,
   ${AnnotationsTable.anchorJson} TEXT NOT NULL,
   ${AnnotationsTable.color} TEXT NOT NULL,
@@ -147,6 +148,9 @@ CREATE TABLE ${ReadingTimeDailyTable.tableName} (
         }
         if (oldVersion < 17) {
           await _migrateToV17(db);
+        }
+        if (oldVersion < 18) {
+          await _migrateToV18(db);
         }
       },
     );
@@ -280,6 +284,12 @@ CREATE TABLE ${AnnotationsTable.tableName} (
 ''');
     await db.execute(
       'CREATE INDEX idx_annotations_book_created ON ${AnnotationsTable.tableName} (${AnnotationsTable.bookId}, ${AnnotationsTable.createdAt})',
+    );
+  }
+
+  static Future<void> _migrateToV18(DatabaseExecutor db) async {
+    await db.execute(
+      "ALTER TABLE ${AnnotationsTable.tableName} ADD COLUMN ${AnnotationsTable.style} TEXT NOT NULL DEFAULT 'highlight'",
     );
   }
 
@@ -1007,6 +1017,7 @@ class _SqfliteBackend implements _DatabaseBackend {
       AnnotationsTable.id: annotation.id,
       AnnotationsTable.bookId: annotation.bookId,
       AnnotationsTable.kind: annotation.kind,
+      AnnotationsTable.style: annotation.style,
       AnnotationsTable.quoteText: annotation.quoteText,
       AnnotationsTable.anchorJson: annotation.anchorJson,
       AnnotationsTable.color: annotation.color,
@@ -1085,6 +1096,7 @@ class _SqfliteBackend implements _DatabaseBackend {
       id: row[AnnotationsTable.id]! as String,
       bookId: row[AnnotationsTable.bookId]! as String,
       kind: row[AnnotationsTable.kind]! as String,
+      style: (row[AnnotationsTable.style] as String?) ?? 'highlight',
       quoteText: row[AnnotationsTable.quoteText]! as String,
       anchorJson: row[AnnotationsTable.anchorJson]! as String,
       color: row[AnnotationsTable.color]! as String,
@@ -1368,6 +1380,7 @@ AnnotationDto _annotationFromHighlight(HighlightDto highlight) {
     id: highlight.id,
     bookId: highlight.bookId,
     kind: 'mark',
+    style: 'highlight',
     quoteText: highlight.selectedText,
     anchorJson: highlight.locatorJson,
     color: highlight.color,

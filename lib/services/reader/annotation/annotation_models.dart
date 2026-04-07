@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../../../entities/annotation-entity.dart';
 import '../selection/page_hit_test.dart';
 
 class AnnotationJumpTarget {
@@ -147,6 +148,7 @@ class ResolvedAnnotationSegment {
     required this.pageIndexInChapter,
     required this.pageSelection,
     required this.color,
+    required this.style,
   });
 
   final String annotationId;
@@ -154,4 +156,5 @@ class ResolvedAnnotationSegment {
   final int pageIndexInChapter;
   final PageSelection pageSelection;
   final String color;
+  final AnnotationStyle style;
 }
