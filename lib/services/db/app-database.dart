@@ -2,12 +2,14 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
 import '../../dtos/db/annotation-dto.dart';
+import '../../dtos/db/annotation-note-dto.dart';
 import '../../dtos/db/book-dto.dart';
 import '../../dtos/db/chapter-dto.dart';
 import '../../dtos/db/highlight-dto.dart';
 import '../../entities/reading-time-entity.dart';
 import '../../entities/statistics-entity.dart';
 import '../../dtos/db/reading-progress-dto.dart';
+import 'tables/annotation-notes-table.dart';
 import 'tables/annotations-table.dart';
 import 'tables/books-table.dart';
 import 'tables/chapters-table.dart';
@@ -29,7 +31,7 @@ class AppDatabase {
     final path = p.join(root, 'uni_reader.db');
     final database = await openDatabase(
       path,
-      version: 18,
+      version: 19,
       onCreate: (db, _) async {
         await db.execute('''
 CREATE TABLE ${BooksTable.tableName} (
@@ -81,11 +83,26 @@ CREATE TABLE ${AnnotationsTable.tableName} (
   ${AnnotationsTable.updatedAt} INTEGER NOT NULL
 )
 ''');
+        await db.execute('''
+CREATE TABLE ${AnnotationNotesTable.tableName} (
+  ${AnnotationNotesTable.id} TEXT PRIMARY KEY,
+  ${AnnotationNotesTable.annotationId} TEXT NOT NULL,
+  ${AnnotationNotesTable.bookId} TEXT NOT NULL,
+  ${AnnotationNotesTable.text} TEXT NOT NULL,
+  ${AnnotationNotesTable.createdAt} INTEGER NOT NULL
+)
+''');
         await db.execute(
           'CREATE INDEX idx_chapters_book_idx ON ${ChaptersTable.tableName} (${ChaptersTable.bookId}, ${ChaptersTable.idx})',
         );
         await db.execute(
           'CREATE INDEX idx_annotations_book_created ON ${AnnotationsTable.tableName} (${AnnotationsTable.bookId}, ${AnnotationsTable.createdAt})',
+        );
+        await db.execute(
+          'CREATE INDEX idx_annotation_notes_annotation_created ON ${AnnotationNotesTable.tableName} (${AnnotationNotesTable.annotationId}, ${AnnotationNotesTable.createdAt})',
+        );
+        await db.execute(
+          'CREATE INDEX idx_annotation_notes_book_created ON ${AnnotationNotesTable.tableName} (${AnnotationNotesTable.bookId}, ${AnnotationNotesTable.createdAt})',
         );
         await db.execute('''
 CREATE TABLE ${ExplainCacheTable.tableName} (
@@ -151,6 +168,9 @@ CREATE TABLE ${ReadingTimeDailyTable.tableName} (
         }
         if (oldVersion < 18) {
           await _migrateToV18(db);
+        }
+        if (oldVersion < 19) {
+          await _migrateToV19(db);
         }
       },
     );
@@ -293,6 +313,54 @@ CREATE TABLE ${AnnotationsTable.tableName} (
     );
   }
 
+  static Future<void> _migrateToV19(DatabaseExecutor db) async {
+    await db.execute('''
+CREATE TABLE ${AnnotationNotesTable.tableName} (
+  ${AnnotationNotesTable.id} TEXT PRIMARY KEY,
+  ${AnnotationNotesTable.annotationId} TEXT NOT NULL,
+  ${AnnotationNotesTable.bookId} TEXT NOT NULL,
+  ${AnnotationNotesTable.text} TEXT NOT NULL,
+  ${AnnotationNotesTable.createdAt} INTEGER NOT NULL
+)
+''');
+    await db.execute(
+      'CREATE INDEX idx_annotation_notes_annotation_created ON ${AnnotationNotesTable.tableName} (${AnnotationNotesTable.annotationId}, ${AnnotationNotesTable.createdAt})',
+    );
+    await db.execute(
+      'CREATE INDEX idx_annotation_notes_book_created ON ${AnnotationNotesTable.tableName} (${AnnotationNotesTable.bookId}, ${AnnotationNotesTable.createdAt})',
+    );
+
+    final legacyRows = await db.query(
+      AnnotationsTable.tableName,
+      columns: <String>[
+        AnnotationsTable.id,
+        AnnotationsTable.bookId,
+        AnnotationsTable.note,
+        AnnotationsTable.updatedAt,
+      ],
+      where:
+          '${AnnotationsTable.note} IS NOT NULL AND TRIM(${AnnotationsTable.note}) != ?',
+      whereArgs: const <Object?>[''],
+    );
+
+    for (final row in legacyRows) {
+      await db.insert(
+        AnnotationNotesTable.tableName,
+        <String, Object?>{
+          AnnotationNotesTable.id:
+              '${row[AnnotationsTable.id] as String}_note_legacy',
+          AnnotationNotesTable.annotationId:
+              row[AnnotationsTable.id]! as String,
+          AnnotationNotesTable.bookId: row[AnnotationsTable.bookId]! as String,
+          AnnotationNotesTable.text: row[AnnotationsTable.note]! as String,
+          AnnotationNotesTable.createdAt:
+              row[AnnotationsTable.updatedAt]! as int,
+        },
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+    }
+  }
+
   static Future<void> _migrateToV9(DatabaseExecutor db) async {
     // Drop reader-specific tables while preserving user data
     await db.execute('DROP TABLE IF EXISTS reader_preferences');
@@ -338,6 +406,19 @@ CREATE TABLE ${AnnotationsTable.tableName} (
 
   Future<AnnotationDto?> getAnnotation(String annotationId) =>
       _backend.getAnnotation(annotationId);
+
+  Future<List<AnnotationNoteDto>> listAnnotationNotesByBookId(String bookId) =>
+      _backend.listAnnotationNotesByBookId(bookId);
+
+  Future<List<AnnotationNoteDto>> listAnnotationNotesByAnnotationId(
+    String annotationId,
+  ) => _backend.listAnnotationNotesByAnnotationId(annotationId);
+
+  Future<void> upsertAnnotationNote(AnnotationNoteDto note) =>
+      _backend.upsertAnnotationNote(note);
+
+  Future<void> deleteAnnotationNotesByAnnotationId(String annotationId) =>
+      _backend.deleteAnnotationNotesByAnnotationId(annotationId);
 
   Future<List<HighlightDto>> listHighlights(
     String bookId, {
@@ -450,6 +531,12 @@ abstract class _DatabaseBackend {
   Future<AnnotationDto?> getAnnotation(String annotationId);
   Future<void> upsertAnnotation(AnnotationDto annotation);
   Future<void> deleteAnnotation(String annotationId);
+  Future<List<AnnotationNoteDto>> listAnnotationNotesByBookId(String bookId);
+  Future<List<AnnotationNoteDto>> listAnnotationNotesByAnnotationId(
+    String annotationId,
+  );
+  Future<void> upsertAnnotationNote(AnnotationNoteDto note);
+  Future<void> deleteAnnotationNotesByAnnotationId(String annotationId);
   Future<List<HighlightDto>> listHighlights(String bookId);
   Future<void> upsertHighlight(HighlightDto highlight);
   Future<void> deleteHighlight(String highlightId);
@@ -502,6 +589,8 @@ class _InMemoryBackend implements _DatabaseBackend {
   final Map<String, ReadingProgressDto> _progress =
       <String, ReadingProgressDto>{};
   final Map<String, AnnotationDto> _annotations = <String, AnnotationDto>{};
+  final Map<String, AnnotationNoteDto> _annotationNotes =
+      <String, AnnotationNoteDto>{};
   // key: "bookId|chapterIndex|selectedText"
   final Map<String, String> _explainCache = <String, String>{};
   final Map<String, int> _explainCounts = <String, int>{};
@@ -527,6 +616,7 @@ class _InMemoryBackend implements _DatabaseBackend {
     _chapters.removeWhere((_, chapter) => chapter.bookId == bookId);
     _progress.remove(bookId);
     _annotations.removeWhere((_, annotation) => annotation.bookId == bookId);
+    _annotationNotes.removeWhere((_, note) => note.bookId == bookId);
     _explainCache.removeWhere((key, _) => key.startsWith('$bookId|'));
     _explainCounts.remove(bookId);
     _phoneticsCounts.remove(bookId);
@@ -588,6 +678,45 @@ class _InMemoryBackend implements _DatabaseBackend {
   @override
   Future<void> deleteAnnotation(String annotationId) async {
     _annotations.remove(annotationId);
+    _annotationNotes.removeWhere(
+      (_, note) => note.annotationId == annotationId,
+    );
+  }
+
+  @override
+  Future<List<AnnotationNoteDto>> listAnnotationNotesByBookId(
+    String bookId,
+  ) async {
+    final list =
+        _annotationNotes.values
+            .where((item) => item.bookId == bookId)
+            .toList(growable: false)
+          ..sort((a, b) => a.createdAtMillis.compareTo(b.createdAtMillis));
+    return list;
+  }
+
+  @override
+  Future<List<AnnotationNoteDto>> listAnnotationNotesByAnnotationId(
+    String annotationId,
+  ) async {
+    final list =
+        _annotationNotes.values
+            .where((item) => item.annotationId == annotationId)
+            .toList(growable: false)
+          ..sort((a, b) => a.createdAtMillis.compareTo(b.createdAtMillis));
+    return list;
+  }
+
+  @override
+  Future<void> upsertAnnotationNote(AnnotationNoteDto note) async {
+    _annotationNotes[note.id] = note;
+  }
+
+  @override
+  Future<void> deleteAnnotationNotesByAnnotationId(String annotationId) async {
+    _annotationNotes.removeWhere(
+      (_, note) => note.annotationId == annotationId,
+    );
   }
 
   @override
@@ -895,6 +1024,11 @@ class _SqfliteBackend implements _DatabaseBackend {
         whereArgs: <Object?>[bookId],
       );
       await txn.delete(
+        AnnotationNotesTable.tableName,
+        where: '${AnnotationNotesTable.bookId} = ?',
+        whereArgs: <Object?>[bookId],
+      );
+      await txn.delete(
         AnnotationsTable.tableName,
         where: '${AnnotationsTable.bookId} = ?',
         whereArgs: <Object?>[bookId],
@@ -1028,10 +1162,57 @@ class _SqfliteBackend implements _DatabaseBackend {
   }
 
   @override
-  Future<void> deleteAnnotation(String annotationId) {
-    return _database.delete(
+  Future<void> deleteAnnotation(String annotationId) async {
+    await deleteAnnotationNotesByAnnotationId(annotationId);
+    await _database.delete(
       AnnotationsTable.tableName,
       where: '${AnnotationsTable.id} = ?',
+      whereArgs: <Object?>[annotationId],
+    );
+  }
+
+  @override
+  Future<List<AnnotationNoteDto>> listAnnotationNotesByBookId(
+    String bookId,
+  ) async {
+    final rows = await _database.query(
+      AnnotationNotesTable.tableName,
+      where: '${AnnotationNotesTable.bookId} = ?',
+      whereArgs: <Object?>[bookId],
+      orderBy: '${AnnotationNotesTable.createdAt} ASC',
+    );
+    return rows.map(_annotationNoteFromRow).toList(growable: false);
+  }
+
+  @override
+  Future<List<AnnotationNoteDto>> listAnnotationNotesByAnnotationId(
+    String annotationId,
+  ) async {
+    final rows = await _database.query(
+      AnnotationNotesTable.tableName,
+      where: '${AnnotationNotesTable.annotationId} = ?',
+      whereArgs: <Object?>[annotationId],
+      orderBy: '${AnnotationNotesTable.createdAt} ASC',
+    );
+    return rows.map(_annotationNoteFromRow).toList(growable: false);
+  }
+
+  @override
+  Future<void> upsertAnnotationNote(AnnotationNoteDto note) {
+    return _database.insert(AnnotationNotesTable.tableName, <String, Object?>{
+      AnnotationNotesTable.id: note.id,
+      AnnotationNotesTable.annotationId: note.annotationId,
+      AnnotationNotesTable.bookId: note.bookId,
+      AnnotationNotesTable.text: note.text,
+      AnnotationNotesTable.createdAt: note.createdAtMillis,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  @override
+  Future<void> deleteAnnotationNotesByAnnotationId(String annotationId) {
+    return _database.delete(
+      AnnotationNotesTable.tableName,
+      where: '${AnnotationNotesTable.annotationId} = ?',
       whereArgs: <Object?>[annotationId],
     );
   }
@@ -1050,6 +1231,16 @@ class _SqfliteBackend implements _DatabaseBackend {
   @override
   Future<void> deleteHighlight(String highlightId) {
     return deleteAnnotation(highlightId);
+  }
+
+  AnnotationNoteDto _annotationNoteFromRow(Map<String, Object?> row) {
+    return AnnotationNoteDto(
+      id: row[AnnotationNotesTable.id]! as String,
+      annotationId: row[AnnotationNotesTable.annotationId]! as String,
+      bookId: row[AnnotationNotesTable.bookId]! as String,
+      text: row[AnnotationNotesTable.text]! as String,
+      createdAtMillis: row[AnnotationNotesTable.createdAt]! as int,
+    );
   }
 
   BookDto _bookFromRow(Map<String, Object?> row) {

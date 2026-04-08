@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../../app/providers/app-providers.dart';
 import '../../app/routes/route-names.dart';
 import '../../entities/annotation-entity.dart';
+import 'models/reader_annotation_card_item.dart';
 import '../../entities/book-entity.dart';
 import '../../services/db/app-database.dart';
 import '../../services/reader/annotation/annotation_models.dart';
@@ -27,6 +28,7 @@ import '../../stores/reader/reader_store.dart';
 import '../../stores/reader/reader_store_manager.dart';
 import 'reader_coordinate_helper.dart';
 import 'widgets/reader_canvas_painter.dart';
+import 'widgets/reader_annotation_note_composer.dart';
 import 'widgets/reader_annotation_sheet.dart';
 import 'widgets/reader_controls_overlay.dart';
 import 'widgets/reader_explain_sheet.dart';
@@ -282,6 +284,219 @@ class _ReaderPageState extends State<ReaderPage>
       }
     }
     return null;
+  }
+
+  _SelectionAnnotationDraft? _prepareSelectionAnnotationDraft() {
+    final selection = _crossSelection;
+    if (selection == null) {
+      debugPrint('[Mark] Failed: selection is null');
+      return null;
+    }
+
+    final selectedText = extractCrossPageText();
+    if (selectedText.isEmpty) {
+      debugPrint('[Mark] Failed: selectedText is empty');
+      return null;
+    }
+
+    final anchor = _annotationMapper.map(store: _store, selection: selection);
+    if (anchor == null || anchor.segments.isEmpty) {
+      if (!mounted) return null;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Failed to create mark.')));
+      return null;
+    }
+
+    final overlapDecision = detectAnnotationOverlap(
+      candidate: anchor,
+      existingAnnotations: _annotationStore.state.items,
+    );
+    if (overlapDecision != AnnotationOverlapDecision.none) {
+      final message = overlapDecision == AnnotationOverlapDecision.duplicate
+          ? 'Already marked.'
+          : 'Overlaps an existing mark.';
+      if (!mounted) return null;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+      return null;
+    }
+
+    final focusPage = (_selectionOnRightPage && _store.isDualPage)
+        ? _store.secondPageLayout
+        : _store.currentPageLayout;
+    return _SelectionAnnotationDraft(
+      selectedText: selectedText,
+      anchor: anchor,
+      focusPage: focusPage,
+      focusedRects: List<Rect>.from(_selectionRects),
+      focusIsRight: _selectionOnRightPage,
+    );
+  }
+
+  void _applyAnnotationMutationResult({
+    AnnotationEntity? focusedAnnotation,
+    PageLayout? focusPage,
+    List<Rect>? focusedRects,
+    bool focusIsRight = false,
+  }) {
+    _clearSelection();
+    _annotationPaintBucketsByPageKey = _buildAnnotationPaintBucketsByPageKey();
+    _annotationTapTargetsByPageKey = _buildAnnotationTapTargetsByPageKey();
+    if (focusedAnnotation != null &&
+        focusPage != null &&
+        focusedRects != null &&
+        focusedRects.isNotEmpty) {
+      _focusedAnnotationOverlay = _FocusedAnnotationOverlay(
+        chapterIndex: focusPage.chapterIndex,
+        pageIndexInChapter: focusPage.pageIndexInChapter,
+        isRightPage: focusIsRight,
+        annotations: <AnnotationEntity>[focusedAnnotation],
+        rects: List<Rect>.unmodifiable(focusedRects),
+      );
+      _markEditorMode = _MarkEditorMode.editFocused;
+      _editingAnnotationId = focusedAnnotation.id;
+      _markEditorColor = focusedAnnotation.color;
+      _markEditorStyle = focusedAnnotation.style;
+    }
+  }
+
+  Future<void> _openNoteComposerForSelection({
+    AnnotationEntity? annotation,
+  }) async {
+    if (_selectionRects.isEmpty && annotation == null) {
+      return;
+    }
+    final quoteText = annotation?.quoteText ?? extractCrossPageText();
+    if (quoteText.trim().isEmpty) {
+      return;
+    }
+    final noteText = await ReaderAnnotationNoteComposer.show(
+      context: context,
+      quoteText: quoteText,
+      isTablet: _store.isDualPage,
+    );
+    if (noteText == null || noteText.trim().isEmpty) {
+      return;
+    }
+    if (annotation != null) {
+      await _handleAppendNote(annotation, noteText: noteText);
+      return;
+    }
+    await _handleCreateMarkWithNote(noteText: noteText, focusCreated: true);
+  }
+
+  Future<void> _openNoteComposerForAnnotation(
+    AnnotationEntity annotation,
+  ) async {
+    final noteText = await ReaderAnnotationNoteComposer.show(
+      context: context,
+      quoteText: annotation.quoteText,
+      isTablet: _store.isDualPage,
+    );
+    if (noteText == null || noteText.trim().isEmpty) {
+      return;
+    }
+    await _handleAppendNote(annotation, noteText: noteText);
+  }
+
+  Future<void> _handleCreateMarkWithNote({
+    required String noteText,
+    bool focusCreated = false,
+  }) async {
+    final draft = _prepareSelectionAnnotationDraft();
+    if (draft == null) {
+      return;
+    }
+
+    try {
+      final result = await _annotationStore.createMarkWithNote(
+        bookId: widget.book.id,
+        quoteText: draft.selectedText,
+        anchor: draft.anchor,
+        noteText: noteText,
+        color: _markEditorColor,
+        style: _markEditorStyle,
+      );
+      await _persistMarkAppearancePreference(
+        color: _markEditorColor,
+        style: _markEditorStyle,
+      );
+      if (!mounted) return;
+      setState(() {
+        _applyAnnotationMutationResult(
+          focusedAnnotation: focusCreated ? result.annotation : null,
+          focusPage: draft.focusPage,
+          focusedRects: draft.focusedRects,
+          focusIsRight: draft.focusIsRight,
+        );
+      });
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Failed to save note.')));
+    }
+  }
+
+  Future<void> _handleAppendNote(
+    AnnotationEntity annotation, {
+    required String noteText,
+  }) async {
+    try {
+      final result = await _annotationStore.createNote(
+        annotationId: annotation.id,
+        bookId: widget.book.id,
+        text: noteText,
+      );
+      if (!mounted) return;
+      setState(() {
+        _annotationPaintBucketsByPageKey =
+            _buildAnnotationPaintBucketsByPageKey();
+        _annotationTapTargetsByPageKey = _buildAnnotationTapTargetsByPageKey();
+        if (_focusedAnnotationOverlay != null &&
+            _focusedAnnotationOverlay!.annotations.any(
+              (item) => item.id == annotation.id,
+            )) {
+          _focusedAnnotationOverlay = _FocusedAnnotationOverlay(
+            chapterIndex: _focusedAnnotationOverlay!.chapterIndex,
+            pageIndexInChapter: _focusedAnnotationOverlay!.pageIndexInChapter,
+            isRightPage: _focusedAnnotationOverlay!.isRightPage,
+            annotations: <AnnotationEntity>[result.annotation],
+            rects: _focusedAnnotationOverlay!.rects,
+          );
+        }
+      });
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Failed to save note.')));
+    }
+  }
+
+  List<ReaderAnnotationCardItem> _buildAnnotationCardItems() {
+    return _annotationStore.state.items
+        .map((annotation) {
+          final notes =
+              _annotationStore.state.notesByAnnotationId[annotation.id] ??
+              const [];
+          final anchor = AnnotationAnchorV1.tryParse(annotation.anchorJson);
+          final chapterTitle = anchor == null
+              ? 'Unknown chapter'
+              : _store.chapterTitleAt(anchor.jumpTarget.chapterIndex);
+          final latestNote = notes.isEmpty ? null : notes.last.text;
+          return ReaderAnnotationCardItem(
+            annotation: annotation,
+            notes: notes,
+            chapterTitle: chapterTitle,
+            latestNoteText: latestNote,
+            noteCount: notes.length,
+            activityTime: annotation.updatedAt,
+          );
+        })
+        .toList(growable: false);
   }
 
   void _recordInteraction() {
@@ -1123,64 +1338,16 @@ class _ReaderPageState extends State<ReaderPage>
     AnnotationStyle? style,
     bool focusCreated = false,
   }) async {
-    final selection = _crossSelection;
-    if (selection == null) {
-      debugPrint('[Mark] Failed: selection is null');
+    final draft = _prepareSelectionAnnotationDraft();
+    if (draft == null) {
       return;
     }
 
-    final selectedText = extractCrossPageText();
-    if (selectedText.isEmpty) {
-      debugPrint(
-        '[Mark] Failed: selectedText is empty for selection '
-        'start=${selection.start.chapterIndex}:${selection.start.pageIndexInChapter}:${selection.start.elementIndex}:${selection.start.charOffset} '
-        'end=${selection.end.chapterIndex}:${selection.end.pageIndexInChapter}:${selection.end.elementIndex}:${selection.end.charOffset}',
-      );
-      return;
-    }
-
-    final anchor = _annotationMapper.map(store: _store, selection: selection);
-    if (anchor == null || anchor.segments.isEmpty) {
-      debugPrint(
-        '[Mark] Failed to create anchor. '
-        'selectedTextLength=${selectedText.length} '
-        'selectedText="$selectedText" '
-        'start=${selection.start.chapterIndex}:${selection.start.pageIndexInChapter}:${selection.start.elementIndex}:${selection.start.charOffset} '
-        'end=${selection.end.chapterIndex}:${selection.end.pageIndexInChapter}:${selection.end.elementIndex}:${selection.end.charOffset}',
-      );
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Failed to create mark.')));
-      return;
-    }
-
-    final overlapDecision = detectAnnotationOverlap(
-      candidate: anchor,
-      existingAnnotations: _annotationStore.state.items,
-    );
-    if (overlapDecision != AnnotationOverlapDecision.none) {
-      final message = overlapDecision == AnnotationOverlapDecision.duplicate
-          ? 'Already marked.'
-          : 'Overlaps an existing mark.';
-      debugPrint(
-        '[Mark] Skipped because selection overlaps an existing annotation. '
-        'decision=$overlapDecision '
-        'selectedText="$selectedText"',
-      );
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(message)));
-      return;
-    }
-
-    AnnotationEntity? created;
     try {
-      created = await _annotationStore.createMark(
+      final created = await _annotationStore.createMark(
         bookId: widget.book.id,
-        quoteText: selectedText,
-        anchor: anchor,
+        quoteText: draft.selectedText,
+        anchor: draft.anchor,
         color: color,
         style: style,
       );
@@ -1188,56 +1355,27 @@ class _ReaderPageState extends State<ReaderPage>
         color: color ?? _markEditorColor,
         style: style ?? _markEditorStyle,
       );
+
+      if (!mounted) return;
+      setState(() {
+        _applyAnnotationMutationResult(
+          focusedAnnotation: focusCreated ? created : null,
+          focusPage: draft.focusPage,
+          focusedRects: draft.focusedRects,
+          focusIsRight: draft.focusIsRight,
+        );
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Marked.')));
     } catch (error, stackTrace) {
-      debugPrint(
-        '[Mark] Failed to persist mark. '
-        'bookId=${widget.book.id} '
-        'segments=${anchor.segments.length} '
-        'selectedText="$selectedText" '
-        'error=$error',
-      );
-      debugPrintStack(
-        label: '[Mark] Stack trace for persist failure',
-        stackTrace: stackTrace,
-      );
+      debugPrint('[Mark] Failed to persist mark. error=$error');
+      debugPrintStack(stackTrace: stackTrace);
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Failed to create mark.')));
-      return;
     }
-
-    if (!mounted) return;
-    final focusPage = (_selectionOnRightPage && _store.isDualPage)
-        ? _store.secondPageLayout
-        : _store.currentPageLayout;
-    final focusedRects = List<Rect>.from(_selectionRects);
-    final focusIsRight = _selectionOnRightPage;
-    setState(() {
-      _clearSelection();
-      _annotationPaintBucketsByPageKey =
-          _buildAnnotationPaintBucketsByPageKey();
-      _annotationTapTargetsByPageKey = _buildAnnotationTapTargetsByPageKey();
-      if (focusCreated &&
-          created != null &&
-          focusPage != null &&
-          focusedRects.isNotEmpty) {
-        _focusedAnnotationOverlay = _FocusedAnnotationOverlay(
-          chapterIndex: focusPage.chapterIndex,
-          pageIndexInChapter: focusPage.pageIndexInChapter,
-          isRightPage: focusIsRight,
-          annotations: <AnnotationEntity>[created],
-          rects: List<Rect>.unmodifiable(focusedRects),
-        );
-        _markEditorMode = _MarkEditorMode.editFocused;
-        _editingAnnotationId = created.id;
-        _markEditorColor = created.color;
-        _markEditorStyle = created.style;
-      }
-    });
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Marked.')));
   }
 
   Future<void> _handleStyleChange(
@@ -1559,15 +1697,18 @@ class _ReaderPageState extends State<ReaderPage>
     _store.hideControls();
     final selected = await ReaderAnnotationSheet.show(
       context: context,
-      annotations: _annotationStore.state.items,
-      chapterTitleAt: _store.chapterTitleAt,
+      items: _buildAnnotationCardItems(),
       isTablet: _store.isDualPage,
       showOnLeft: _store.isDualPage,
     );
     if (selected == null || !mounted) {
       return;
     }
-    await _jumpToAnnotationPreview(selected);
+    if (selected.type == ReaderAnnotationSheetActionType.addNote) {
+      await _openNoteComposerForAnnotation(selected.annotation);
+      return;
+    }
+    await _jumpToAnnotationPreview(selected.annotation);
   }
 
   Future<void> _jumpToAnnotationPreview(AnnotationEntity annotation) async {
@@ -2354,7 +2495,7 @@ class _ReaderPageState extends State<ReaderPage>
         : 'Mark';
     final toolbarWidth = math.min(
       MediaQuery.of(context).size.width - 16,
-      400.0,
+      520.0,
     );
 
     return _buildTooltipCluster(
@@ -2472,6 +2613,17 @@ class _ReaderPageState extends State<ReaderPage>
                   );
                 },
               ),
+              if (!canOnlyUnmark) ...[
+                _buildTooltipDivider(),
+                _tooltipButton(
+                  'Note',
+                  onPressed: () async {
+                    await _openNoteComposerForSelection(
+                      annotation: canEditSingle ? exactMatches.first : null,
+                    );
+                  },
+                ),
+              ],
               _buildTooltipDivider(),
               _tooltipButton(
                 'Read Aloud',
@@ -2587,11 +2739,18 @@ class _ReaderPageState extends State<ReaderPage>
     return _buildTooltipCluster(
       rects: overlay.rects,
       isRightPage: overlay.isRightPage,
-      toolbarWidth: 140,
+      toolbarWidth: 220,
       toolbarChild: _buildTooltipBar(
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            _tooltipButton(
+              'Note',
+              onPressed: () async {
+                await _openNoteComposerForAnnotation(annotation);
+              },
+            ),
+            _buildTooltipDivider(),
             _tooltipButton(
               'Unmark',
               onPressed: () async {
@@ -2792,6 +2951,22 @@ class _TooltipPlacement {
   final double toolbarTop;
   final double editorLeft;
   final double editorTop;
+}
+
+class _SelectionAnnotationDraft {
+  const _SelectionAnnotationDraft({
+    required this.selectedText,
+    required this.anchor,
+    required this.focusPage,
+    required this.focusedRects,
+    required this.focusIsRight,
+  });
+
+  final String selectedText;
+  final AnnotationAnchorV1 anchor;
+  final PageLayout? focusPage;
+  final List<Rect> focusedRects;
+  final bool focusIsRight;
 }
 
 class _PreviewReturnLocation {
