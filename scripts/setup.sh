@@ -12,18 +12,18 @@ echo ""
 echo "=> flutter pub get"
 (cd "$PROJECT_ROOT" && flutter pub get)
 
-# 2. iOS: pod install
+# 2. iOS: pod install (non-fatal — may fail due to network/proxy issues)
 if [ -f "$PROJECT_ROOT/ios/Podfile" ]; then
     echo ""
     echo "=> pod install (ios/)"
-    (cd "$PROJECT_ROOT/ios" && pod install)
+    (cd "$PROJECT_ROOT/ios" && LANG=en_US.UTF-8 pod install) || echo "WARNING: pod install (ios/) failed — you can retry manually later"
 fi
 
-# 3. macOS: pod install
+# 3. macOS: pod install (non-fatal — may fail due to network/proxy issues)
 if [ -f "$PROJECT_ROOT/macos/Podfile" ]; then
     echo ""
     echo "=> pod install (macos/)"
-    (cd "$PROJECT_ROOT/macos" && pod install)
+    (cd "$PROJECT_ROOT/macos" && LANG=en_US.UTF-8 pod install) || echo "WARNING: pod install (macos/) failed — you can retry manually later"
 fi
 
 # 4. Rust: cargo build
