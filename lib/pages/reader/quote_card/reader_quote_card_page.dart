@@ -61,9 +61,17 @@ class _ReaderQuoteCardPageState extends State<ReaderQuoteCardPage> {
   final GlobalKey _previewBoundaryKey = GlobalKey();
   QuoteCardDraft _draft = const QuoteCardDraft();
   bool _isExporting = false;
+  bool _isPreviewReady = true;
+  Object? _heroImageIdentity;
 
   QuoteCardExportService get _exportService =>
       widget.exportService ?? QuoteCardExportService();
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncPreviewReadiness();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -86,83 +94,229 @@ class _ReaderQuoteCardPageState extends State<ReaderQuoteCardPage> {
           const SizedBox(height: 4),
           _buildTopBar(controlsVisible),
           Expanded(
-            child: SizedBox.expand(
-              child: Column(
-                children: <Widget>[
-                  Expanded(
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        final horizontalPadding = constraints.maxWidth >= 900
-                            ? 32.0
-                            : 16.0;
-                        final previewMaxWidth = constraints.maxWidth >= 900
-                            ? 560.0
-                            : 520.0;
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isTabletLayout = constraints.maxWidth >= 900;
+                if (isTabletLayout) {
+                  return _buildTabletLayout(
+                    constraints: constraints,
+                    controlsVisible: controlsVisible,
+                  );
+                }
+                return _buildPhoneLayout(
+                  constraints: constraints,
+                  controlsVisible: controlsVisible,
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-                        return Center(
-                          child: Padding(
-                            padding: EdgeInsets.fromLTRB(
-                              horizontalPadding,
-                              12,
-                              horizontalPadding,
-                              controlsVisible ? 12 : 24,
-                            ),
-                            child: RepaintBoundary(
-                              key: _previewBoundaryKey,
-                              child: ConstrainedBox(
-                                constraints: BoxConstraints(
-                                  maxWidth: previewMaxWidth,
-                                ),
-                                child: QuoteCardPreview(
-                                  payload: widget.payload,
-                                  draft: _draft,
-                                ),
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  if (controlsVisible)
-                    QuoteCardEditorPanel(
-                      draft: _draft,
-                      onTemplateChanged: (value) {
-                        setState(
-                          () => _draft = _draft.copyWith(template: value),
-                        );
-                      },
-                      onBackgroundChanged: (value) {
-                        setState(
-                          () => _draft = _draft.copyWith(background: value),
-                        );
-                      },
-                      onLayoutChanged: (value) {
-                        setState(() => _draft = _draft.copyWith(layout: value));
-                      },
-                      onFontPresetChanged: (value) {
-                        setState(
-                          () => _draft = _draft.copyWith(fontPreset: value),
-                        );
-                      },
-                      onShowBookTitleChanged: (value) {
-                        setState(
-                          () => _draft = _draft.copyWith(showBookTitle: value),
-                        );
-                      },
-                      onShowAuthorChanged: (value) {
-                        setState(
-                          () => _draft = _draft.copyWith(showAuthor: value),
-                        );
-                      },
-                    ),
-                ],
+  Widget _buildPhoneLayout({
+    required BoxConstraints constraints,
+    required bool controlsVisible,
+  }) {
+    return SizedBox.expand(
+      child: Column(
+        key: const ValueKey<String>('quote-card-phone-layout'),
+        children: <Widget>[
+          Expanded(
+            child: _buildPreviewPane(
+              horizontalPadding: 16,
+              verticalPadding: 12,
+              bottomPadding: controlsVisible ? 12 : 24,
+              previewMaxWidth: 520,
+            ),
+          ),
+          if (controlsVisible)
+            QuoteCardEditorPanel(
+              key: const ValueKey<String>('quote-card-bottom-editor'),
+              draft: _draft,
+              mode: QuoteCardEditorPanelMode.bottomSheet,
+              onTemplateChanged: (value) {
+                _updateDraft(_draft.applyTemplateDefaults(value));
+              },
+              onBackgroundChanged: (value) {
+                _updateDraft(_draft.copyWith(background: value));
+              },
+              onBackgroundIntensityChanged: (value) {
+                _updateDraft(_draft.copyWith(backgroundIntensity: value));
+              },
+              onImageSourceChanged: (value) {
+                _updateDraft(_draft.copyWith(imageSource: value));
+              },
+              onLayoutChanged: (value) {
+                _updateDraft(_draft.copyWith(layout: value));
+              },
+              onFontPresetChanged: (value) {
+                _updateDraft(_draft.copyWith(fontPreset: value));
+              },
+              onShowBookTitleChanged: (value) {
+                _updateDraft(_draft.copyWith(showBookTitle: value));
+              },
+              onShowAuthorChanged: (value) {
+                _updateDraft(_draft.copyWith(showAuthor: value));
+              },
+              onShowChapterTitleChanged: (value) {
+                _updateDraft(_draft.copyWith(showChapterTitle: value));
+              },
+              onShowPageLabelChanged: (value) {
+                _updateDraft(_draft.copyWith(showPageLabel: value));
+              },
+              onShowCollectionLabelChanged: (value) {
+                _updateDraft(_draft.copyWith(showCollectionLabel: value));
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTabletLayout({
+    required BoxConstraints constraints,
+    required bool controlsVisible,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+      child: Row(
+        key: const ValueKey<String>('quote-card-tablet-layout'),
+        children: <Widget>[
+          if (controlsVisible)
+            Expanded(
+              child: QuoteCardEditorPanel(
+                key: const ValueKey<String>('quote-card-side-editor'),
+                draft: _draft,
+                mode: QuoteCardEditorPanelMode.sidePanel,
+                onTemplateChanged: (value) {
+                  _updateDraft(_draft.applyTemplateDefaults(value));
+                },
+                onBackgroundChanged: (value) {
+                  _updateDraft(_draft.copyWith(background: value));
+                },
+                onBackgroundIntensityChanged: (value) {
+                  _updateDraft(_draft.copyWith(backgroundIntensity: value));
+                },
+                onImageSourceChanged: (value) {
+                  _updateDraft(_draft.copyWith(imageSource: value));
+                },
+                onLayoutChanged: (value) {
+                  _updateDraft(_draft.copyWith(layout: value));
+                },
+                onFontPresetChanged: (value) {
+                  _updateDraft(_draft.copyWith(fontPreset: value));
+                },
+                onShowBookTitleChanged: (value) {
+                  _updateDraft(_draft.copyWith(showBookTitle: value));
+                },
+                onShowAuthorChanged: (value) {
+                  _updateDraft(_draft.copyWith(showAuthor: value));
+                },
+                onShowChapterTitleChanged: (value) {
+                  _updateDraft(_draft.copyWith(showChapterTitle: value));
+                },
+                onShowPageLabelChanged: (value) {
+                  _updateDraft(_draft.copyWith(showPageLabel: value));
+                },
+                onShowCollectionLabelChanged: (value) {
+                  _updateDraft(_draft.copyWith(showCollectionLabel: value));
+                },
+              ),
+            )
+          else
+            const Spacer(),
+          const SizedBox(width: 24),
+          Expanded(
+            child: Center(
+              child: _buildPreviewPane(
+                horizontalPadding: 0,
+                verticalPadding: 0,
+                bottomPadding: 0,
+                previewMaxWidth: 580,
               ),
             ),
           ),
         ],
       ),
     );
+  }
+
+  Widget _buildPreviewPane({
+    required double horizontalPadding,
+    required double verticalPadding,
+    required double bottomPadding,
+    required double previewMaxWidth,
+  }) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        horizontalPadding,
+        verticalPadding,
+        horizontalPadding,
+        bottomPadding,
+      ),
+      child: Center(
+        child: RepaintBoundary(
+          key: _previewBoundaryKey,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: previewMaxWidth),
+            child: QuoteCardPreview(payload: widget.payload, draft: _draft),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _updateDraft(QuoteCardDraft nextDraft) {
+    setState(() {
+      _draft = nextDraft;
+    });
+    _syncPreviewReadiness();
+  }
+
+  Future<void> _syncPreviewReadiness() async {
+    final heroProvider = _draft.template.family == QuoteCardTemplateFamily.image
+        ? resolveQuoteCardHeroImageProvider(
+            payload: widget.payload,
+            draft: _draft,
+          )
+        : null;
+    final identity = heroProvider == null
+        ? 'gradient'
+        : '${heroProvider.runtimeType}-${heroProvider.hashCode}';
+
+    if (_heroImageIdentity == identity && _isPreviewReady) {
+      return;
+    }
+    _heroImageIdentity = identity;
+
+    if (heroProvider == null) {
+      if (_isPreviewReady) return;
+      if (!mounted) {
+        _isPreviewReady = true;
+        return;
+      }
+      setState(() => _isPreviewReady = true);
+      return;
+    }
+
+    if (mounted) {
+      setState(() => _isPreviewReady = false);
+    } else {
+      _isPreviewReady = false;
+    }
+
+    try {
+      await precacheImage(heroProvider, context);
+    } catch (_) {
+      // The preview has its own visual fallback, so export can still proceed.
+    }
+
+    if (!mounted || _heroImageIdentity != identity) {
+      return;
+    }
+    setState(() => _isPreviewReady = true);
   }
 
   Widget _buildTopBar(bool controlsVisible) {
@@ -195,11 +349,11 @@ class _ReaderQuoteCardPageState extends State<ReaderQuoteCardPage> {
               key: const ValueKey<String>('quote-card-toggle-controls'),
               tooltip: controlsVisible ? 'Hide controls' : 'Show controls',
               onPressed: () {
-                setState(() {
-                  _draft = _draft.copyWith(
+                _updateDraft(
+                  _draft.copyWith(
                     isControlsCollapsed: !_draft.isControlsCollapsed,
-                  );
-                });
+                  ),
+                );
               },
               icon: Icon(
                 controlsVisible ? Icons.tune_rounded : Icons.tune_outlined,
@@ -219,7 +373,9 @@ class _ReaderQuoteCardPageState extends State<ReaderQuoteCardPage> {
                     borderRadius: BorderRadius.circular(999),
                   ),
                 ),
-                onPressed: _isExporting ? null : _showExportActions,
+                onPressed: _isExporting || !_isPreviewReady
+                    ? null
+                    : _showExportActions,
                 child: _isExporting
                     ? const SizedBox(
                         width: 18,
@@ -336,7 +492,7 @@ class _ReaderQuoteCardPageState extends State<ReaderQuoteCardPage> {
   }
 
   Future<Uint8List> _capturePngBytes() async {
-    await Future<void>.delayed(const Duration(milliseconds: 16));
+    await WidgetsBinding.instance.endOfFrame;
     final boundary =
         _previewBoundaryKey.currentContext?.findRenderObject()
             as RenderRepaintBoundary?;

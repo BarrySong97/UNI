@@ -6,6 +6,10 @@ class ReaderQuoteCardPayload {
     required this.selectedText,
     this.readerFontFamily,
     this.readerThemeName,
+    this.coverDataUrl,
+    this.chapterTitle,
+    this.pageLabel,
+    this.collectionLabel,
   });
 
   final String bookId;
@@ -14,4 +18,8 @@ class ReaderQuoteCardPayload {
   final String selectedText;
   final String? readerFontFamily;
   final String? readerThemeName;
+  final String? coverDataUrl;
+  final String? chapterTitle;
+  final String? pageLabel;
+  final String? collectionLabel;
 }

@@ -2648,6 +2648,12 @@ class _ReaderPageState extends State<ReaderPage>
               selectedText: selectedText,
               readerFontFamily: _store.preferences.fontFamily,
               readerThemeName: _store.preferences.theme.name,
+              coverDataUrl: widget.book.coverUrl,
+              chapterTitle: _store.currentChapterTitle,
+              pageLabel: _store.totalBookPages > 0
+                  ? 'Page ${_store.currentBookPage}'
+                  : 'Page ${_store.currentPageIndex + 1}',
+              collectionLabel: null,
             ),
           );
         },

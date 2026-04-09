@@ -89,6 +89,9 @@ flutter:
     - assets/gb_gold.json
     - assets/gb_silver.json
     - assets/voices.json
+    - assets/quote_card/artwork_still_life.png
+    - assets/quote_card/artwork_abstract.png
+    - assets/quote_card/artwork_botanical.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

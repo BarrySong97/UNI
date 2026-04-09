@@ -3,25 +3,39 @@ import 'package:flutter/material.dart';
 import '../../../../shared/constants/common-design-tokens.dart';
 import '../models/quote_card_draft.dart';
 
+enum QuoteCardEditorPanelMode { bottomSheet, sidePanel }
+
 class QuoteCardEditorPanel extends StatefulWidget {
   const QuoteCardEditorPanel({
     super.key,
     required this.draft,
+    this.mode = QuoteCardEditorPanelMode.bottomSheet,
     required this.onTemplateChanged,
     required this.onBackgroundChanged,
+    required this.onBackgroundIntensityChanged,
+    required this.onImageSourceChanged,
     required this.onLayoutChanged,
     required this.onFontPresetChanged,
     required this.onShowBookTitleChanged,
     required this.onShowAuthorChanged,
+    required this.onShowChapterTitleChanged,
+    required this.onShowPageLabelChanged,
+    required this.onShowCollectionLabelChanged,
   });
 
   final QuoteCardDraft draft;
+  final QuoteCardEditorPanelMode mode;
   final ValueChanged<QuoteCardTemplate> onTemplateChanged;
   final ValueChanged<QuoteCardBackgroundPreset> onBackgroundChanged;
+  final ValueChanged<QuoteCardBackgroundIntensity> onBackgroundIntensityChanged;
+  final ValueChanged<QuoteCardImageSource> onImageSourceChanged;
   final ValueChanged<QuoteCardLayoutPreset> onLayoutChanged;
   final ValueChanged<QuoteCardFontPreset> onFontPresetChanged;
   final ValueChanged<bool> onShowBookTitleChanged;
   final ValueChanged<bool> onShowAuthorChanged;
+  final ValueChanged<bool> onShowChapterTitleChanged;
+  final ValueChanged<bool> onShowPageLabelChanged;
+  final ValueChanged<bool> onShowCollectionLabelChanged;
 
   @override
   State<QuoteCardEditorPanel> createState() => _QuoteCardEditorPanelState();
@@ -32,29 +46,56 @@ enum _QuoteCardEditorSection { template, background, layout, font, visibility }
 class _QuoteCardEditorPanelState extends State<QuoteCardEditorPanel> {
   _QuoteCardEditorSection _section = _QuoteCardEditorSection.template;
 
+  bool get _isImageFamily =>
+      widget.draft.template.family == QuoteCardTemplateFamily.image;
+
   @override
   Widget build(BuildContext context) {
+    final isSidePanel = widget.mode == QuoteCardEditorPanelMode.sidePanel;
+
     return Container(
       key: const ValueKey<String>('quote-card-editor-panel'),
-      decoration: const BoxDecoration(
+      height: isSidePanel ? double.infinity : null,
+      decoration: BoxDecoration(
         color: CommonDesignTokens.cardBg,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: isSidePanel
+            ? BorderRadius.circular(24)
+            : const BorderRadius.vertical(top: Radius.circular(24)),
+        border: isSidePanel
+            ? Border.all(color: CommonDesignTokens.borderColor)
+            : null,
       ),
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
+      padding: EdgeInsets.fromLTRB(16, isSidePanel ? 18 : 14, 16, 20),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisSize: isSidePanel ? MainAxisSize.max : MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Container(
-            width: 42,
-            height: 4,
-            decoration: BoxDecoration(
-              color: CommonDesignTokens.borderColor,
-              borderRadius: BorderRadius.circular(999),
+          if (!isSidePanel)
+            Center(
+              child: Container(
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: CommonDesignTokens.borderColor,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
             ),
-          ),
-          const SizedBox(height: 14),
-          SizedBox(height: 120, child: _buildOptions()),
+          if (!isSidePanel) const SizedBox(height: 14),
+          if (isSidePanel)
+            const Text(
+              'Customize',
+              style: TextStyle(
+                color: CommonDesignTokens.textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          if (isSidePanel) const SizedBox(height: 12),
+          if (isSidePanel)
+            Expanded(child: _buildOptions())
+          else
+            SizedBox(height: 196, child: _buildOptions()),
           const SizedBox(height: 16),
           Row(
             children: _QuoteCardEditorSection.values
@@ -70,63 +111,150 @@ class _QuoteCardEditorPanelState extends State<QuoteCardEditorPanel> {
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 180),
       child: switch (_section) {
-        _QuoteCardEditorSection.template => _buildChipList<QuoteCardTemplate>(
-          keyName: 'template',
-          values: QuoteCardTemplate.values,
-          isSelected: (value) => widget.draft.template == value,
-          labelOf: _templateLabel,
-          onTap: widget.onTemplateChanged,
-        ),
-        _QuoteCardEditorSection.background =>
-          _buildChipList<QuoteCardBackgroundPreset>(
-            keyName: 'background',
-            values: QuoteCardBackgroundPreset.values,
-            isSelected: (value) => widget.draft.background == value,
-            labelOf: _backgroundLabel,
-            onTap: widget.onBackgroundChanged,
-            swatchColor: _backgroundSwatch,
-          ),
-        _QuoteCardEditorSection.layout => _buildChipList<QuoteCardLayoutPreset>(
-          keyName: 'layout',
-          values: QuoteCardLayoutPreset.values,
-          isSelected: (value) => widget.draft.layout == value,
-          labelOf: _layoutLabel,
-          onTap: widget.onLayoutChanged,
-        ),
-        _QuoteCardEditorSection.font => _buildChipList<QuoteCardFontPreset>(
-          keyName: 'font',
-          values: QuoteCardFontPreset.values,
-          isSelected: (value) => widget.draft.fontPreset == value,
-          labelOf: _fontLabel,
-          onTap: widget.onFontPresetChanged,
-        ),
+        _QuoteCardEditorSection.template => _buildTemplateOptions(),
+        _QuoteCardEditorSection.background => _buildBackgroundOptions(),
+        _QuoteCardEditorSection.layout => _buildLayoutOptions(),
+        _QuoteCardEditorSection.font => _buildFontOptions(),
         _QuoteCardEditorSection.visibility => _buildVisibilityOptions(),
       },
     );
   }
 
+  Widget _buildTemplateOptions() {
+    return _buildSingleRowOptions<QuoteCardTemplate>(
+      keyName: 'template',
+      values: QuoteCardTemplate.values,
+      selectedValue: widget.draft.template,
+      labelOf: _templateLabel,
+      onTap: widget.onTemplateChanged,
+      iconOf: _templateIcon,
+      helperOf: (value) => value.family == QuoteCardTemplateFamily.gradient
+          ? 'Gradient'
+          : 'Image',
+    );
+  }
+
+  Widget _buildBackgroundOptions() {
+    if (_isImageFamily) {
+      return _AdaptiveOptionsColumn(
+        key: const ValueKey<String>('quote-card-options-background'),
+        titleOne: 'Tone',
+        contentOne: _buildSingleRowOptions<QuoteCardBackgroundPreset>(
+          keyName: 'background',
+          values: const <QuoteCardBackgroundPreset>[
+            QuoteCardBackgroundPreset.mist,
+            QuoteCardBackgroundPreset.bloom,
+            QuoteCardBackgroundPreset.archivePaper,
+            QuoteCardBackgroundPreset.night,
+          ],
+          selectedValue: widget.draft.background,
+          labelOf: _imageBackgroundLabel,
+          onTap: widget.onBackgroundChanged,
+          swatchColor: _backgroundSwatch,
+        ),
+        titleTwo: 'Image',
+        contentTwo: _buildSingleRowOptions<QuoteCardImageSource>(
+          keyName: 'image-source',
+          values: QuoteCardImageSource.values,
+          selectedValue: widget.draft.imageSource,
+          labelOf: _imageSourceLabel,
+          onTap: widget.onImageSourceChanged,
+          iconOf: _imageSourceIcon,
+        ),
+      );
+    }
+
+    return _AdaptiveOptionsColumn(
+      key: const ValueKey<String>('quote-card-options-background'),
+      titleOne: 'Palette',
+      contentOne: _buildSingleRowOptions<QuoteCardBackgroundPreset>(
+        keyName: 'background',
+        values: QuoteCardBackgroundPreset.values,
+        selectedValue: widget.draft.background,
+        labelOf: _backgroundLabel,
+        onTap: widget.onBackgroundChanged,
+        swatchColor: _backgroundSwatch,
+      ),
+      titleTwo: 'Intensity',
+      contentTwo: _buildSingleRowOptions<QuoteCardBackgroundIntensity>(
+        keyName: 'background-intensity',
+        values: QuoteCardBackgroundIntensity.values,
+        selectedValue: widget.draft.backgroundIntensity,
+        labelOf: _backgroundIntensityLabel,
+        onTap: widget.onBackgroundIntensityChanged,
+        iconOf: _backgroundIntensityIcon,
+      ),
+    );
+  }
+
+  Widget _buildLayoutOptions() {
+    return _buildSingleRowOptions<QuoteCardLayoutPreset>(
+      keyName: 'layout',
+      values: QuoteCardLayoutPreset.values,
+      selectedValue: widget.draft.layout,
+      labelOf: (value) => _isImageFamily
+          ? _imageLayoutLabel(value)
+          : _gradientLayoutLabel(value),
+      onTap: widget.onLayoutChanged,
+      iconOf: (value) => _layoutIcon(value, isImageFamily: _isImageFamily),
+    );
+  }
+
+  Widget _buildFontOptions() {
+    return _buildSingleRowOptions<QuoteCardFontPreset>(
+      keyName: 'font',
+      values: QuoteCardFontPreset.values,
+      selectedValue: widget.draft.fontPreset,
+      labelOf: _fontLabel,
+      onTap: widget.onFontPresetChanged,
+      iconOf: _fontIcon,
+    );
+  }
+
   Widget _buildVisibilityOptions() {
-    return Row(
+    final tiles = <Widget>[
+      _VisibilityTile(
+        key: const ValueKey<String>('quote-card-visibility-book-title'),
+        label: 'Book Title',
+        value: widget.draft.showBookTitle,
+        onChanged: widget.onShowBookTitleChanged,
+      ),
+      _VisibilityTile(
+        key: const ValueKey<String>('quote-card-visibility-author'),
+        label: 'Author',
+        value: widget.draft.showAuthor,
+        onChanged: widget.onShowAuthorChanged,
+      ),
+      _VisibilityTile(
+        key: const ValueKey<String>('quote-card-visibility-chapter'),
+        label: 'Chapter',
+        value: widget.draft.showChapterTitle,
+        onChanged: widget.onShowChapterTitleChanged,
+      ),
+      _VisibilityTile(
+        key: const ValueKey<String>('quote-card-visibility-page'),
+        label: 'Page',
+        value: widget.draft.showPageLabel,
+        onChanged: widget.onShowPageLabelChanged,
+      ),
+      if (_isImageFamily)
+        _VisibilityTile(
+          key: const ValueKey<String>('quote-card-visibility-collection'),
+          label: 'Collection',
+          value: widget.draft.showCollectionLabel,
+          onChanged: widget.onShowCollectionLabelChanged,
+        ),
+    ];
+
+    return SingleChildScrollView(
       key: const ValueKey<String>('quote-card-options-visibility'),
-      children: <Widget>[
-        Expanded(
-          child: _VisibilityTile(
-            key: const ValueKey<String>('quote-card-visibility-book-title'),
-            label: 'Book Title',
-            value: widget.draft.showBookTitle,
-            onChanged: widget.onShowBookTitleChanged,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _VisibilityTile(
-            key: const ValueKey<String>('quote-card-visibility-author'),
-            label: 'Author',
-            value: widget.draft.showAuthor,
-            onChanged: widget.onShowAuthorChanged,
-          ),
-        ),
-      ],
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 12,
+        children: tiles
+            .map((tile) => SizedBox(width: 170, child: tile))
+            .toList(growable: false),
+      ),
     );
   }
 
@@ -172,12 +300,14 @@ class _QuoteCardEditorPanelState extends State<QuoteCardEditorPanel> {
     );
   }
 
-  Widget _buildChipList<T>({
+  Widget _buildSingleRowOptions<T>({
     required String keyName,
     required List<T> values,
-    required bool Function(T value) isSelected,
+    required T selectedValue,
     required String Function(T value) labelOf,
     required ValueChanged<T> onTap,
+    IconData Function(T value)? iconOf,
+    String Function(T value)? helperOf,
     Color Function(T value)? swatchColor,
   }) {
     return ListView.separated(
@@ -187,22 +317,23 @@ class _QuoteCardEditorPanelState extends State<QuoteCardEditorPanel> {
       separatorBuilder: (_, _) => const SizedBox(width: 12),
       itemBuilder: (context, index) {
         final value = values[index];
-        final selected = isSelected(value);
+        final selected = value == selectedValue;
+        final label = labelOf(value);
         return InkWell(
           key: ValueKey<String>(
-            'quote-card-option-$keyName-${_keyLabel(labelOf(value))}',
+            'quote-card-option-$keyName-${_keyLabel(label)}',
           ),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(16),
           onTap: () => onTap(value),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
             width: 108,
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               color: selected
                   ? const Color(0xFFF7F3EE)
                   : CommonDesignTokens.pageBackground,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(16),
               border: Border.all(
                 color: selected
                     ? CommonDesignTokens.headerLabelColor
@@ -212,11 +343,12 @@ class _QuoteCardEditorPanelState extends State<QuoteCardEditorPanel> {
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: <Widget>[
                 if (swatchColor != null)
                   Container(
-                    width: 28,
-                    height: 28,
+                    width: 24,
+                    height: 24,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: swatchColor(value),
@@ -227,25 +359,26 @@ class _QuoteCardEditorPanelState extends State<QuoteCardEditorPanel> {
                   )
                 else
                   Container(
-                    width: 30,
-                    height: 30,
+                    width: 24,
+                    height: 24,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(8),
                       color: Colors.white,
                       border: Border.all(color: CommonDesignTokens.borderColor),
                     ),
                     child: Icon(
-                      _iconForValue(value),
+                      iconOf?.call(value) ?? Icons.tune,
                       color: CommonDesignTokens.textPrimary,
-                      size: 16,
+                      size: 14,
                     ),
                   ),
-                const Spacer(),
                 Text(
-                  labelOf(value),
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: CommonDesignTokens.textPrimary,
-                    fontSize: 13,
+                    fontSize: 12,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -256,21 +389,54 @@ class _QuoteCardEditorPanelState extends State<QuoteCardEditorPanel> {
       },
     );
   }
+}
 
-  IconData _iconForValue(Object? value) {
-    return switch (value) {
-      QuoteCardTemplate.classic => Icons.article_outlined,
-      QuoteCardTemplate.spotlight => Icons.light_mode_outlined,
-      QuoteCardTemplate.editorial => Icons.view_sidebar_outlined,
-      QuoteCardTemplate.minimal => Icons.crop_square_outlined,
-      QuoteCardLayoutPreset.top => Icons.vertical_align_top,
-      QuoteCardLayoutPreset.center => Icons.vertical_align_center,
-      QuoteCardLayoutPreset.bottom => Icons.vertical_align_bottom,
-      QuoteCardFontPreset.reader => Icons.menu_book_outlined,
-      QuoteCardFontPreset.serif => Icons.format_size,
-      QuoteCardFontPreset.sans => Icons.text_fields,
-      _ => Icons.tune,
-    };
+class _AdaptiveOptionsColumn extends StatelessWidget {
+  const _AdaptiveOptionsColumn({
+    super.key,
+    required this.titleOne,
+    required this.contentOne,
+    required this.titleTwo,
+    required this.contentTwo,
+  });
+
+  final String titleOne;
+  final Widget contentOne;
+  final String titleTwo;
+  final Widget contentTwo;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        _SectionHeading(title: titleOne),
+        const SizedBox(height: 8),
+        Expanded(child: contentOne),
+        const SizedBox(height: 12),
+        _SectionHeading(title: titleTwo),
+        const SizedBox(height: 8),
+        Expanded(child: contentTwo),
+      ],
+    );
+  }
+}
+
+class _SectionHeading extends StatelessWidget {
+  const _SectionHeading({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      title,
+      style: const TextStyle(
+        color: CommonDesignTokens.textSecondary,
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+      ),
+    );
   }
 }
 
@@ -332,27 +498,49 @@ String _sectionLabel(_QuoteCardEditorSection section) {
 
 String _templateLabel(QuoteCardTemplate value) {
   return switch (value) {
-    QuoteCardTemplate.classic => 'Classic',
-    QuoteCardTemplate.spotlight => 'Spotlight',
-    QuoteCardTemplate.editorial => 'Editorial',
-    QuoteCardTemplate.minimal => 'Minimal',
+    QuoteCardTemplate.auroraMist => 'Aurora',
+    QuoteCardTemplate.editorialBloom => 'Editorial',
+    QuoteCardTemplate.nightGlow => 'Night Glow',
+    QuoteCardTemplate.coverColumn => 'Cover',
+    QuoteCardTemplate.galleryFrame => 'Gallery',
+    QuoteCardTemplate.archiveNote => 'Archive',
   };
 }
 
 String _backgroundLabel(QuoteCardBackgroundPreset value) {
   return switch (value) {
     QuoteCardBackgroundPreset.mist => 'Mist',
-    QuoteCardBackgroundPreset.paper => 'Paper',
+    QuoteCardBackgroundPreset.bloom => 'Bloom',
     QuoteCardBackgroundPreset.forest => 'Forest',
+    QuoteCardBackgroundPreset.sunset => 'Sunset',
     QuoteCardBackgroundPreset.night => 'Night',
+    QuoteCardBackgroundPreset.archivePaper => 'Archive',
   };
 }
 
-String _layoutLabel(QuoteCardLayoutPreset value) {
+String _imageBackgroundLabel(QuoteCardBackgroundPreset value) {
+  return switch (value) {
+    QuoteCardBackgroundPreset.mist => 'Mist',
+    QuoteCardBackgroundPreset.bloom => 'Paper',
+    QuoteCardBackgroundPreset.archivePaper => 'Archive',
+    QuoteCardBackgroundPreset.night => 'Night',
+    _ => _backgroundLabel(value),
+  };
+}
+
+String _gradientLayoutLabel(QuoteCardLayoutPreset value) {
   return switch (value) {
     QuoteCardLayoutPreset.top => 'Top',
     QuoteCardLayoutPreset.center => 'Center',
     QuoteCardLayoutPreset.bottom => 'Bottom',
+  };
+}
+
+String _imageLayoutLabel(QuoteCardLayoutPreset value) {
+  return switch (value) {
+    QuoteCardLayoutPreset.top => 'Image Focus',
+    QuoteCardLayoutPreset.center => 'Balanced',
+    QuoteCardLayoutPreset.bottom => 'Text Focus',
   };
 }
 
@@ -361,15 +549,90 @@ String _fontLabel(QuoteCardFontPreset value) {
     QuoteCardFontPreset.reader => 'Reader',
     QuoteCardFontPreset.serif => 'Serif',
     QuoteCardFontPreset.sans => 'Sans',
+    QuoteCardFontPreset.displaySerif => 'Display',
+  };
+}
+
+String _imageSourceLabel(QuoteCardImageSource value) {
+  return switch (value) {
+    QuoteCardImageSource.bookCover => 'Cover',
+    QuoteCardImageSource.artworkStillLife => 'Still Life',
+    QuoteCardImageSource.artworkAbstract => 'Abstract',
+    QuoteCardImageSource.artworkBotanical => 'Botanical',
+  };
+}
+
+String _backgroundIntensityLabel(QuoteCardBackgroundIntensity value) {
+  return switch (value) {
+    QuoteCardBackgroundIntensity.subtle => 'Subtle',
+    QuoteCardBackgroundIntensity.medium => 'Medium',
+    QuoteCardBackgroundIntensity.strong => 'Strong',
   };
 }
 
 Color _backgroundSwatch(QuoteCardBackgroundPreset value) {
   return switch (value) {
     QuoteCardBackgroundPreset.mist => const Color(0xFFE7E4DD),
-    QuoteCardBackgroundPreset.paper => const Color(0xFFF1E2BA),
+    QuoteCardBackgroundPreset.bloom => const Color(0xFFE3C1B4),
     QuoteCardBackgroundPreset.forest => const Color(0xFFBCD0C0),
+    QuoteCardBackgroundPreset.sunset => const Color(0xFFE1B9A6),
     QuoteCardBackgroundPreset.night => const Color(0xFF1E2431),
+    QuoteCardBackgroundPreset.archivePaper => const Color(0xFFD3C6B3),
+  };
+}
+
+IconData _templateIcon(QuoteCardTemplate value) {
+  return switch (value) {
+    QuoteCardTemplate.auroraMist => Icons.blur_on_outlined,
+    QuoteCardTemplate.editorialBloom => Icons.view_sidebar_outlined,
+    QuoteCardTemplate.nightGlow => Icons.auto_awesome_outlined,
+    QuoteCardTemplate.coverColumn => Icons.menu_book_outlined,
+    QuoteCardTemplate.galleryFrame => Icons.photo_library_outlined,
+    QuoteCardTemplate.archiveNote => Icons.inventory_2_outlined,
+  };
+}
+
+IconData _layoutIcon(
+  QuoteCardLayoutPreset value, {
+  required bool isImageFamily,
+}) {
+  if (isImageFamily) {
+    return switch (value) {
+      QuoteCardLayoutPreset.top => Icons.image_outlined,
+      QuoteCardLayoutPreset.center => Icons.dashboard_customize_outlined,
+      QuoteCardLayoutPreset.bottom => Icons.subject_outlined,
+    };
+  }
+  return switch (value) {
+    QuoteCardLayoutPreset.top => Icons.vertical_align_top,
+    QuoteCardLayoutPreset.center => Icons.vertical_align_center,
+    QuoteCardLayoutPreset.bottom => Icons.vertical_align_bottom,
+  };
+}
+
+IconData _fontIcon(QuoteCardFontPreset value) {
+  return switch (value) {
+    QuoteCardFontPreset.reader => Icons.menu_book_outlined,
+    QuoteCardFontPreset.serif => Icons.format_size,
+    QuoteCardFontPreset.sans => Icons.text_fields,
+    QuoteCardFontPreset.displaySerif => Icons.draw_outlined,
+  };
+}
+
+IconData _imageSourceIcon(QuoteCardImageSource value) {
+  return switch (value) {
+    QuoteCardImageSource.bookCover => Icons.menu_book_outlined,
+    QuoteCardImageSource.artworkStillLife => Icons.local_florist_outlined,
+    QuoteCardImageSource.artworkAbstract => Icons.blur_circular_outlined,
+    QuoteCardImageSource.artworkBotanical => Icons.park_outlined,
+  };
+}
+
+IconData _backgroundIntensityIcon(QuoteCardBackgroundIntensity value) {
+  return switch (value) {
+    QuoteCardBackgroundIntensity.subtle => Icons.water_drop_outlined,
+    QuoteCardBackgroundIntensity.medium => Icons.lens_blur_outlined,
+    QuoteCardBackgroundIntensity.strong => Icons.brightness_high_outlined,
   };
 }
 
