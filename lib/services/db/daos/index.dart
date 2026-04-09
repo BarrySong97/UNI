@@ -1,3 +1,4 @@
+export 'annotation-notes-dao.dart';
 export 'annotations-dao.dart';
 export 'books-dao.dart';
 export 'chapters-dao.dart';

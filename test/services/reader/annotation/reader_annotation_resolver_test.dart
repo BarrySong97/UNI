@@ -106,6 +106,7 @@ AnnotationEntity _buildAnnotation({
     id: 'ann-1',
     bookId: 'book-1',
     kind: AnnotationKind.mark,
+    style: AnnotationStyle.highlight,
     quoteText: quoteText,
     anchorJson: anchor.encode(),
     color: '#FFE082',

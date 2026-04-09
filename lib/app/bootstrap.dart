@@ -9,6 +9,7 @@ import '../repositories/chapter/chapter-repository-impl.dart';
 import '../repositories/highlight/highlight-repository-impl.dart';
 import '../repositories/progress/progress-repository-impl.dart';
 import '../services/db/app-database.dart';
+import '../services/db/daos/annotation-notes-dao.dart';
 import '../services/db/daos/annotations-dao.dart';
 import '../services/db/daos/books-dao.dart';
 import '../services/db/daos/chapters-dao.dart';
@@ -44,6 +45,7 @@ class AppBootstrap {
     final chaptersDao = ChaptersDao(database: database);
     final progressDao = ProgressDao(database: database);
     final annotationsDao = AnnotationsDao(database: database);
+    final annotationNotesDao = AnnotationNotesDao(database: database);
     final highlightsDao = HighlightsDao(database: database);
 
     final bookRepository = BookRepositoryImpl(booksDao: booksDao);
@@ -51,6 +53,7 @@ class AppBootstrap {
     final progressRepository = ProgressRepositoryImpl(progressDao: progressDao);
     final annotationRepository = AnnotationRepositoryImpl(
       annotationsDao: annotationsDao,
+      annotationNotesDao: annotationNotesDao,
     );
     final highlightRepository = HighlightRepositoryImpl(
       highlightsDao: highlightsDao,

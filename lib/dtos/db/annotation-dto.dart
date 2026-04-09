@@ -5,6 +5,7 @@ class AnnotationDto {
     required this.id,
     required this.bookId,
     required this.kind,
+    required this.style,
     required this.quoteText,
     required this.anchorJson,
     required this.color,
@@ -16,6 +17,7 @@ class AnnotationDto {
   final String id;
   final String bookId;
   final String kind;
+  final String style;
   final String quoteText;
   final String anchorJson;
   final String color;
@@ -28,6 +30,7 @@ class AnnotationDto {
       id: id,
       bookId: bookId,
       kind: _annotationKindFromString(kind),
+      style: _annotationStyleFromString(style),
       quoteText: quoteText,
       anchorJson: anchorJson,
       color: color,
@@ -42,6 +45,7 @@ class AnnotationDto {
       id: entity.id,
       bookId: entity.bookId,
       kind: entity.kind.name,
+      style: entity.style.name,
       quoteText: entity.quoteText,
       anchorJson: entity.anchorJson,
       color: entity.color,
@@ -56,5 +60,13 @@ AnnotationKind _annotationKindFromString(String raw) {
   return switch (raw) {
     'mark' => AnnotationKind.mark,
     _ => AnnotationKind.mark,
+  };
+}
+
+AnnotationStyle _annotationStyleFromString(String raw) {
+  return switch (raw) {
+    'underline' => AnnotationStyle.underline,
+    'highlight' => AnnotationStyle.highlight,
+    _ => AnnotationStyle.highlight,
   };
 }
