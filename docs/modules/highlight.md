@@ -85,6 +85,7 @@
 - block 精确恢复失败时，允许退化到 same-block / same-chapter 文本匹配。
 - 无法恢复时保留 annotation 记录，但不在正文中绘制 overlay。
 - 旧 `highlights` 表在 DB v17 升级时被破坏式替换，不做 Locator 数据迁移。
+- DB v19 升级需要兼容预发布库里已存在的 `annotation_notes` 表/索引，迁移必须保持幂等，不得因重复建表而阻塞启动。
 
 ## 验收标准
 - Tooltip 中存在 `Mark` / `Edit` / `Note` / `Unmark` 动作。
