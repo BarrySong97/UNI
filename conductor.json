@@ -1,6 +1,7 @@
 {
   "scripts": {
     "setup": "bash scripts/setup.sh",
+    "run": "flutter run",
     "archive": "bash scripts/archive.sh"
   }
 }
