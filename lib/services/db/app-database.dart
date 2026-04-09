@@ -1,4 +1,5 @@
 import 'package:path/path.dart' as p;
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:sqflite/sqflite.dart';
 
 import '../../dtos/db/annotation-dto.dart';
@@ -24,6 +25,8 @@ class AppDatabase {
 
   AppDatabase._(this._backend);
 
+  static const int _databaseVersion = 19;
+
   final _DatabaseBackend _backend;
 
   static Future<AppDatabase> openPersistent() async {
@@ -31,7 +34,7 @@ class AppDatabase {
     final path = p.join(root, 'uni_reader.db');
     final database = await openDatabase(
       path,
-      version: 19,
+      version: _databaseVersion,
       onCreate: (db, _) async {
         await db.execute('''
 CREATE TABLE ${BooksTable.tableName} (
@@ -83,27 +86,13 @@ CREATE TABLE ${AnnotationsTable.tableName} (
   ${AnnotationsTable.updatedAt} INTEGER NOT NULL
 )
 ''');
-        await db.execute('''
-CREATE TABLE ${AnnotationNotesTable.tableName} (
-  ${AnnotationNotesTable.id} TEXT PRIMARY KEY,
-  ${AnnotationNotesTable.annotationId} TEXT NOT NULL,
-  ${AnnotationNotesTable.bookId} TEXT NOT NULL,
-  ${AnnotationNotesTable.text} TEXT NOT NULL,
-  ${AnnotationNotesTable.createdAt} INTEGER NOT NULL
-)
-''');
         await db.execute(
           'CREATE INDEX idx_chapters_book_idx ON ${ChaptersTable.tableName} (${ChaptersTable.bookId}, ${ChaptersTable.idx})',
         );
         await db.execute(
           'CREATE INDEX idx_annotations_book_created ON ${AnnotationsTable.tableName} (${AnnotationsTable.bookId}, ${AnnotationsTable.createdAt})',
         );
-        await db.execute(
-          'CREATE INDEX idx_annotation_notes_annotation_created ON ${AnnotationNotesTable.tableName} (${AnnotationNotesTable.annotationId}, ${AnnotationNotesTable.createdAt})',
-        );
-        await db.execute(
-          'CREATE INDEX idx_annotation_notes_book_created ON ${AnnotationNotesTable.tableName} (${AnnotationNotesTable.bookId}, ${AnnotationNotesTable.createdAt})',
-        );
+        await _createAnnotationNotesSchema(db);
         await db.execute('''
 CREATE TABLE ${ExplainCacheTable.tableName} (
   ${ExplainCacheTable.bookId} TEXT NOT NULL,
@@ -313,22 +302,12 @@ CREATE TABLE ${AnnotationsTable.tableName} (
     );
   }
 
+  @visibleForTesting
+  static Future<void> migrateToV19ForTest(DatabaseExecutor db) =>
+      _migrateToV19(db);
+
   static Future<void> _migrateToV19(DatabaseExecutor db) async {
-    await db.execute('''
-CREATE TABLE ${AnnotationNotesTable.tableName} (
-  ${AnnotationNotesTable.id} TEXT PRIMARY KEY,
-  ${AnnotationNotesTable.annotationId} TEXT NOT NULL,
-  ${AnnotationNotesTable.bookId} TEXT NOT NULL,
-  ${AnnotationNotesTable.text} TEXT NOT NULL,
-  ${AnnotationNotesTable.createdAt} INTEGER NOT NULL
-)
-''');
-    await db.execute(
-      'CREATE INDEX idx_annotation_notes_annotation_created ON ${AnnotationNotesTable.tableName} (${AnnotationNotesTable.annotationId}, ${AnnotationNotesTable.createdAt})',
-    );
-    await db.execute(
-      'CREATE INDEX idx_annotation_notes_book_created ON ${AnnotationNotesTable.tableName} (${AnnotationNotesTable.bookId}, ${AnnotationNotesTable.createdAt})',
-    );
+    await _createAnnotationNotesSchema(db);
 
     final legacyRows = await db.query(
       AnnotationsTable.tableName,
@@ -359,6 +338,24 @@ CREATE TABLE ${AnnotationNotesTable.tableName} (
         conflictAlgorithm: ConflictAlgorithm.ignore,
       );
     }
+  }
+
+  static Future<void> _createAnnotationNotesSchema(DatabaseExecutor db) async {
+    await db.execute('''
+CREATE TABLE IF NOT EXISTS ${AnnotationNotesTable.tableName} (
+  ${AnnotationNotesTable.id} TEXT PRIMARY KEY,
+  ${AnnotationNotesTable.annotationId} TEXT NOT NULL,
+  ${AnnotationNotesTable.bookId} TEXT NOT NULL,
+  ${AnnotationNotesTable.text} TEXT NOT NULL,
+  ${AnnotationNotesTable.createdAt} INTEGER NOT NULL
+)
+''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_annotation_notes_annotation_created ON ${AnnotationNotesTable.tableName} (${AnnotationNotesTable.annotationId}, ${AnnotationNotesTable.createdAt})',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_annotation_notes_book_created ON ${AnnotationNotesTable.tableName} (${AnnotationNotesTable.bookId}, ${AnnotationNotesTable.createdAt})',
+    );
   }
 
   static Future<void> _migrateToV9(DatabaseExecutor db) async {
