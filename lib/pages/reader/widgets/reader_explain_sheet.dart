@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../services/ai/ai_settings_service.dart';
 import '../../../services/search/image_search_service.dart';
+import '../../../services/reader/selection/reader_selection_text_sanitizer.dart';
 import '../../../shared/constants/common-design-tokens.dart';
 import '../../../services/ai/openai_llm_provider.dart';
 import '../../../services/db/app-database.dart';
@@ -16,6 +17,7 @@ class ReaderExplainSheet extends StatefulWidget {
   const ReaderExplainSheet({
     super.key,
     required this.selectedText,
+    required this.rawSelectedText,
     required this.pageContext,
     required this.paragraphContext,
     required this.aiSettings,
@@ -30,6 +32,7 @@ class ReaderExplainSheet extends StatefulWidget {
   });
 
   final String selectedText;
+  final String rawSelectedText;
   final String pageContext;
 
   /// The plain text of the source paragraph(s) containing the selection,
@@ -50,6 +53,7 @@ class ReaderExplainSheet extends StatefulWidget {
   static Future<void> show({
     required BuildContext context,
     required String selectedText,
+    required String rawSelectedText,
     required String pageContext,
     required String paragraphContext,
     required AiSettingsService aiSettings,
@@ -66,6 +70,7 @@ class ReaderExplainSheet extends StatefulWidget {
   }) {
     final sheet = ReaderExplainSheet(
       selectedText: selectedText,
+      rawSelectedText: rawSelectedText,
       pageContext: pageContext,
       paragraphContext: paragraphContext,
       aiSettings: aiSettings,
@@ -111,9 +116,7 @@ class ReaderExplainSheet extends StatefulWidget {
         final panelHeight = screenHeight * 0.85;
 
         return Align(
-          alignment: showOnLeft
-              ? Alignment.centerLeft
-              : Alignment.centerRight,
+          alignment: showOnLeft ? Alignment.centerLeft : Alignment.centerRight,
           child: Padding(
             padding: EdgeInsets.only(
               left: showOnLeft ? panelMargin : 0,
@@ -195,9 +198,10 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
         ? '${selectedText.substring(0, 4000)}\n(text truncated)'
         : selectedText;
 
-    _isWordOrPhrase =
-        selectedText.length <= 80 &&
-        !_sentenceEndPattern.hasMatch(selectedText);
+    _isWordOrPhrase = isReaderWordOrPhraseSelection(
+      rawSelectedText: widget.rawSelectedText,
+      normalizedSelectedText: selectedText,
+    );
 
     _containingSentence = _isWordOrPhrase
         ? _extractContainingSentence(widget.paragraphContext, selectedText)
@@ -947,8 +951,10 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
             GestureDetector(
               onTap: _openImageSearchInBrowser,
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: CommonDesignTokens.pageBackground,
                   borderRadius: BorderRadius.circular(20),
@@ -1019,7 +1025,7 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
                         strokeWidth: 2,
                         value: loadingProgress.expectedTotalBytes != null
                             ? loadingProgress.cumulativeBytesLoaded /
-                                loadingProgress.expectedTotalBytes!
+                                  loadingProgress.expectedTotalBytes!
                             : null,
                         color: CommonDesignTokens.headerLabelColor,
                       ),
@@ -1071,7 +1077,7 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
                             color: Colors.white70,
                             value: progress.expectedTotalBytes != null
                                 ? progress.cumulativeBytesLoaded /
-                                    progress.expectedTotalBytes!
+                                      progress.expectedTotalBytes!
                                 : null,
                           ),
                         );
