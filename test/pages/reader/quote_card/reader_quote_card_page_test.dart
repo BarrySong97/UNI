@@ -111,6 +111,42 @@ void main() {
     );
   });
 
+  testWidgets('tablet template cards stay bookmark-sized and show previews', (
+    tester,
+  ) async {
+    await pumpPage(tester, size: const Size(1180, 900));
+
+    final optionFinder = find.byKey(
+      const ValueKey<String>('quote-card-option-template-aurora'),
+    );
+    final previewFinder = find.byKey(
+      const ValueKey<String>('quote-card-template-preview-aurora'),
+    );
+
+    expect(previewFinder, findsOneWidget);
+
+    final optionSize = tester.getSize(optionFinder);
+    final previewSize = tester.getSize(previewFinder);
+    expect(optionSize.width, greaterThanOrEqualTo(100));
+    expect(optionSize.width, lessThan(120));
+    expect(optionSize.height, greaterThan(300));
+    expect(previewSize.height, greaterThan(optionSize.height - 52));
+
+    final optionContainer = tester.widget<AnimatedContainer>(
+      find.descendant(of: optionFinder, matching: find.byType(AnimatedContainer)),
+    );
+    final optionDecoration = optionContainer.decoration! as BoxDecoration;
+    expect(optionDecoration.borderRadius, BorderRadius.zero);
+
+    final previewBody = tester.widget<Container>(
+      find.byKey(
+        const ValueKey<String>('quote-card-template-preview-body-aurora'),
+      ),
+    );
+    final previewDecoration = previewBody.decoration! as BoxDecoration;
+    expect(previewDecoration.borderRadius, isNull);
+  });
+
   testWidgets('background panel adapts between gradient and image families', (
     tester,
   ) async {

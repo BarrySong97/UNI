@@ -46,12 +46,15 @@ enum _QuoteCardEditorSection { template, background, layout, font, visibility }
 class _QuoteCardEditorPanelState extends State<QuoteCardEditorPanel> {
   _QuoteCardEditorSection _section = _QuoteCardEditorSection.template;
 
+  bool get _isSidePanel =>
+      widget.mode == QuoteCardEditorPanelMode.sidePanel;
+
   bool get _isImageFamily =>
       widget.draft.template.family == QuoteCardTemplateFamily.image;
 
   @override
   Widget build(BuildContext context) {
-    final isSidePanel = widget.mode == QuoteCardEditorPanelMode.sidePanel;
+    final isSidePanel = _isSidePanel;
 
     return Container(
       key: const ValueKey<String>('quote-card-editor-panel'),
@@ -127,10 +130,17 @@ class _QuoteCardEditorPanelState extends State<QuoteCardEditorPanel> {
       selectedValue: widget.draft.template,
       labelOf: _templateLabel,
       onTap: widget.onTemplateChanged,
-      iconOf: _templateIcon,
       helperOf: (value) => value.family == QuoteCardTemplateFamily.gradient
           ? 'Gradient'
           : 'Image',
+      previewBuilder: (value, selected) => _TemplateOptionPreview(
+        key: ValueKey<String>(
+          'quote-card-template-preview-${_keyLabel(_templateLabel(value))}',
+        ),
+        template: value,
+        selected: selected,
+        compact: !_isSidePanel,
+      ),
     );
   }
 
@@ -152,17 +162,18 @@ class _QuoteCardEditorPanelState extends State<QuoteCardEditorPanel> {
           onTap: widget.onBackgroundChanged,
           swatchColor: _backgroundSwatch,
         ),
-        titleTwo: 'Image',
-        contentTwo: _buildSingleRowOptions<QuoteCardImageSource>(
+      titleTwo: 'Image',
+      contentTwo: _buildSingleRowOptions<QuoteCardImageSource>(
           keyName: 'image-source',
           values: QuoteCardImageSource.values,
           selectedValue: widget.draft.imageSource,
           labelOf: _imageSourceLabel,
           onTap: widget.onImageSourceChanged,
-          iconOf: _imageSourceIcon,
-        ),
-      );
-    }
+        iconOf: _imageSourceIcon,
+      ),
+      useFlexibleRows: !_isSidePanel,
+    );
+  }
 
     return _AdaptiveOptionsColumn(
       key: const ValueKey<String>('quote-card-options-background'),
@@ -184,6 +195,7 @@ class _QuoteCardEditorPanelState extends State<QuoteCardEditorPanel> {
         onTap: widget.onBackgroundIntensityChanged,
         iconOf: _backgroundIntensityIcon,
       ),
+      useFlexibleRows: !_isSidePanel,
     );
   }
 
@@ -309,8 +321,22 @@ class _QuoteCardEditorPanelState extends State<QuoteCardEditorPanel> {
     IconData Function(T value)? iconOf,
     String Function(T value)? helperOf,
     Color Function(T value)? swatchColor,
+    Widget Function(T value, bool selected)? previewBuilder,
   }) {
-    return ListView.separated(
+    final isPreviewRow = previewBuilder != null;
+    final useRectTile = isPreviewRow;
+    final cardWidth = _isSidePanel
+        ? isPreviewRow
+              ? 108.0
+              : 118.0
+        : 108.0;
+    final listHeight = _isSidePanel
+        ? isPreviewRow
+              ? null
+              : 128.0
+        : null;
+
+    final listView = ListView.separated(
       key: ValueKey<String>('quote-card-options-$keyName'),
       scrollDirection: Axis.horizontal,
       itemCount: values.length,
@@ -323,17 +349,17 @@ class _QuoteCardEditorPanelState extends State<QuoteCardEditorPanel> {
           key: ValueKey<String>(
             'quote-card-option-$keyName-${_keyLabel(label)}',
           ),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: useRectTile ? BorderRadius.zero : BorderRadius.circular(16),
           onTap: () => onTap(value),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
-            width: 108,
-            padding: const EdgeInsets.all(10),
+            width: cardWidth,
+            padding: EdgeInsets.all(_isSidePanel ? 4 : 10),
             decoration: BoxDecoration(
               color: selected
                   ? const Color(0xFFF7F3EE)
                   : CommonDesignTokens.pageBackground,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: useRectTile ? BorderRadius.zero : BorderRadius.circular(16),
               border: Border.all(
                 color: selected
                     ? CommonDesignTokens.headerLabelColor
@@ -343,9 +369,13 @@ class _QuoteCardEditorPanelState extends State<QuoteCardEditorPanel> {
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: <Widget>[
-                if (swatchColor != null)
+                if (previewBuilder != null)
+                  if (_isSidePanel)
+                    Expanded(child: previewBuilder(value, selected))
+                  else
+                    previewBuilder(value, selected)
+                else if (swatchColor != null)
                   Container(
                     width: 24,
                     height: 24,
@@ -372,6 +402,10 @@ class _QuoteCardEditorPanelState extends State<QuoteCardEditorPanel> {
                       size: 14,
                     ),
                   ),
+                if (previewBuilder != null && _isSidePanel)
+                  const SizedBox(height: 6)
+                else
+                  const Spacer(),
                 Text(
                   label,
                   maxLines: 1,
@@ -382,12 +416,31 @@ class _QuoteCardEditorPanelState extends State<QuoteCardEditorPanel> {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+                if (helperOf != null) ...<Widget>[
+                  const SizedBox(height: 1),
+                  Text(
+                    helperOf(value),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: CommonDesignTokens.textSecondary,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
         );
       },
     );
+
+    if (listHeight == null) {
+      return listView;
+    }
+
+    return SizedBox(height: listHeight, child: listView);
   }
 }
 
@@ -398,12 +451,14 @@ class _AdaptiveOptionsColumn extends StatelessWidget {
     required this.contentOne,
     required this.titleTwo,
     required this.contentTwo,
+    this.useFlexibleRows = true,
   });
 
   final String titleOne;
   final Widget contentOne;
   final String titleTwo;
   final Widget contentTwo;
+  final bool useFlexibleRows;
 
   @override
   Widget build(BuildContext context) {
@@ -412,13 +467,236 @@ class _AdaptiveOptionsColumn extends StatelessWidget {
       children: <Widget>[
         _SectionHeading(title: titleOne),
         const SizedBox(height: 8),
-        Expanded(child: contentOne),
+        if (useFlexibleRows) Expanded(child: contentOne) else contentOne,
         const SizedBox(height: 12),
         _SectionHeading(title: titleTwo),
         const SizedBox(height: 8),
-        Expanded(child: contentTwo),
+        if (useFlexibleRows) Expanded(child: contentTwo) else contentTwo,
       ],
     );
+  }
+}
+
+class _TemplateOptionPreview extends StatelessWidget {
+  const _TemplateOptionPreview({
+    super.key,
+    required this.template,
+    required this.selected,
+    required this.compact,
+  });
+
+  final QuoteCardTemplate template;
+  final bool selected;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final borderColor = selected
+        ? CommonDesignTokens.headerLabelColor.withValues(alpha: 0.5)
+        : Colors.white.withValues(alpha: 0.55);
+    final previewKey = ValueKey<String>(
+      'quote-card-template-preview-body-${_keyLabel(_templateLabel(template))}',
+    );
+    final quoteColor = switch (template) {
+      QuoteCardTemplate.nightGlow => Colors.white,
+      _ => const Color(0xFF392F27),
+    };
+
+    final previewChild = Container(
+      key: previewKey,
+      decoration: BoxDecoration(
+        border: Border.all(color: borderColor),
+        gradient: _templatePreviewGradient(template),
+        color: _templatePreviewGradient(template) == null
+            ? _templatePreviewColor(template)
+            : null,
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: <Widget>[
+          ..._templatePreviewAccents(template),
+          Positioned(
+            top: compact ? 8 : 12,
+            left: compact ? 8 : 10,
+            child: Text(
+              '“',
+              style: TextStyle(
+                color: quoteColor.withValues(alpha: 0.82),
+                fontSize: compact ? 16 : 20,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Positioned(
+            left: compact ? 8 : 10,
+            right: compact ? 8 : 10,
+            top: compact ? 42 : 86,
+            child: Column(
+              children: <Widget>[
+                _MiniLine(widthFactor: 0.92, color: quoteColor),
+                SizedBox(height: compact ? 5 : 8),
+                _MiniLine(widthFactor: 0.74, color: quoteColor),
+              ],
+            ),
+          ),
+          Positioned(
+            left: compact ? 8 : 10,
+            right: compact ? 18 : 24,
+            bottom: compact ? 10 : 14,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                _MiniLine(
+                  widthFactor: 0.52,
+                  color: quoteColor.withValues(alpha: 0.72),
+                  thickness: 2,
+                ),
+                SizedBox(height: compact ? 4 : 6),
+                _MiniLine(
+                  widthFactor: 0.38,
+                  color: quoteColor.withValues(alpha: 0.58),
+                  thickness: 2,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (!compact) {
+      return SizedBox.expand(child: previewChild);
+    }
+
+    return Center(
+      child: SizedBox(
+        width: 56,
+        child: AspectRatio(
+          aspectRatio: 0.62,
+          child: previewChild,
+        ),
+      ),
+    );
+  }
+}
+
+class _MiniLine extends StatelessWidget {
+  const _MiniLine({
+    required this.widthFactor,
+    required this.color,
+    this.thickness = 3,
+  });
+
+  final double widthFactor;
+  final Color color;
+  final double thickness;
+
+  @override
+  Widget build(BuildContext context) {
+    return FractionallySizedBox(
+      widthFactor: widthFactor,
+      alignment: Alignment.centerLeft,
+      child: Container(
+        height: thickness,
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.78),
+          borderRadius: BorderRadius.circular(thickness),
+        ),
+      ),
+    );
+  }
+}
+
+LinearGradient? _templatePreviewGradient(QuoteCardTemplate template) {
+  return switch (template) {
+    QuoteCardTemplate.auroraMist => const LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: <Color>[Color(0xFFF7EDE2), Color(0xFFE8F2F1), Color(0xFFE6E1F4)],
+    ),
+    QuoteCardTemplate.editorialBloom => const LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: <Color>[Color(0xFFF4ECE3), Color(0xFFE7DDD1)],
+    ),
+    QuoteCardTemplate.nightGlow => const LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: <Color>[Color(0xFF2B2140), Color(0xFF111A2E), Color(0xFF0B1020)],
+    ),
+    _ => null,
+  };
+}
+
+Color _templatePreviewColor(QuoteCardTemplate template) {
+  return switch (template) {
+    QuoteCardTemplate.coverColumn => const Color(0xFFF1ECE4),
+    QuoteCardTemplate.galleryFrame => const Color(0xFFE8E5DF),
+    QuoteCardTemplate.archiveNote => const Color(0xFFF4EDDD),
+    _ => Colors.transparent,
+  };
+}
+
+List<Widget> _templatePreviewAccents(QuoteCardTemplate template) {
+  switch (template) {
+    case QuoteCardTemplate.coverColumn:
+      return <Widget>[
+        Positioned(
+          top: 8,
+          bottom: 8,
+          left: 8,
+          width: 20,
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              gradient: const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: <Color>[Color(0xFFCEC3B2), Color(0xFFB59F86)],
+              ),
+            ),
+          ),
+        ),
+      ];
+    case QuoteCardTemplate.galleryFrame:
+      return <Widget>[
+        Positioned(
+          top: 10,
+          left: 10,
+          right: 10,
+          height: 34,
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              color: Colors.white.withValues(alpha: 0.45),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.75)),
+            ),
+          ),
+        ),
+      ];
+    case QuoteCardTemplate.archiveNote:
+      return <Widget>[
+        Positioned(
+          top: 10,
+          left: 16,
+          right: 16,
+          height: 8,
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(999),
+              color: const Color(0xFFB99E74).withValues(alpha: 0.45),
+            ),
+          ),
+        ),
+      ];
+    default:
+      return const <Widget>[];
   }
 }
 
@@ -578,17 +856,6 @@ Color _backgroundSwatch(QuoteCardBackgroundPreset value) {
     QuoteCardBackgroundPreset.sunset => const Color(0xFFE1B9A6),
     QuoteCardBackgroundPreset.night => const Color(0xFF1E2431),
     QuoteCardBackgroundPreset.archivePaper => const Color(0xFFD3C6B3),
-  };
-}
-
-IconData _templateIcon(QuoteCardTemplate value) {
-  return switch (value) {
-    QuoteCardTemplate.auroraMist => Icons.blur_on_outlined,
-    QuoteCardTemplate.editorialBloom => Icons.view_sidebar_outlined,
-    QuoteCardTemplate.nightGlow => Icons.auto_awesome_outlined,
-    QuoteCardTemplate.coverColumn => Icons.menu_book_outlined,
-    QuoteCardTemplate.galleryFrame => Icons.photo_library_outlined,
-    QuoteCardTemplate.archiveNote => Icons.inventory_2_outlined,
   };
 }
 

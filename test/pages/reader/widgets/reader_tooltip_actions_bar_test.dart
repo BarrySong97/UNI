@@ -4,7 +4,7 @@ import 'package:uni/pages/reader/models/reader_tooltip_action_spec.dart';
 import 'package:uni/pages/reader/widgets/reader_tooltip_actions_bar.dart';
 
 void main() {
-  testWidgets('focused single mark shows full tooltip action set', (
+  testWidgets('focused single mark hides quote card action', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -36,7 +36,10 @@ void main() {
     );
     expect(find.byKey(const ValueKey('reader-tooltip-note')), findsOneWidget);
     expect(find.byKey(const ValueKey('reader-tooltip-unmark')), findsOneWidget);
-    expect(find.text('Unmark'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('reader-tooltip-quote-card')),
+      findsNothing,
+    );
     expect(
       find.byKey(const ValueKey('reader-tooltip-read-aloud')),
       findsOneWidget,
