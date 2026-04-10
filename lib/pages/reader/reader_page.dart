@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -69,6 +71,7 @@ class _ReaderPageState extends State<ReaderPage>
       const SelectionToAnnotationMapper();
   final ReaderAnnotationResolver _annotationResolver =
       const ReaderAnnotationResolver();
+  StreamSubscription<dynamic>? _androidKeyEventSub;
   final FocusNode _pageTurnFocusNode = FocusNode();
   bool _didInitDependencies = false;
 
@@ -134,6 +137,7 @@ class _ReaderPageState extends State<ReaderPage>
     _store = widget.storeManager.getStore(widget.book.id);
     _store.addListener(_onStoreChanged);
     WidgetsBinding.instance.addObserver(this);
+    _initPageTurnListeners();
 
     _pageAnimController =
         AnimationController(
@@ -166,6 +170,7 @@ class _ReaderPageState extends State<ReaderPage>
     final mq = MediaQuery.of(context);
     _readingTimeTracker.onAppForeground();
     _readingTimeTracker.onInteraction();
+    _pageTurnFocusNode.requestFocus();
 
     final isDual = mq.size.width >= kTabletBreakpoint;
     final viewportSize = isDual
@@ -199,6 +204,9 @@ class _ReaderPageState extends State<ReaderPage>
     switch (state) {
       case AppLifecycleState.resumed:
         _readingTimeTracker.onAppForeground();
+        if (!_isTextInputActive()) {
+          _pageTurnFocusNode.requestFocus();
+        }
         break;
       case AppLifecycleState.inactive:
       case AppLifecycleState.hidden:
@@ -572,6 +580,7 @@ class _ReaderPageState extends State<ReaderPage>
   @override
   void dispose() {
     _pageAnimController.dispose();
+    _androidKeyEventSub?.cancel();
     _pageTurnFocusNode.dispose();
     _store.removeListener(_onStoreChanged);
     WidgetsBinding.instance.removeObserver(this);
@@ -1890,6 +1899,40 @@ class _ReaderPageState extends State<ReaderPage>
   // External page-turn signal handling (Bluetooth page turners, stylus pens)
   // ---------------------------------------------------------------------------
 
+  // Android KeyEvent codes for arrow and page keys.
+  static const int _kAndroidDpadLeft = 21;
+  static const int _kAndroidDpadRight = 22;
+  static const int _kAndroidDpadUp = 19;
+  static const int _kAndroidDpadDown = 20;
+  static const int _kAndroidPageUp = 92;
+  static const int _kAndroidPageDown = 93;
+
+  void _initPageTurnListeners() {
+    if (!kIsWeb && Platform.isAndroid) {
+      const channel = EventChannel('com.uni.reader/hardware_key');
+      _androidKeyEventSub = channel.receiveBroadcastStream().listen(
+        _handleAndroidKeyCode,
+      );
+    }
+  }
+
+  void _handleAndroidKeyCode(dynamic keyCode) {
+    if (keyCode is! int) return;
+
+    switch (keyCode) {
+      case _kAndroidDpadRight:
+      case _kAndroidDpadDown:
+      case _kAndroidPageDown:
+        _handlePageTurnIntent(isNext: true);
+        return;
+      case _kAndroidDpadLeft:
+      case _kAndroidDpadUp:
+      case _kAndroidPageUp:
+        _handlePageTurnIntent(isNext: false);
+        return;
+    }
+  }
+
   KeyEventResult _handlePageTurnKeyEvent(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
@@ -1898,18 +1941,39 @@ class _ReaderPageState extends State<ReaderPage>
     if (key == LogicalKeyboardKey.arrowRight ||
         key == LogicalKeyboardKey.arrowDown ||
         key == LogicalKeyboardKey.pageDown) {
-      _startTapPageTurn(isNext: true);
-      _recordInteraction();
-      return KeyEventResult.handled;
+      return _handlePageTurnIntent(isNext: true);
     }
     if (key == LogicalKeyboardKey.arrowLeft ||
         key == LogicalKeyboardKey.arrowUp ||
         key == LogicalKeyboardKey.pageUp) {
-      _startTapPageTurn(isNext: false);
-      _recordInteraction();
-      return KeyEventResult.handled;
+      return _handlePageTurnIntent(isNext: false);
     }
     return KeyEventResult.ignored;
+  }
+
+  KeyEventResult _handlePageTurnIntent({required bool isNext}) {
+    if (_isTextInputActive()) {
+      return KeyEventResult.ignored;
+    }
+    _startTapPageTurn(isNext: isNext);
+    _recordInteraction();
+    return KeyEventResult.handled;
+  }
+
+  bool _isTextInputActive() {
+    final focus = FocusManager.instance.primaryFocus;
+    if (focus == null) return false;
+    final ctx = focus.context;
+    if (ctx == null) return false;
+    var editing = false;
+    ctx.visitAncestorElements((element) {
+      if (element.widget is EditableText) {
+        editing = true;
+        return false;
+      }
+      return true;
+    });
+    return editing;
   }
 
   void _goNextPage({bool isSelectionTurn = false}) {
@@ -1975,53 +2039,54 @@ class _ReaderPageState extends State<ReaderPage>
       autofocus: true,
       onKeyEvent: _handlePageTurnKeyEvent,
       child: AnnotatedRegion<SystemUiOverlayStyle>(
-      value: prefs.theme.isDark
-          ? SystemUiOverlayStyle.light
-          : SystemUiOverlayStyle.dark,
-      child: Scaffold(
-        backgroundColor: prefs.theme.backgroundColor,
-        body: Listener(
-          behavior: HitTestBehavior.translucent,
-          onPointerDown: (_) => _recordInteraction(),
-          onPointerMove: (_) => _recordInteraction(),
-          onPointerSignal: (_) => _recordInteraction(),
-          child: Stack(
-            children: [
-              if (initialLoading)
-                _buildLoading(prefs)
-              else if (_store.error != null)
-                _buildError(prefs)
-              else
-                _buildReader(prefs),
-              if (_shouldShowPreviewReturnButton)
-                _buildPreviewReturnButton(prefs, mq.padding.top),
-              // Controls overlay — rendered above loading/content so it stays
-              // visible during chapter transitions triggered from the panel.
-              if (_store.showControls && _store.book != null)
-                ReaderControlsOverlay(
-                  preferences: prefs,
-                  chapterTitle: _chapterTitle,
-                  currentPage: _store.currentPageIndex,
-                  totalPages: _store.totalPagesInChapter,
-                  bookPercent: _store.bookPositionPercent,
-                  onClose: () => _store.hideControls(),
-                  onBack: () => Navigator.of(context).pop(),
-                  onPreferencesChanged: (newPrefs) {
-                    _store.updatePreferences(newPrefs);
-                  },
-                  toc: _store.toc,
-                  chapters: _store.bookData?.chapters ?? const [],
-                  currentChapterIndex: _store.currentDisplayChapterIndex,
-                  chapterTitleForPercent: _store.chapterTitleAtPositionPercent,
-                  onChapterSelected: _goToChapterFromControls,
-                  onPercentChanged: _goToBookPercentFromControls,
-                  onAnnotationsPressed: _openAnnotationsPanel,
-                  onMorePressed: _onMorePressed,
-                ),
-            ],
+        value: prefs.theme.isDark
+            ? SystemUiOverlayStyle.light
+            : SystemUiOverlayStyle.dark,
+        child: Scaffold(
+          backgroundColor: prefs.theme.backgroundColor,
+          body: Listener(
+            behavior: HitTestBehavior.translucent,
+            onPointerDown: (_) => _recordInteraction(),
+            onPointerMove: (_) => _recordInteraction(),
+            onPointerSignal: (_) => _recordInteraction(),
+            child: Stack(
+              children: [
+                if (initialLoading)
+                  _buildLoading(prefs)
+                else if (_store.error != null)
+                  _buildError(prefs)
+                else
+                  _buildReader(prefs),
+                if (_shouldShowPreviewReturnButton)
+                  _buildPreviewReturnButton(prefs, mq.padding.top),
+                // Controls overlay — rendered above loading/content so it stays
+                // visible during chapter transitions triggered from the panel.
+                if (_store.showControls && _store.book != null)
+                  ReaderControlsOverlay(
+                    preferences: prefs,
+                    chapterTitle: _chapterTitle,
+                    currentPage: _store.currentPageIndex,
+                    totalPages: _store.totalPagesInChapter,
+                    bookPercent: _store.bookPositionPercent,
+                    onClose: () => _store.hideControls(),
+                    onBack: () => Navigator.of(context).pop(),
+                    onPreferencesChanged: (newPrefs) {
+                      _store.updatePreferences(newPrefs);
+                    },
+                    toc: _store.toc,
+                    chapters: _store.bookData?.chapters ?? const [],
+                    currentChapterIndex: _store.currentDisplayChapterIndex,
+                    chapterTitleForPercent:
+                        _store.chapterTitleAtPositionPercent,
+                    onChapterSelected: _goToChapterFromControls,
+                    onPercentChanged: _goToBookPercentFromControls,
+                    onAnnotationsPressed: _openAnnotationsPanel,
+                    onMorePressed: _onMorePressed,
+                  ),
+              ],
+            ),
           ),
         ),
-      ),
       ),
     );
   }
