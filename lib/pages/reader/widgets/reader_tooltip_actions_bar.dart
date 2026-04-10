@@ -11,6 +11,7 @@ class ReaderTooltipActionsBar extends StatelessWidget {
     this.onExplainPressed,
     this.onNotePressed,
     this.onUnmarkPressed,
+    this.onQuoteCardPressed,
     this.onReadAloudPressed,
   });
 
@@ -20,6 +21,7 @@ class ReaderTooltipActionsBar extends StatelessWidget {
   final VoidCallback? onExplainPressed;
   final VoidCallback? onNotePressed;
   final VoidCallback? onUnmarkPressed;
+  final VoidCallback? onQuoteCardPressed;
   final VoidCallback? onReadAloudPressed;
 
   @override
@@ -81,6 +83,12 @@ class ReaderTooltipActionsBar extends StatelessWidget {
                   actionSpec.showNoteAction ||
                   actionSpec.showUnmarkAction)
                 const _TooltipDivider(),
+              _TooltipButton(
+                key: const ValueKey('reader-tooltip-quote-card'),
+                label: 'Quote Card',
+                onPressed: onQuoteCardPressed,
+              ),
+              const _TooltipDivider(),
               _TooltipButton(
                 key: const ValueKey('reader-tooltip-read-aloud'),
                 label: 'Read Aloud',

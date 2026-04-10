@@ -24,6 +24,8 @@ import '../../services/reader/selection/cross_page_selection.dart';
 import '../../services/reader/selection/page_hit_test.dart';
 import '../../shared/constants/reader-constants.dart';
 import '../../shared/layout/responsive_layout.dart';
+import 'quote_card/models/reader_quote_card_payload.dart';
+import 'quote_card/reader_quote_card_page.dart';
 import '../../stores/annotation/annotation-store.dart';
 import '../../stores/reader/reader_store.dart';
 import '../../stores/reader/reader_store_manager.dart';
@@ -2632,6 +2634,27 @@ class _ReaderPageState extends State<ReaderPage>
         onNotePressed: () async {
           await _openNoteComposerForSelection(
             annotation: canEditSingle ? exactMatches.first : null,
+          );
+        },
+        onQuoteCardPressed: () async {
+          final selectedText = extractCrossPageText();
+          if (selectedText.isEmpty) return;
+          await ReaderQuoteCardPage.show(
+            context: context,
+            payload: ReaderQuoteCardPayload(
+              bookId: widget.book.id,
+              bookTitle: widget.book.title,
+              bookAuthor: widget.book.author,
+              selectedText: selectedText,
+              readerFontFamily: _store.preferences.fontFamily,
+              readerThemeName: _store.preferences.theme.name,
+              coverDataUrl: widget.book.coverUrl,
+              chapterTitle: _store.currentChapterTitle,
+              pageLabel: _store.totalBookPages > 0
+                  ? 'Page ${_store.currentBookPage}'
+                  : 'Page ${_store.currentPageIndex + 1}',
+              collectionLabel: null,
+            ),
           );
         },
         onReadAloudPressed: () {
