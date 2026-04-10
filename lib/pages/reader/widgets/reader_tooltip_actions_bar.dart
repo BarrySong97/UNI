@@ -9,6 +9,7 @@ class ReaderTooltipActionsBar extends StatelessWidget {
     this.onPrimaryPressed,
     this.onPhoneticsPressed,
     this.onExplainPressed,
+    this.onCopyPressed,
     this.onNotePressed,
     this.onUnmarkPressed,
     this.onQuoteCardPressed,
@@ -19,6 +20,7 @@ class ReaderTooltipActionsBar extends StatelessWidget {
   final VoidCallback? onPrimaryPressed;
   final VoidCallback? onPhoneticsPressed;
   final VoidCallback? onExplainPressed;
+  final VoidCallback? onCopyPressed;
   final VoidCallback? onNotePressed;
   final VoidCallback? onUnmarkPressed;
   final VoidCallback? onQuoteCardPressed;
@@ -48,6 +50,12 @@ class ReaderTooltipActionsBar extends StatelessWidget {
                 key: const ValueKey('reader-tooltip-explain'),
                 label: 'Explain',
                 onPressed: onExplainPressed,
+              ),
+              const _TooltipDivider(),
+              _TooltipButton(
+                key: const ValueKey('reader-tooltip-copy'),
+                label: 'Copy',
+                onPressed: onCopyPressed,
               ),
               if (actionSpec.showPrimaryAction ||
                   actionSpec.showNoteAction ||

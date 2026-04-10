@@ -2737,6 +2737,11 @@ class _ReaderPageState extends State<ReaderPage>
             paragraphContext: paragraphContext,
           );
         },
+        onCopyPressed: () {
+          final selectedText = extractCrossPageText();
+          Clipboard.setData(ClipboardData(text: selectedText));
+          _clearSelection();
+        },
         onPrimaryPressed: () async {
           if (canOnlyUnmark) {
             await _handleRemoveMarks(matchedAnnotations);
@@ -2856,6 +2861,10 @@ class _ReaderPageState extends State<ReaderPage>
             pageLayout: pageLayout,
             paragraphContext: annotation.quoteText.trim(),
           );
+        },
+        onCopyPressed: () {
+          Clipboard.setData(ClipboardData(text: annotation.quoteText));
+          _clearFocusedAnnotationOverlay();
         },
         onNotePressed: () async {
           await _openNoteComposerForAnnotation(annotation);
