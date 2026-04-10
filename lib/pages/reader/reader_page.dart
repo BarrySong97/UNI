@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -69,6 +71,7 @@ class _ReaderPageState extends State<ReaderPage>
       const SelectionToAnnotationMapper();
   final ReaderAnnotationResolver _annotationResolver =
       const ReaderAnnotationResolver();
+  StreamSubscription<dynamic>? _androidKeyEventSub;
   bool _didInitDependencies = false;
 
   // -- Page swipe animation state --
@@ -133,7 +136,7 @@ class _ReaderPageState extends State<ReaderPage>
     _store = widget.storeManager.getStore(widget.book.id);
     _store.addListener(_onStoreChanged);
     WidgetsBinding.instance.addObserver(this);
-    HardwareKeyboard.instance.addHandler(_handlePageTurnKeyEvent);
+    _initPageTurnListeners();
 
     _pageAnimController =
         AnimationController(
@@ -572,6 +575,7 @@ class _ReaderPageState extends State<ReaderPage>
   @override
   void dispose() {
     _pageAnimController.dispose();
+    _androidKeyEventSub?.cancel();
     HardwareKeyboard.instance.removeHandler(_handlePageTurnKeyEvent);
     _store.removeListener(_onStoreChanged);
     WidgetsBinding.instance.removeObserver(this);
@@ -1890,12 +1894,51 @@ class _ReaderPageState extends State<ReaderPage>
   // External page-turn signal handling (Bluetooth page turners, stylus pens)
   // ---------------------------------------------------------------------------
 
+  // Android KeyEvent codes for arrow and page keys.
+  static const int _kAndroidDpadLeft = 21;
+  static const int _kAndroidDpadRight = 22;
+  static const int _kAndroidDpadUp = 19;
+  static const int _kAndroidDpadDown = 20;
+  static const int _kAndroidPageUp = 92;
+  static const int _kAndroidPageDown = 93;
+
+  void _initPageTurnListeners() {
+    // HardwareKeyboard works on iOS / macOS / desktop. On Android it only
+    // fires after the soft keyboard (IME) has been activated at least once
+    // (flutter/flutter#124101), so we also listen via a native EventChannel
+    // that uses Activity.dispatchKeyEvent to bypass the IME requirement.
+    HardwareKeyboard.instance.addHandler(_handlePageTurnKeyEvent);
+
+    if (!kIsWeb && Platform.isAndroid) {
+      const channel = EventChannel('com.uni.reader/hardware_key');
+      _androidKeyEventSub = channel.receiveBroadcastStream().listen(
+        _handleAndroidKeyCode,
+      );
+    }
+  }
+
+  void _handleAndroidKeyCode(dynamic keyCode) {
+    if (keyCode is! int) return;
+    if (_isTextInputActive()) return;
+
+    switch (keyCode) {
+      case _kAndroidDpadRight:
+      case _kAndroidDpadDown:
+      case _kAndroidPageDown:
+        _startTapPageTurn(isNext: true);
+        _recordInteraction();
+      case _kAndroidDpadLeft:
+      case _kAndroidDpadUp:
+      case _kAndroidPageUp:
+        _startTapPageTurn(isNext: false);
+        _recordInteraction();
+    }
+  }
+
   bool _handlePageTurnKeyEvent(KeyEvent event) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return false;
     }
-    // Don't intercept arrow keys when a text field is focused
-    // (e.g. annotation note composer).
     if (_isTextInputActive()) return false;
 
     final key = event.logicalKey;
