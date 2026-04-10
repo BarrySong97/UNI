@@ -69,6 +69,7 @@ class _ReaderPageState extends State<ReaderPage>
       const SelectionToAnnotationMapper();
   final ReaderAnnotationResolver _annotationResolver =
       const ReaderAnnotationResolver();
+  final FocusNode _pageTurnFocusNode = FocusNode();
   bool _didInitDependencies = false;
 
   // -- Page swipe animation state --
@@ -133,7 +134,6 @@ class _ReaderPageState extends State<ReaderPage>
     _store = widget.storeManager.getStore(widget.book.id);
     _store.addListener(_onStoreChanged);
     WidgetsBinding.instance.addObserver(this);
-    HardwareKeyboard.instance.addHandler(_handlePageTurnKeyEvent);
 
     _pageAnimController =
         AnimationController(
@@ -188,6 +188,7 @@ class _ReaderPageState extends State<ReaderPage>
       _annotationPaintBucketsByPageKey =
           _buildAnnotationPaintBucketsByPageKey();
     });
+    _pageTurnFocusNode.requestFocus();
   }
 
   @override
@@ -199,6 +200,7 @@ class _ReaderPageState extends State<ReaderPage>
     switch (state) {
       case AppLifecycleState.resumed:
         _readingTimeTracker.onAppForeground();
+        _pageTurnFocusNode.requestFocus();
         break;
       case AppLifecycleState.inactive:
       case AppLifecycleState.hidden:
@@ -572,7 +574,7 @@ class _ReaderPageState extends State<ReaderPage>
   @override
   void dispose() {
     _pageAnimController.dispose();
-    HardwareKeyboard.instance.removeHandler(_handlePageTurnKeyEvent);
+    _pageTurnFocusNode.dispose();
     _store.removeListener(_onStoreChanged);
     WidgetsBinding.instance.removeObserver(this);
     if (_didInitDependencies) {
@@ -1890,9 +1892,9 @@ class _ReaderPageState extends State<ReaderPage>
   // External page-turn signal handling (Bluetooth page turners, stylus pens)
   // ---------------------------------------------------------------------------
 
-  bool _handlePageTurnKeyEvent(KeyEvent event) {
+  KeyEventResult _handlePageTurnKeyEvent(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
-      return false;
+      return KeyEventResult.ignored;
     }
     final key = event.logicalKey;
     if (key == LogicalKeyboardKey.arrowRight ||
@@ -1900,16 +1902,16 @@ class _ReaderPageState extends State<ReaderPage>
         key == LogicalKeyboardKey.pageDown) {
       _startTapPageTurn(isNext: true);
       _recordInteraction();
-      return true;
+      return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.arrowLeft ||
         key == LogicalKeyboardKey.arrowUp ||
         key == LogicalKeyboardKey.pageUp) {
       _startTapPageTurn(isNext: false);
       _recordInteraction();
-      return true;
+      return KeyEventResult.handled;
     }
-    return false;
+    return KeyEventResult.ignored;
   }
 
   void _goNextPage({bool isSelectionTurn = false}) {
@@ -1970,11 +1972,15 @@ class _ReaderPageState extends State<ReaderPage>
     final initialLoading =
         _store.book == null || (_store.isLoading && !hasActiveSwipeTransition);
 
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: prefs.theme.isDark
-          ? SystemUiOverlayStyle.light
-          : SystemUiOverlayStyle.dark,
-      child: Scaffold(
+    return Focus(
+      focusNode: _pageTurnFocusNode,
+      autofocus: true,
+      onKeyEvent: _handlePageTurnKeyEvent,
+      child: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: prefs.theme.isDark
+            ? SystemUiOverlayStyle.light
+            : SystemUiOverlayStyle.dark,
+        child: Scaffold(
         backgroundColor: prefs.theme.backgroundColor,
         body: Listener(
           behavior: HitTestBehavior.translucent,
@@ -2016,6 +2022,7 @@ class _ReaderPageState extends State<ReaderPage>
                 ),
             ],
           ),
+        ),
         ),
       ),
     );
