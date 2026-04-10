@@ -69,6 +69,7 @@ class _ReaderPageState extends State<ReaderPage>
       const SelectionToAnnotationMapper();
   final ReaderAnnotationResolver _annotationResolver =
       const ReaderAnnotationResolver();
+  final FocusNode _pageTurnFocusNode = FocusNode();
   bool _didInitDependencies = false;
 
   // -- Page swipe animation state --
@@ -571,6 +572,7 @@ class _ReaderPageState extends State<ReaderPage>
   @override
   void dispose() {
     _pageAnimController.dispose();
+    _pageTurnFocusNode.dispose();
     _store.removeListener(_onStoreChanged);
     WidgetsBinding.instance.removeObserver(this);
     if (_didInitDependencies) {
@@ -1884,6 +1886,32 @@ class _ReaderPageState extends State<ReaderPage>
     ).showSnackBar(const SnackBar(content: Text('Jumped to mark.')));
   }
 
+  // ---------------------------------------------------------------------------
+  // External page-turn signal handling (Bluetooth page turners, stylus pens)
+  // ---------------------------------------------------------------------------
+
+  KeyEventResult _handlePageTurnKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.arrowRight ||
+        key == LogicalKeyboardKey.arrowDown ||
+        key == LogicalKeyboardKey.pageDown) {
+      _startTapPageTurn(isNext: true);
+      _recordInteraction();
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowLeft ||
+        key == LogicalKeyboardKey.arrowUp ||
+        key == LogicalKeyboardKey.pageUp) {
+      _startTapPageTurn(isNext: false);
+      _recordInteraction();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
   void _goNextPage({bool isSelectionTurn = false}) {
     _acceptPreviewJump();
     isSelectionTurn ? _store.nextSinglePage() : _store.nextPage();
@@ -1942,7 +1970,11 @@ class _ReaderPageState extends State<ReaderPage>
     final initialLoading =
         _store.book == null || (_store.isLoading && !hasActiveSwipeTransition);
 
-    return AnnotatedRegion<SystemUiOverlayStyle>(
+    return Focus(
+      focusNode: _pageTurnFocusNode,
+      autofocus: true,
+      onKeyEvent: _handlePageTurnKeyEvent,
+      child: AnnotatedRegion<SystemUiOverlayStyle>(
       value: prefs.theme.isDark
           ? SystemUiOverlayStyle.light
           : SystemUiOverlayStyle.dark,
@@ -1989,6 +2021,7 @@ class _ReaderPageState extends State<ReaderPage>
             ],
           ),
         ),
+      ),
       ),
     );
   }
