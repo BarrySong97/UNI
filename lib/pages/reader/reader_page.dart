@@ -1147,6 +1147,31 @@ class _ReaderPageState extends State<ReaderPage>
     return buffer.toString();
   }
 
+  Future<void> _openQuoteCard({required String selectedText}) async {
+    final trimmedText = selectedText.trim();
+    if (trimmedText.isEmpty) {
+      return;
+    }
+
+    await ReaderQuoteCardPage.show(
+      context: context,
+      payload: ReaderQuoteCardPayload(
+        bookId: widget.book.id,
+        bookTitle: widget.book.title,
+        bookAuthor: widget.book.author,
+        selectedText: trimmedText,
+        readerFontFamily: _store.preferences.fontFamily,
+        readerThemeName: _store.preferences.theme.name,
+        coverDataUrl: widget.book.coverUrl,
+        chapterTitle: _store.currentChapterTitle,
+        pageLabel: _store.totalBookPages > 0
+            ? 'Page ${_store.currentBookPage}'
+            : 'Page ${_store.currentPageIndex + 1}',
+        collectionLabel: null,
+      ),
+    );
+  }
+
   void _openPhoneticsSheet(String selectedText) {
     final text = selectedText.trim();
     if (text.isEmpty) return;
@@ -2637,25 +2662,7 @@ class _ReaderPageState extends State<ReaderPage>
           );
         },
         onQuoteCardPressed: () async {
-          final selectedText = extractCrossPageText();
-          if (selectedText.isEmpty) return;
-          await ReaderQuoteCardPage.show(
-            context: context,
-            payload: ReaderQuoteCardPayload(
-              bookId: widget.book.id,
-              bookTitle: widget.book.title,
-              bookAuthor: widget.book.author,
-              selectedText: selectedText,
-              readerFontFamily: _store.preferences.fontFamily,
-              readerThemeName: _store.preferences.theme.name,
-              coverDataUrl: widget.book.coverUrl,
-              chapterTitle: _store.currentChapterTitle,
-              pageLabel: _store.totalBookPages > 0
-                  ? 'Page ${_store.currentBookPage}'
-                  : 'Page ${_store.currentPageIndex + 1}',
-              collectionLabel: null,
-            ),
-          );
+          await _openQuoteCard(selectedText: extractCrossPageText());
         },
         onReadAloudPressed: () {
           final selectedText = extractCrossPageText();
@@ -2754,6 +2761,9 @@ class _ReaderPageState extends State<ReaderPage>
         },
         onNotePressed: () async {
           await _openNoteComposerForAnnotation(annotation);
+        },
+        onQuoteCardPressed: () async {
+          await _openQuoteCard(selectedText: annotation.quoteText);
         },
         onUnmarkPressed: () async {
           await _handleRemoveMarks(<AnnotationEntity>[annotation]);

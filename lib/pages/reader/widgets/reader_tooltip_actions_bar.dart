@@ -84,12 +84,6 @@ class ReaderTooltipActionsBar extends StatelessWidget {
                   actionSpec.showUnmarkAction)
                 const _TooltipDivider(),
               _TooltipButton(
-                key: const ValueKey('reader-tooltip-quote-card'),
-                label: 'Quote Card',
-                onPressed: onQuoteCardPressed,
-              ),
-              const _TooltipDivider(),
-              _TooltipButton(
                 key: const ValueKey('reader-tooltip-read-aloud'),
                 label: 'Read Aloud',
                 onPressed: onReadAloudPressed,
