@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../entities/book-entity.dart';
+import '../../entities/explain-history-entity.dart';
 import '../../shared/constants/common-design-tokens.dart';
 import '../../shared/constants/shelf-design-tokens.dart';
 import '../../shared/layout/responsive_layout.dart';
@@ -10,6 +11,7 @@ import '../../components/library/library-empty-state.dart';
 import '../../components/library/library-header.dart';
 import '../../components/library/library-now-reading-card.dart';
 import '../../components/library/library-reading-stats.dart';
+import '../../components/library/library-word-of-day-card.dart';
 import '../../shared/utils/cover-image-cache.dart';
 import '../../app/routes/route-names.dart';
 import '../../entities/reading-time-entity.dart';
@@ -32,6 +34,8 @@ class ShelfPageLayout extends StatelessWidget {
     this.nowReadingProgress = 0,
     this.gridBooks = const <BookEntity>[],
     this.onContinueReadingTap,
+    this.wordsPreview,
+    this.onWordsMoreTap,
     this.lastImportedBookId,
     super.key,
   });
@@ -51,6 +55,8 @@ class ShelfPageLayout extends StatelessWidget {
   final double nowReadingProgress;
   final List<BookEntity> gridBooks;
   final VoidCallback? onContinueReadingTap;
+  final ExplainHistoryEntity? wordsPreview;
+  final VoidCallback? onWordsMoreTap;
   final String? lastImportedBookId;
 
   static const _palette = <Color>[
@@ -160,7 +166,7 @@ class ShelfPageLayout extends StatelessWidget {
             : _buildStatsEmptyState(),
         const SizedBox(height: 24),
         if (nowReadingBook != null) ...[
-          _buildSectionHeader('Now Reading', showViewAll: true),
+          _buildSectionHeader('Now Reading'),
           const SizedBox(height: 12),
           BookPopInWrapper(
             animate: nowReadingBook!.id == lastImportedBookId,
@@ -172,7 +178,13 @@ class ShelfPageLayout extends StatelessWidget {
           ),
           const SizedBox(height: 24),
         ],
-        if (!hasReadingProgress) _buildReadingPrompt(),
+        _buildSectionHeader(
+          'Words',
+          actionLabel: 'More',
+          onActionTap: onWordsMoreTap,
+        ),
+        const SizedBox(height: 12),
+        _buildWordsCard(),
         if (gridBooks.isNotEmpty) ...[
           const SizedBox(height: 24),
           _buildSectionHeader('Recent Books'),
@@ -227,12 +239,26 @@ class ShelfPageLayout extends StatelessWidget {
         // Left column: Now Reading
         Expanded(
           flex: 4,
-          child: nowReadingBook != null
-              ? BookPopInWrapper(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              if (nowReadingBook != null)
+                BookPopInWrapper(
                   animate: nowReadingBook!.id == lastImportedBookId,
                   child: _buildWideNowReadingCard(),
                 )
-              : _buildReadingPrompt(),
+              else
+                _buildReadingPrompt(),
+              const SizedBox(height: 24),
+              _buildSectionHeader(
+                'Words',
+                actionLabel: 'More',
+                onActionTap: onWordsMoreTap,
+              ),
+              const SizedBox(height: 12),
+              _buildWordsCard(),
+            ],
+          ),
         ),
         const SizedBox(width: 24),
         // Right column: Stats + Recent Books grid
@@ -286,8 +312,7 @@ class ShelfPageLayout extends StatelessWidget {
                   ? Image.memory(
                       coverBytes,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) =>
-                          _buildWideFallbackCover(book),
+                      errorBuilder: (_, _, _) => _buildWideFallbackCover(book),
                     )
                   : _buildWideFallbackCover(book),
             ),
@@ -749,7 +774,15 @@ class ShelfPageLayout extends StatelessWidget {
     );
   }
 
-  Widget _buildSectionHeader(String title, {bool showViewAll = false}) {
+  Widget _buildWordsCard() {
+    return LibraryWordsCard(preview: wordsPreview);
+  }
+
+  Widget _buildSectionHeader(
+    String title, {
+    String? actionLabel,
+    VoidCallback? onActionTap,
+  }) {
     return Row(
       children: <Widget>[
         Text(
@@ -760,6 +793,25 @@ class ShelfPageLayout extends StatelessWidget {
             color: ShelfDesignTokens.sectionHeaderColor,
           ),
         ),
+        const Spacer(),
+        if (actionLabel != null)
+          TextButton(
+            onPressed: onActionTap,
+            style: TextButton.styleFrom(
+              foregroundColor: CommonDesignTokens.textSecondary,
+              padding: EdgeInsets.zero,
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: Text(
+              actionLabel,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: CommonDesignTokens.textSecondary,
+              ),
+            ),
+          ),
       ],
     );
   }

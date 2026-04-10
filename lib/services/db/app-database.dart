@@ -7,6 +7,7 @@ import '../../dtos/db/annotation-note-dto.dart';
 import '../../dtos/db/book-dto.dart';
 import '../../dtos/db/chapter-dto.dart';
 import '../../dtos/db/highlight-dto.dart';
+import '../../entities/explain-history-entity.dart';
 import '../../entities/reading-time-entity.dart';
 import '../../entities/statistics-entity.dart';
 import '../../dtos/db/reading-progress-dto.dart';
@@ -462,6 +463,9 @@ CREATE TABLE IF NOT EXISTS ${AnnotationNotesTable.tableName} (
   Future<void> incrementPhoneticsCount(String bookId) =>
       _backend.incrementPhoneticsCount(bookId);
 
+  Future<List<ExplainHistoryEntity>> listExplainHistory({int? limit}) =>
+      _backend.listExplainHistory(limit: limit);
+
   Future<void> addReadingTime({
     required String bookId,
     required String dateKey,
@@ -552,6 +556,7 @@ abstract class _DatabaseBackend {
   });
   Future<void> incrementExplainCount(String bookId);
   Future<void> incrementPhoneticsCount(String bookId);
+  Future<List<ExplainHistoryEntity>> listExplainHistory({int? limit});
   Future<void> addReadingTime({
     required String bookId,
     required String dateKey,
@@ -588,8 +593,8 @@ class _InMemoryBackend implements _DatabaseBackend {
   final Map<String, AnnotationDto> _annotations = <String, AnnotationDto>{};
   final Map<String, AnnotationNoteDto> _annotationNotes =
       <String, AnnotationNoteDto>{};
-  // key: "bookId|chapterIndex|selectedText"
-  final Map<String, String> _explainCache = <String, String>{};
+  final Map<String, _ExplainCacheRecord> _explainCache =
+      <String, _ExplainCacheRecord>{};
   final Map<String, int> _explainCounts = <String, int>{};
   final Map<String, int> _phoneticsCounts = <String, int>{};
   final Map<String, int> _readingTimeSeconds = <String, int>{};
@@ -739,7 +744,8 @@ class _InMemoryBackend implements _DatabaseBackend {
     required String selectedText,
     required String contextSentence,
   }) async {
-    return _explainCache['$bookId|$chapterIndex|$selectedText|$contextSentence'];
+    return _explainCache['$bookId|$chapterIndex|$selectedText|$contextSentence']
+        ?.response;
   }
 
   @override
@@ -751,7 +757,14 @@ class _InMemoryBackend implements _DatabaseBackend {
     required String response,
   }) async {
     _explainCache['$bookId|$chapterIndex|$selectedText|$contextSentence'] =
-        response;
+        _ExplainCacheRecord(
+          bookId: bookId,
+          chapterIndex: chapterIndex,
+          selectedText: selectedText,
+          contextSentence: contextSentence,
+          response: response,
+          createdAtMillis: DateTime.now().millisecondsSinceEpoch,
+        );
   }
 
   @override
@@ -762,6 +775,32 @@ class _InMemoryBackend implements _DatabaseBackend {
   @override
   Future<void> incrementPhoneticsCount(String bookId) async {
     _phoneticsCounts[bookId] = (_phoneticsCounts[bookId] ?? 0) + 1;
+  }
+
+  @override
+  Future<List<ExplainHistoryEntity>> listExplainHistory({int? limit}) async {
+    final items =
+        _explainCache.values
+            .map(
+              (record) => ExplainHistoryEntity(
+                bookId: record.bookId,
+                bookTitle: _books[record.bookId]?.title ?? 'Unknown Book',
+                chapterIndex: record.chapterIndex,
+                selectedText: record.selectedText,
+                contextSentence: record.contextSentence,
+                response: record.response,
+                createdAt: DateTime.fromMillisecondsSinceEpoch(
+                  record.createdAtMillis,
+                ),
+              ),
+            )
+            .toList(growable: false)
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+    if (limit == null || items.length <= limit) {
+      return items;
+    }
+    return items.take(limit).toList(growable: false);
   }
 
   @override
@@ -1356,6 +1395,40 @@ class _SqfliteBackend implements _DatabaseBackend {
   }
 
   @override
+  Future<List<ExplainHistoryEntity>> listExplainHistory({int? limit}) async {
+    final rows = await _database.rawQuery(
+      'SELECT e.${ExplainCacheTable.bookId} AS book_id, '
+      'b.${BooksTable.title} AS book_title, '
+      'e.${ExplainCacheTable.chapterIndex} AS chapter_index, '
+      'e.${ExplainCacheTable.selectedText} AS selected_text, '
+      'e.${ExplainCacheTable.contextSentence} AS context_sentence, '
+      'e.${ExplainCacheTable.response} AS response, '
+      'e.${ExplainCacheTable.createdAt} AS created_at '
+      'FROM ${ExplainCacheTable.tableName} e '
+      'LEFT JOIN ${BooksTable.tableName} b '
+      'ON b.${BooksTable.id} = e.${ExplainCacheTable.bookId} '
+      'ORDER BY e.${ExplainCacheTable.createdAt} DESC '
+      '${limit == null ? '' : 'LIMIT ?'}',
+      limit == null ? null : <Object?>[limit],
+    );
+    return rows
+        .map(
+          (row) => ExplainHistoryEntity(
+            bookId: row['book_id']! as String,
+            bookTitle: (row['book_title'] as String?) ?? 'Unknown Book',
+            chapterIndex: (row['chapter_index'] as num?)?.toInt() ?? 0,
+            selectedText: (row['selected_text'] as String?) ?? '',
+            contextSentence: (row['context_sentence'] as String?) ?? '',
+            response: (row['response'] as String?) ?? '',
+            createdAt: DateTime.fromMillisecondsSinceEpoch(
+              (row['created_at'] as num?)?.toInt() ?? 0,
+            ),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  @override
   Future<void> addReadingTime({
     required String bookId,
     required String dateKey,
@@ -1714,4 +1787,22 @@ class _BookRangeAggregate {
   final String title;
   final double progressPercent;
   final int readingTimeSeconds;
+}
+
+class _ExplainCacheRecord {
+  const _ExplainCacheRecord({
+    required this.bookId,
+    required this.chapterIndex,
+    required this.selectedText,
+    required this.contextSentence,
+    required this.response,
+    required this.createdAtMillis,
+  });
+
+  final String bookId;
+  final int chapterIndex;
+  final String selectedText;
+  final String contextSentence;
+  final String response;
+  final int createdAtMillis;
 }

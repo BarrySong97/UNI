@@ -70,6 +70,9 @@ class _ShelfPageState extends State<ShelfPage> {
           onContinueReadingTap: nowReading != null
               ? () => _openReaderStub(nowReading.id)
               : null,
+          wordsPreview: state.latestExplain,
+          onWordsMoreTap: () =>
+              Navigator.of(context).pushNamed(RouteNames.words),
           lastImportedBookId: lastImportedBookId,
         );
       },

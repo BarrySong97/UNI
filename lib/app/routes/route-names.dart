@@ -6,5 +6,6 @@ abstract final class RouteNames {
   static const String bookDetail = '/book-detail';
   static const String highlights = '/highlights';
   static const String statistics = '/statistics';
+  static const String words = '/words';
   static const String wordOfDay = '/word-of-day';
 }

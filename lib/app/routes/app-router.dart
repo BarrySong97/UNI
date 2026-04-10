@@ -35,8 +35,9 @@ class AppRouter {
         return MaterialPageRoute<void>(
           builder: (_) => StatisticsPage(arguments: arguments),
         );
+      case RouteNames.words:
       case RouteNames.wordOfDay:
-        return MaterialPageRoute<void>(builder: (_) => const WordOfDayPage());
+        return MaterialPageRoute<void>(builder: (_) => const WordsPage());
       default:
         return null;
     }
