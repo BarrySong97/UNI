@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uni/entities/book-entity.dart';
+import 'package:uni/entities/explain-history-entity.dart';
 import 'package:uni/entities/reading-time-entity.dart';
 import 'package:uni/app/routes/route-names.dart';
 import 'package:uni/pages/shelf/shelf-page-layout.dart';
@@ -152,6 +153,94 @@ void main() {
     expect(
       receivedArguments?.initialPeriodPreset,
       StatisticsPeriodPreset.thisMonth,
+    );
+  });
+
+  testWidgets('shows words prompt card and handles more tap', (tester) async {
+    var moreTapped = false;
+    final book = BookEntity(
+      id: 'book-1',
+      title: 'Book One',
+      author: 'Author',
+      sourceType: 'local_epub',
+      createdAt: DateTime(2026, 3, 1),
+      updatedAt: DateTime(2026, 3, 1),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ShelfPageLayout(
+            books: <BookEntity>[book],
+            isImporting: false,
+            emptyMessage: 'No books yet',
+            importingMessage: 'Importing...',
+            onBookTap: (_, __) {},
+            onImportTap: () {},
+            nowReadingBook: book,
+            onWordsMoreTap: () => moreTapped = true,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Words'), findsOneWidget);
+    expect(find.text('More'), findsOneWidget);
+    expect(find.text('Start building your words list'), findsOneWidget);
+    expect(
+      find.text('Select a word in Reader and tap Explain.'),
+      findsOneWidget,
+    );
+
+    await tester.ensureVisible(find.text('More'));
+    await tester.tap(find.text('More'));
+    await tester.pump();
+
+    expect(moreTapped, isTrue);
+  });
+
+  testWidgets('shows latest explain preview in words card', (tester) async {
+    final book = BookEntity(
+      id: 'book-1',
+      title: 'Book One',
+      author: 'Author',
+      sourceType: 'local_epub',
+      createdAt: DateTime(2026, 3, 1),
+      updatedAt: DateTime(2026, 3, 1),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ShelfPageLayout(
+            books: <BookEntity>[book],
+            isImporting: false,
+            emptyMessage: 'No books yet',
+            importingMessage: 'Importing...',
+            onBookTap: (_, __) {},
+            onImportTap: () {},
+            nowReadingBook: book,
+            wordsPreview: ExplainHistoryEntity(
+              bookId: 'book-1',
+              bookTitle: 'Book One',
+              chapterIndex: 0,
+              selectedText: 'vivid',
+              contextSentence: 'The memory stayed vivid.',
+              response:
+                  '{"meaningExplain":"very clear and strong","detailExplain":["Used here for a memory that stays bright."]}',
+              createdAt: DateTime(2026, 3, 2),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('vivid'), findsOneWidget);
+    expect(find.text('very clear and strong'), findsNothing);
+    expect(find.text('Book One'), findsWidgets);
+    expect(
+      find.byKey(const ValueKey<String>('words-preview-rich-text')),
+      findsOneWidget,
     );
   });
 }

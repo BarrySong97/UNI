@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 
 import '../../entities/book-entity.dart';
+import '../../entities/explain-history-entity.dart';
 import '../../entities/reading-time-entity.dart';
 import '../../repositories/book/book-repository.dart';
 import '../../repositories/progress/progress-repository.dart';
@@ -58,6 +59,7 @@ class LibraryStore extends ChangeNotifier {
       final progressData = await _loadProgressData(books);
       final readingTime = await _loadCurrentMonthReadingTime();
       final booksReadThisYear = await _loadBooksReadThisYear();
+      final latestExplain = await _loadLatestExplainPreview();
       _state = _state.copyWith(
         books: books,
         filteredBooks: _filterByCategory(books, _state.activeCategory),
@@ -66,6 +68,7 @@ class LibraryStore extends ChangeNotifier {
         progressUpdatedMap: progressData.updatedMap,
         readingTime: readingTime,
         booksReadThisYear: booksReadThisYear,
+        latestExplain: latestExplain,
         isLoading: false,
         errorMessage: null,
       );
@@ -84,12 +87,14 @@ class LibraryStore extends ChangeNotifier {
       final progressData = await _loadProgressData(_state.books);
       final readingTime = await _loadCurrentMonthReadingTime();
       final booksReadThisYear = await _loadBooksReadThisYear();
+      final latestExplain = await _loadLatestExplainPreview();
       _state = _state.copyWith(
         progressMap: progressData.percentMap,
         progressLocatorMap: progressData.locatorMap,
         progressUpdatedMap: progressData.updatedMap,
         readingTime: readingTime,
         booksReadThisYear: booksReadThisYear,
+        latestExplain: latestExplain,
         filteredBooks: _filterByCategory(_state.books, _state.activeCategory),
       );
       notifyListeners();
@@ -113,6 +118,31 @@ class LibraryStore extends ChangeNotifier {
       progressThreshold: _booksReadProgressThreshold,
       readingTimeThresholdSeconds: _booksReadTimeThresholdSeconds,
     );
+  }
+
+  Future<ExplainHistoryEntity?> _loadLatestExplainPreview() async {
+    final history = await _database.listExplainHistory(limit: 20);
+    for (final item in history) {
+      if (_isWordsPreviewCandidate(item.selectedText)) {
+        return item;
+      }
+    }
+    if (history.isEmpty) {
+      return null;
+    }
+    return history.first;
+  }
+
+  bool _isWordsPreviewCandidate(String text) {
+    final normalized = text.trim();
+    if (normalized.isEmpty || normalized.length > 40) {
+      return false;
+    }
+    final segments = normalized
+        .split(RegExp(r'\s+'))
+        .where((segment) => segment.isNotEmpty)
+        .toList(growable: false);
+    return segments.isNotEmpty && segments.length <= 3;
   }
 
   Future<_ProgressData> _loadProgressData(List<BookEntity> books) async {

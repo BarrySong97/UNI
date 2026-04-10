@@ -2,7 +2,7 @@
 
 ## Module Purpose
 The app has two main book-related pages:
-- **Shelf** (`ShelfPage`, tab 0): The home dashboard with reading stats, Now Reading card, Word of Day, and a book grid (no category filters).
+- **Shelf** (`ShelfPage`, tab 0): The home dashboard with reading stats, Now Reading card, a `Words` section fed by Explain history, and a book grid (no category filters).
 - **Library** (`LibraryPage`, tab 1): A dedicated book browsing page with category tabs (All/Reading/Finished) and a 2-column book grid.
 - **Statistics** (`StatisticsPage`, pushed from Shelf stat cards): A detailed analytics page with separate `Reading Time` and `Books Read` views plus reusable time-block filtering.
 
@@ -10,7 +10,7 @@ Both pages share the same data source (`LibraryStore`) and reusable components (
 
 ## Boundary
 ### In
-- Shelf dashboard layout (Header / Stats / Now Reading / Word of the Day / Book Grid)
+- Shelf dashboard layout (Header / Stats / Now Reading / Words / Book Grid)
 - Library page with category filter tabs and 2-column grid
 - Statistics page layout and filtering (`This Month` / `This Year` / `Pick Month`)
 - Book list loading and display
@@ -69,11 +69,13 @@ lib/stores/library/       — LibraryStore + LibraryState
 7. When leaving reader, progress is flushed and `LibraryStore.refreshProgress()` reloads `progressMap/progressUpdatedMap` so grid badges and category filtering update without full page reload.
 8. iOS reflowable EPUB visual pagination cache (`reader_visual_pagination_cache`) is shared with Reader as the single source for layout-specific total-page data; Shelf/Library currently still render percent-first UI and do not show live `current/total`.
 9. User taps the left Shelf stat card (`Reading Time`) or right Shelf stat card (`Books Read`) -> both navigate to `/statistics`, but pass different initial tab arguments while keeping the same route.
-10. Statistics resolves a reusable time block from the selected preset:
+10. Shelf loads recent `Explain` history from `explain_cache` and picks the newest word-like entry (`<= 3` tokens, short text) for the `Words` preview card; the card body prefers the containing sentence, falls back to the selected text, truncates to two lines, and highlights the selected word when it appears in the sentence.
+11. User taps `More` in the Shelf `Words` section -> opens the `Words` page, which lists all explain history entries with preview meaning, source book, and time. Tapping a row opens a detail page with full meaning, details, and context sentence.
+12. Statistics resolves a reusable time block from the selected preset:
    - `This Month`: current calendar month
    - `This Year`: current calendar year
    - `Pick Month`: selected month start/end
-11. Statistics loads both payloads for the selected time block:
+13. Statistics loads both payloads for the selected time block:
    - `Reading Time`: total time, avg/day, chart series, heatmap cells
    - `Books Read`: qualified books + almost-there books
 
@@ -84,7 +86,8 @@ lib/stores/library/       — LibraryStore + LibraryState
 LibraryHeader ("IMMERSED" label + "Shelf" title + "+" import button)
 LibraryReadingStats (DAILY GOAL + BOOKS READ) — empty state when no progress
 Now Reading (Section Header + NowReadingCard) — first book when no progress
-WordOfDayCard — replaced by reading prompt when no progress
+Words (Section Header + preview card + `More`) — shows the latest word in its sentence context or an action hint
+Words page — compact history list with row tap to a dedicated detail page
 Horizontal book scroll (fixed-width items, edge-to-edge)
 ```
 
@@ -141,6 +144,8 @@ Header + "Add Your First Book" button (on Shelf).
 - Import success: new book pops in (scale + fade), existing items smoothly slide to new positions (no snackbar).
 - Cover decode failure: falls back to placeholder cover.
 - Now Reading: uses first book when no progress, always shown on Shelf.
+- Words section: always shown when Shelf has books; empty state says `Select a word in Reader and tap Explain.` Preview cards show the containing sentence (or the selected sentence itself) and do not show the explain meaning.
+- Words `More` page: if no explain history exists, shows the same empty-state guidance instead of a blank list.
 - Real cover uses `BoxFit.cover`.
 - Book Profile top background uses `profileBgColor` gradient.
 - Book Profile settings menu can delete book with cascading cleanup.
@@ -156,7 +161,7 @@ Header + "Add Your First Book" button (on Shelf).
 - Shelf/Library progress UI keeps using persisted percent as the primary display; if future page-total UI is needed, it must read the shared visual pagination cache instead of `estimated_total_pages`.
 
 ## Acceptance Criteria
-- Shelf renders stable dashboard (Header / Stats / Now Reading / Word of Day / Grid).
+- Shelf renders stable dashboard (Header / Stats / Now Reading / Words / Grid).
 - Library renders category tabs and filtered 2-column grid.
 - Now Reading shows most recently read book; first book when no progress.
 - Grid tiles show cover, title, author, and progress badge.
@@ -172,4 +177,4 @@ Header + "Add Your First Book" button (on Shelf).
 ## Non-Goals
 - No recommendation algorithm or bookstore sorting.
 - No account or cloud sync.
-- Word of the Day is static placeholder.
+- Shelf does not implement a rotating dictionary-style word of the day.

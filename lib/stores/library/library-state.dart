@@ -1,7 +1,10 @@
 import '../../entities/book-entity.dart';
+import '../../entities/explain-history-entity.dart';
 import '../../entities/reading-time-entity.dart';
 
 class LibraryState {
+  static const Object _unset = Object();
+
   LibraryState({
     required this.books,
     required this.filteredBooks,
@@ -16,6 +19,7 @@ class LibraryState {
     this.progressUpdatedMap = const <String, DateTime>{},
     required this.readingTime,
     this.booksReadThisYear = 0,
+    this.latestExplain,
     this.lastImportedBookId,
   });
 
@@ -32,6 +36,7 @@ class LibraryState {
   final Map<String, DateTime> progressUpdatedMap;
   final ReadingTimeEntity readingTime;
   final int booksReadThisYear;
+  final ExplainHistoryEntity? latestExplain;
   final String? lastImportedBookId;
 
   factory LibraryState.initial() {
@@ -61,7 +66,8 @@ class LibraryState {
     Map<String, DateTime>? progressUpdatedMap,
     ReadingTimeEntity? readingTime,
     int? booksReadThisYear,
-    String? lastImportedBookId,
+    Object? latestExplain = _unset,
+    Object? lastImportedBookId = _unset,
   }) {
     return LibraryState(
       books: books ?? this.books,
@@ -77,7 +83,12 @@ class LibraryState {
       progressUpdatedMap: progressUpdatedMap ?? this.progressUpdatedMap,
       readingTime: readingTime ?? this.readingTime,
       booksReadThisYear: booksReadThisYear ?? this.booksReadThisYear,
-      lastImportedBookId: lastImportedBookId,
+      latestExplain: identical(latestExplain, _unset)
+          ? this.latestExplain
+          : latestExplain as ExplainHistoryEntity?,
+      lastImportedBookId: identical(lastImportedBookId, _unset)
+          ? this.lastImportedBookId
+          : lastImportedBookId as String?,
     );
   }
 }
