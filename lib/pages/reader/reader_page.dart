@@ -8,6 +8,7 @@ import '../../app/providers/app-providers.dart';
 import '../../app/routes/route-names.dart';
 import '../../entities/annotation-entity.dart';
 import 'models/reader_annotation_card_item.dart';
+import 'models/reader_tooltip_action_spec.dart';
 import '../../entities/book-entity.dart';
 import '../../services/db/app-database.dart';
 import '../../services/reader/annotation/annotation_models.dart';
@@ -33,6 +34,7 @@ import 'widgets/reader_annotation_sheet.dart';
 import 'widgets/reader_controls_overlay.dart';
 import 'widgets/reader_explain_sheet.dart';
 import 'widgets/reader_mark_style_editor.dart';
+import 'widgets/reader_tooltip_actions_bar.dart';
 import 'widgets/reader_phonetics_sheet.dart';
 import 'widgets/reader_selection_handle.dart';
 
@@ -1141,6 +1143,86 @@ class _ReaderPageState extends State<ReaderPage>
     }
 
     return buffer.toString();
+  }
+
+  void _openPhoneticsSheet(String selectedText) {
+    final text = selectedText.trim();
+    if (text.isEmpty) return;
+
+    final providers = AppProvidersScope.of(context);
+    providers.database.incrementPhoneticsCount(widget.book.id);
+    ReaderPhoneticsSheet.show(
+      context: context,
+      selectedText: text,
+      phoneticsService: providers.phoneticsService,
+      ttsService: providers.ttsService,
+    );
+  }
+
+  void _openExplainSheet({
+    required String selectedText,
+    required bool selectionOnRightPage,
+    PageLayout? pageLayout,
+    String paragraphContext = '',
+  }) {
+    final text = selectedText.trim();
+    if (text.isEmpty) return;
+
+    final aiSettings = AppProvidersScope.of(context).aiSettingsService;
+    if (!aiSettings.isConfigured) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please configure your AI API key in Settings.'),
+        ),
+      );
+      return;
+    }
+
+    final languageConfig = aiSettings.resolveConfig(widget.book.language);
+    final providers = AppProvidersScope.of(context);
+    providers.database.incrementExplainCount(widget.book.id);
+    ReaderExplainSheet.show(
+      context: context,
+      selectedText: text,
+      pageContext: pageLayout != null ? extractFullPageText(pageLayout) : '',
+      paragraphContext: paragraphContext,
+      aiSettings: aiSettings,
+      languageConfig: languageConfig,
+      bookTitle: widget.book.title,
+      phoneticsService: providers.phoneticsService,
+      ttsService: providers.ttsService,
+      database: providers.database,
+      bookId: widget.book.id,
+      chapterIndex: _store.currentChapterIndex,
+      bookLanguage: widget.book.language,
+      isTablet: _store.isDualPage,
+      selectionOnRightPage: selectionOnRightPage,
+    );
+  }
+
+  void _toggleReadAloud(String selectedText) {
+    final text = selectedText.trim();
+    if (text.isEmpty) return;
+
+    final ttsService = AppProvidersScope.of(context).ttsService;
+    if (ttsService.isSpeaking) {
+      ttsService.stop();
+      return;
+    }
+
+    final langCode = ttsService.resolveBookLanguage(widget.book.language);
+    final model = ttsService.modelInfoForLanguage(langCode);
+    if (model == null || !ttsService.modelManager.isReady(model)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'TTS model not downloaded. Please download it in Settings.',
+          ),
+        ),
+      );
+      return;
+    }
+    ttsService.speakForBookLanguage(text, widget.book.language);
   }
 
   Map<String, List<AnnotationPaintBucket>>
@@ -2485,14 +2567,12 @@ class _ReaderPageState extends State<ReaderPage>
     final canEditSingle =
         matchedAnnotations.length == 1 && exactMatches.length == 1;
     final canOnlyUnmark = matchedAnnotations.isNotEmpty && !canEditSingle;
+    final actionSpec = ReaderTooltipActionSpec.forSelection(
+      canEditSingle: canEditSingle,
+      canOnlyUnmark: canOnlyUnmark,
+    );
     final showsEditor = _markEditorMode == _MarkEditorMode.editSelection;
     final editingAnnotation = _activeEditingAnnotation();
-
-    final actionLabel = canOnlyUnmark
-        ? 'Unmark'
-        : canEditSingle
-        ? 'Edit'
-        : 'Mark';
     final toolbarWidth = math.min(
       MediaQuery.of(context).size.width - 16,
       520.0,
@@ -2502,165 +2582,62 @@ class _ReaderPageState extends State<ReaderPage>
       rects: _selectionRects,
       isRightPage: _selectionOnRightPage,
       toolbarWidth: toolbarWidth,
-      toolbarChild: _buildTooltipBar(
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _tooltipButton(
-                'Phonetics',
-                onPressed: () {
-                  final selectedText = extractCrossPageText();
-                  if (selectedText.isEmpty) return;
+      toolbarChild: ReaderTooltipActionsBar(
+        actionSpec: actionSpec,
+        onPhoneticsPressed: () {
+          final selectedText = extractCrossPageText();
+          _openPhoneticsSheet(selectedText);
+        },
+        onExplainPressed: () {
+          final selectedText = extractCrossPageText();
+          final pageLayout = (_selectionOnRightPage && _store.isDualPage)
+              ? _store.secondPageLayout
+              : _store.currentPageLayout;
 
-                  final providers = AppProvidersScope.of(context);
-                  providers.database.incrementPhoneticsCount(widget.book.id);
-                  ReaderPhoneticsSheet.show(
-                    context: context,
-                    selectedText: selectedText,
-                    phoneticsService: providers.phoneticsService,
-                    ttsService: providers.ttsService,
-                  );
-                },
-              ),
-              _buildTooltipDivider(),
-              _tooltipButton(
-                'Explain',
-                onPressed: () {
-                  final selectedText = extractCrossPageText();
-                  if (selectedText.isEmpty) return;
+          var paragraphContext = '';
+          if (pageLayout != null && _crossSelection != null) {
+            final pageSel = _crossSelection!.projectOntoPage(pageLayout);
+            if (pageSel != null) {
+              paragraphContext = extractSelectionParagraphText(
+                pageLayout,
+                pageSel,
+              );
+            }
+          }
 
-                  final aiSettings = AppProvidersScope.of(
-                    context,
-                  ).aiSettingsService;
-
-                  if (!aiSettings.isConfigured) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'Please configure your AI API key in Settings.',
-                        ),
-                      ),
-                    );
-                    return;
-                  }
-
-                  final pageLayout =
-                      (_selectionOnRightPage && _store.isDualPage)
-                      ? _store.secondPageLayout
-                      : _store.currentPageLayout;
-                  final pageContext = pageLayout != null
-                      ? extractFullPageText(pageLayout)
-                      : '';
-
-                  String paragraphContext = '';
-                  if (pageLayout != null && _crossSelection != null) {
-                    final pageSel = _crossSelection!.projectOntoPage(
-                      pageLayout,
-                    );
-                    if (pageSel != null) {
-                      paragraphContext = extractSelectionParagraphText(
-                        pageLayout,
-                        pageSel,
-                      );
-                    }
-                  }
-
-                  final languageConfig = aiSettings.resolveConfig(
-                    widget.book.language,
-                  );
-
-                  final providers = AppProvidersScope.of(context);
-                  providers.database.incrementExplainCount(widget.book.id);
-                  ReaderExplainSheet.show(
-                    context: context,
-                    selectedText: selectedText,
-                    pageContext: pageContext,
-                    paragraphContext: paragraphContext,
-                    aiSettings: aiSettings,
-                    languageConfig: languageConfig,
-                    bookTitle: widget.book.title,
-                    phoneticsService: providers.phoneticsService,
-                    ttsService: providers.ttsService,
-                    database: providers.database,
-                    bookId: widget.book.id,
-                    chapterIndex: _store.currentChapterIndex,
-                    bookLanguage: widget.book.language,
-                    isTablet: _store.isDualPage,
-                    selectionOnRightPage: _selectionOnRightPage,
-                  );
-                },
-              ),
-              _buildTooltipDivider(),
-              _tooltipButton(
-                actionLabel,
-                onPressed: () async {
-                  if (canOnlyUnmark) {
-                    await _handleRemoveMarks(matchedAnnotations);
-                    return;
-                  }
-                  if (canEditSingle) {
-                    setState(() {
-                      _openSelectionEditEditor(exactMatches.first);
-                    });
-                    return;
-                  }
-                  await _handleCreateMark(
-                    color: _markEditorColor,
-                    style: _markEditorStyle,
-                    focusCreated: true,
-                  );
-                },
-              ),
-              if (!canOnlyUnmark) ...[
-                _buildTooltipDivider(),
-                _tooltipButton(
-                  'Note',
-                  onPressed: () async {
-                    await _openNoteComposerForSelection(
-                      annotation: canEditSingle ? exactMatches.first : null,
-                    );
-                  },
-                ),
-              ],
-              _buildTooltipDivider(),
-              _tooltipButton(
-                'Read Aloud',
-                onPressed: () {
-                  final selectedText = extractCrossPageText();
-                  if (selectedText.isEmpty) return;
-
-                  final ttsService = AppProvidersScope.of(context).ttsService;
-
-                  if (ttsService.isSpeaking) {
-                    ttsService.stop();
-                  } else {
-                    final langCode = ttsService.resolveBookLanguage(
-                      widget.book.language,
-                    );
-                    final model = ttsService.modelInfoForLanguage(langCode);
-                    if (model == null ||
-                        !ttsService.modelManager.isReady(model)) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'TTS model not downloaded. Please download it in Settings.',
-                          ),
-                        ),
-                      );
-                      return;
-                    }
-                    ttsService.speakForBookLanguage(
-                      selectedText,
-                      widget.book.language,
-                    );
-                  }
-                },
-              ),
-            ],
-          ),
-        ),
+          _openExplainSheet(
+            selectedText: selectedText,
+            selectionOnRightPage: _selectionOnRightPage,
+            pageLayout: pageLayout,
+            paragraphContext: paragraphContext,
+          );
+        },
+        onPrimaryPressed: () async {
+          if (canOnlyUnmark) {
+            await _handleRemoveMarks(matchedAnnotations);
+            return;
+          }
+          if (canEditSingle) {
+            setState(() {
+              _openSelectionEditEditor(exactMatches.first);
+            });
+            return;
+          }
+          await _handleCreateMark(
+            color: _markEditorColor,
+            style: _markEditorStyle,
+            focusCreated: true,
+          );
+        },
+        onNotePressed: () async {
+          await _openNoteComposerForSelection(
+            annotation: canEditSingle ? exactMatches.first : null,
+          );
+        },
+        onReadAloudPressed: () {
+          final selectedText = extractCrossPageText();
+          _toggleReadAloud(selectedText);
+        },
       ),
       editorWidth: ReaderMarkStyleEditor.compactWidth,
       editorHeight: ReaderMarkStyleEditor.compactHeight,
@@ -2702,98 +2679,102 @@ class _ReaderPageState extends State<ReaderPage>
     if (overlay == null || overlay.rects.isEmpty) {
       return const SizedBox.shrink();
     }
+    final actionSpec = ReaderTooltipActionSpec.forFocused(
+      annotationCount: overlay.annotations.length,
+    );
     if (overlay.annotations.length != 1) {
       return _buildTooltipCluster(
         rects: overlay.rects,
         isRightPage: overlay.isRightPage,
         toolbarWidth: 140,
-        toolbarChild: _buildTooltipBar(
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _tooltipButton(
-                'Unmark',
-                onPressed: () async {
-                  await _handleRemoveMarks(overlay.annotations);
-                },
-              ),
-            ],
-          ),
+        toolbarChild: ReaderTooltipActionsBar(
+          actionSpec: actionSpec,
+          onPrimaryPressed: () async {
+            await _handleRemoveMarks(overlay.annotations);
+          },
         ),
       );
     }
 
     final annotation = overlay.annotations.first;
+    final showsEditor =
+        _markEditorMode == _MarkEditorMode.editFocused &&
+        _editingAnnotationId == annotation.id;
 
-    final selectedColor =
-        _markEditorMode == _MarkEditorMode.editFocused &&
-            _editingAnnotationId == annotation.id
-        ? _markEditorColor
-        : annotation.color;
-    final selectedStyle =
-        _markEditorMode == _MarkEditorMode.editFocused &&
-            _editingAnnotationId == annotation.id
-        ? _markEditorStyle
-        : annotation.style;
+    final selectedColor = showsEditor ? _markEditorColor : annotation.color;
+    final selectedStyle = showsEditor ? _markEditorStyle : annotation.style;
+    final toolbarWidth = math.min(
+      MediaQuery.of(context).size.width - 16,
+      520.0,
+    );
 
     return _buildTooltipCluster(
       rects: overlay.rects,
       isRightPage: overlay.isRightPage,
-      toolbarWidth: 220,
-      toolbarChild: _buildTooltipBar(
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _tooltipButton(
-              'Note',
-              onPressed: () async {
-                await _openNoteComposerForAnnotation(annotation);
-              },
-            ),
-            _buildTooltipDivider(),
-            _tooltipButton(
-              'Unmark',
-              onPressed: () async {
-                await _handleRemoveMarks(<AnnotationEntity>[annotation]);
-              },
-            ),
-          ],
-        ),
+      toolbarWidth: toolbarWidth,
+      toolbarChild: ReaderTooltipActionsBar(
+        actionSpec: actionSpec,
+        onPhoneticsPressed: () {
+          _openPhoneticsSheet(annotation.quoteText);
+        },
+        onExplainPressed: () {
+          final pageLayout = _store.getPageLayout(
+            overlay.chapterIndex,
+            overlay.pageIndexInChapter,
+          );
+          _openExplainSheet(
+            selectedText: annotation.quoteText,
+            selectionOnRightPage: overlay.isRightPage,
+            pageLayout: pageLayout,
+            paragraphContext: annotation.quoteText.trim(),
+          );
+        },
+        onNotePressed: () async {
+          await _openNoteComposerForAnnotation(annotation);
+        },
+        onUnmarkPressed: () async {
+          await _handleRemoveMarks(<AnnotationEntity>[annotation]);
+        },
+        onReadAloudPressed: () {
+          _toggleReadAloud(annotation.quoteText);
+        },
       ),
       editorWidth: ReaderMarkStyleEditor.compactWidth,
       editorHeight: ReaderMarkStyleEditor.compactHeight,
-      editorChild: ReaderMarkStyleEditor(
-        selectedColor: selectedColor,
-        selectedStyle: selectedStyle,
-        onColorChanged: (color) {
-          setState(() {
-            _editingAnnotationId = annotation.id;
-            _markEditorMode = _MarkEditorMode.editFocused;
-            _markEditorColor = color;
-          });
-          unawaited(
-            _handleStyleChange(
-              annotation,
-              color: color,
-              mode: _MarkEditorMode.editFocused,
-            ),
-          );
-        },
-        onStyleChanged: (style) {
-          setState(() {
-            _editingAnnotationId = annotation.id;
-            _markEditorMode = _MarkEditorMode.editFocused;
-            _markEditorStyle = style;
-          });
-          unawaited(
-            _handleStyleChange(
-              annotation,
-              style: style,
-              mode: _MarkEditorMode.editFocused,
-            ),
-          );
-        },
-      ),
+      editorChild: showsEditor
+          ? ReaderMarkStyleEditor(
+              selectedColor: selectedColor,
+              selectedStyle: selectedStyle,
+              onColorChanged: (color) {
+                setState(() {
+                  _editingAnnotationId = annotation.id;
+                  _markEditorMode = _MarkEditorMode.editFocused;
+                  _markEditorColor = color;
+                });
+                unawaited(
+                  _handleStyleChange(
+                    annotation,
+                    color: color,
+                    mode: _MarkEditorMode.editFocused,
+                  ),
+                );
+              },
+              onStyleChanged: (style) {
+                setState(() {
+                  _editingAnnotationId = annotation.id;
+                  _markEditorMode = _MarkEditorMode.editFocused;
+                  _markEditorStyle = style;
+                });
+                unawaited(
+                  _handleStyleChange(
+                    annotation,
+                    style: style,
+                    mode: _MarkEditorMode.editFocused,
+                  ),
+                );
+              },
+            )
+          : null,
     );
   }
 
@@ -2901,40 +2882,6 @@ class _ReaderPageState extends State<ReaderPage>
       toolbarTop: toolbarTop,
       editorLeft: resolvedEditorLeft,
       editorTop: resolvedEditorTop,
-    );
-  }
-
-  Widget _buildTooltipBar({required Widget child}) {
-    return Container(
-      height: 40,
-      decoration: BoxDecoration(
-        color: Colors.black87,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: child,
-    );
-  }
-
-  Widget _buildTooltipDivider() {
-    return Container(width: 1, height: 20, color: Colors.white24);
-  }
-
-  Widget _tooltipButton(String label, {required VoidCallback onPressed}) {
-    return GestureDetector(
-      onTap: onPressed,
-      behavior: HitTestBehavior.opaque,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        child: Text(
-          label,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-            decoration: TextDecoration.none,
-          ),
-        ),
-      ),
     );
   }
 }

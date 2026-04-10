@@ -78,7 +78,7 @@
 - 点击 `Mark` 时立即保存；上方紧凑样式栏只负责修改当前 mark 的颜色与样式，不再需要单独确认。
 - 点击 `Note` 时打开底部 composer；空文本不得发布。
 - 不允许创建与已有 mark 完全重复或重叠的 mark。
-- 用户直接点击正文里已有的 mark 时，弹出已展开的 mark editor tooltip，可修改颜色/样式、追加新 note，或点击 `Unmark` 删除当前 mark。
+- 用户直接点击正文里已有的 mark 时，会直接弹出 mark tooltip 与已展开的 mark editor；tooltip 提供 `Phonetics`、`Explain`、`Note`、`Unmark`、`Read Aloud`，无需额外的 `Edit` 入口。
 - 当一次选区命中多个已有 marks 时，只允许 `Unmark`，不支持批量修改颜色/样式或批量加 note。
 - 已保存 mark 在重新打开 Reader、修改字号、边距、行距后仍应尽量恢复。
 - 从 marks 列表点进正文时，首次 preview jump 不应立即覆盖持久化阅读进度；只有用户继续翻页/继续阅读后，才把新位置视为当前进度。
