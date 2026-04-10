@@ -42,6 +42,7 @@ dependencies:
   sqflite: ^2.4.2
   shared_preferences: ^2.5.3
   path_provider: ^2.1.5
+  share_plus: ^10.0.2
   rust_lib_uni:
     path: rust_builder
   flutter_rust_bridge: 2.11.1
@@ -88,6 +89,9 @@ flutter:
     - assets/gb_gold.json
     - assets/gb_silver.json
     - assets/voices.json
+    - assets/quote_card/artwork_still_life.png
+    - assets/quote_card/artwork_abstract.png
+    - assets/quote_card/artwork_botanical.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
