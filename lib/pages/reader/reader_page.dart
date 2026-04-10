@@ -24,6 +24,7 @@ import '../../services/reader/models/reader_preferences.dart';
 import '../../services/reader/reading_time_tracker.dart';
 import '../../services/reader/selection/cross_page_selection.dart';
 import '../../services/reader/selection/page_hit_test.dart';
+import '../../services/reader/selection/reader_selection_text_sanitizer.dart';
 import '../../shared/constants/reader-constants.dart';
 import '../../shared/layout/responsive_layout.dart';
 import 'quote_card/models/reader_quote_card_payload.dart';
@@ -1184,7 +1185,8 @@ class _ReaderPageState extends State<ReaderPage>
   }
 
   void _openPhoneticsSheet(String selectedText) {
-    final text = selectedText.trim();
+    final rawText = selectedText.trim();
+    final text = sanitizeReaderSelectionText(rawText);
     if (text.isEmpty) return;
 
     final providers = AppProvidersScope.of(context);
@@ -1203,7 +1205,8 @@ class _ReaderPageState extends State<ReaderPage>
     PageLayout? pageLayout,
     String paragraphContext = '',
   }) {
-    final text = selectedText.trim();
+    final rawText = selectedText.trim();
+    final text = sanitizeReaderSelectionText(rawText);
     if (text.isEmpty) return;
 
     final aiSettings = AppProvidersScope.of(context).aiSettingsService;
@@ -1222,6 +1225,7 @@ class _ReaderPageState extends State<ReaderPage>
     ReaderExplainSheet.show(
       context: context,
       selectedText: text,
+      rawSelectedText: rawText,
       pageContext: pageLayout != null ? extractFullPageText(pageLayout) : '',
       paragraphContext: paragraphContext,
       aiSettings: aiSettings,
@@ -1239,7 +1243,7 @@ class _ReaderPageState extends State<ReaderPage>
   }
 
   void _toggleReadAloud(String selectedText) {
-    final text = selectedText.trim();
+    final text = sanitizeReaderSelectionForReadAloud(selectedText);
     if (text.isEmpty) return;
 
     final ttsService = AppProvidersScope.of(context).ttsService;
