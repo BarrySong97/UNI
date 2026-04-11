@@ -4,6 +4,7 @@ import '../../app/providers/app-providers.dart';
 import '../../entities/explain-history-entity.dart';
 import '../../services/db/app-database.dart';
 import '../../shared/constants/common-design-tokens.dart';
+import '../../shared/constants/shelf-design-tokens.dart';
 
 class WordsPage extends StatefulWidget {
   const WordsPage({this.database, super.key});
@@ -16,6 +17,8 @@ class WordsPage extends StatefulWidget {
 
 class _WordsPageState extends State<WordsPage> {
   Future<List<ExplainHistoryEntity>>? _historyFuture;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void didChangeDependencies() {
@@ -23,8 +26,22 @@ class _WordsPageState extends State<WordsPage> {
     _historyFuture ??= _database.listExplainHistory();
   }
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   AppDatabase get _database =>
       widget.database ?? AppProvidersScope.of(context).database;
+
+  List<ExplainHistoryEntity> _filterItems(List<ExplainHistoryEntity> items) {
+    if (_searchQuery.isEmpty) return items;
+    final query = _searchQuery.toLowerCase();
+    return items
+        .where((item) => item.selectedText.toLowerCase().contains(query))
+        .toList();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -43,23 +60,92 @@ class _WordsPageState extends State<WordsPage> {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final items = snapshot.data ?? const <ExplainHistoryEntity>[];
-          if (items.isEmpty) {
+          final allItems = snapshot.data ?? const <ExplainHistoryEntity>[];
+          if (allItems.isEmpty) {
             return const _WordsEmptyState();
           }
 
-          return ListView.separated(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-            itemCount: items.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 12),
-            itemBuilder: (context, index) => _WordsHistoryCard(
-              item: items[index],
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => WordDetailPage(item: items[index]),
+          final filteredItems = _filterItems(allItems);
+
+          return Column(
+            children: <Widget>[
+              // Search bar
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: (value) => setState(() => _searchQuery = value),
+                  style: const TextStyle(
+                    fontSize: 15,
+                    color: CommonDesignTokens.textPrimary,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'Search words...',
+                    hintStyle: const TextStyle(
+                      fontSize: 15,
+                      color: CommonDesignTokens.textSecondary,
+                    ),
+                    prefixIcon: const Icon(
+                      Icons.search,
+                      size: 20,
+                      color: CommonDesignTokens.textSecondary,
+                    ),
+                    suffixIcon: _searchQuery.isNotEmpty
+                        ? GestureDetector(
+                            onTap: () => setState(() {
+                              _searchController.clear();
+                              _searchQuery = '';
+                            }),
+                            child: const Icon(
+                              Icons.close,
+                              size: 18,
+                              color: CommonDesignTokens.textSecondary,
+                            ),
+                          )
+                        : null,
+                    filled: true,
+                    fillColor: CommonDesignTokens.cardBg,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
                 ),
               ),
-            ),
+              // List
+              Expanded(
+                child: filteredItems.isEmpty
+                    ? Center(
+                        child: Text(
+                          'No results for "$_searchQuery"',
+                          style: const TextStyle(
+                            fontSize: 15,
+                            color: CommonDesignTokens.textSecondary,
+                          ),
+                        ),
+                      )
+                    : ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                        itemCount: filteredItems.length,
+                        separatorBuilder: (_, __) =>
+                            const SizedBox(height: 12),
+                        itemBuilder: (context, index) => _WordsHistoryCard(
+                          item: filteredItems[index],
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => WordDetailPage(
+                                item: filteredItems[index],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+              ),
+            ],
           );
         },
       ),
@@ -76,6 +162,7 @@ class WordDetailPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final structured = item.structuredData;
     final detailExplain = structured?.detailExplain ?? const <String>[];
+    final contextSentence = item.contextSentence.trim();
 
     return Scaffold(
       backgroundColor: CommonDesignTokens.pageBackground,
@@ -87,79 +174,178 @@ class WordDetailPage extends StatelessWidget {
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            _WordDetailHero(item: item),
-            const SizedBox(height: 16),
-            _WordDetailSection(
-              title: 'Meaning',
-              child: Text(
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: CommonDesignTokens.cardBg,
+            borderRadius: BorderRadius.circular(CommonDesignTokens.cardRadius),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              // Book source + date
+              Row(
+                children: <Widget>[
+                  Icon(
+                    Icons.book_outlined,
+                    size: 13,
+                    color: CommonDesignTokens.textSecondary,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      item.bookTitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: CommonDesignTokens.textSecondary,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    _formatDate(item.createdAt),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: CommonDesignTokens.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              // Word title
+              Text(
+                item.selectedText,
+                style: const TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                  color: CommonDesignTokens.textPrimary,
+                ),
+              ),
+              // Context sentence
+              if (contextSentence.isNotEmpty) ...[
+                const SizedBox(height: 14),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: CommonDesignTokens.pageBackground,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: RichText(
+                    text: TextSpan(
+                      style: const TextStyle(
+                        fontSize: 14,
+                        height: 1.55,
+                        fontStyle: FontStyle.italic,
+                        color: CommonDesignTokens.textSecondary,
+                      ),
+                      children: _buildContextSpans(
+                        contextSentence,
+                        item.selectedText.trim(),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+              // Meaning
+              const SizedBox(height: 24),
+              Text(
+                'MEANING',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: ShelfDesignTokens.statsLabelColor,
+                  letterSpacing: 0.4,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
                 item.previewMeaning,
                 style: const TextStyle(
-                  fontSize: 15,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w500,
                   height: 1.55,
                   color: CommonDesignTokens.textPrimary,
                 ),
               ),
-            ),
-            if (detailExplain.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              _WordDetailSection(
-                title: 'Details',
-                child: Column(
-                  children: detailExplain
-                      .map(
-                        (detail) => Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              const Padding(
-                                padding: EdgeInsets.only(top: 7),
-                                child: Icon(
-                                  Icons.circle,
-                                  size: 6,
-                                  color: CommonDesignTokens.textSecondary,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  detail,
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    height: 1.5,
-                                    color: CommonDesignTokens.textSecondary,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
-                      .toList(growable: false),
-                ),
-              ),
-            ],
-            if (item.contextSentence.trim().isNotEmpty) ...[
-              const SizedBox(height: 16),
-              _WordDetailSection(
-                title: 'Context',
-                child: Text(
-                  item.contextSentence,
-                  style: const TextStyle(
+              // Details
+              if (detailExplain.isNotEmpty) ...[
+                const SizedBox(height: 24),
+                Text(
+                  'DETAILS & USAGE',
+                  style: TextStyle(
                     fontSize: 14,
-                    height: 1.55,
-                    color: CommonDesignTokens.textSecondary,
+                    fontWeight: FontWeight.w600,
+                    color: ShelfDesignTokens.statsLabelColor,
+                    letterSpacing: 0.4,
                   ),
                 ),
-              ),
+                const SizedBox(height: 12),
+                ...detailExplain.map(
+                  (detail) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        const Padding(
+                          padding: EdgeInsets.only(top: 7),
+                          child: Icon(
+                            Icons.circle,
+                            size: 6,
+                            color: CommonDesignTokens.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            detail,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              height: 1.5,
+                              color: CommonDesignTokens.textPrimary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
+  }
+
+  List<InlineSpan> _buildContextSpans(String text, String selected) {
+    if (selected.isEmpty) {
+      return <InlineSpan>[TextSpan(text: text)];
+    }
+    final lowerText = text.toLowerCase();
+    final lowerSelected = selected.toLowerCase();
+    final matchIndex = lowerText.indexOf(lowerSelected);
+    if (matchIndex < 0) {
+      return <InlineSpan>[TextSpan(text: text)];
+    }
+    final endIndex = matchIndex + selected.length;
+    return <InlineSpan>[
+      if (matchIndex > 0) TextSpan(text: text.substring(0, matchIndex)),
+      TextSpan(
+        text: text.substring(matchIndex, endIndex),
+        style: const TextStyle(
+          fontWeight: FontWeight.w700,
+          fontStyle: FontStyle.normal,
+          color: CommonDesignTokens.textPrimary,
+        ),
+      ),
+      if (endIndex < text.length) TextSpan(text: text.substring(endIndex)),
+    ];
   }
 }
 
@@ -213,6 +399,9 @@ class _WordsHistoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final contextSentence = item.contextSentence.trim();
+    final hasContext = contextSentence.isNotEmpty;
+
     return Material(
       color: CommonDesignTokens.cardBg,
       borderRadius: BorderRadius.circular(CommonDesignTokens.cardRadius),
@@ -223,16 +412,24 @@ class _WordsHistoryCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(CommonDesignTokens.cardRadius),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
+              // Word title with icon
               Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
+                  Icon(
+                    Icons.auto_awesome,
+                    size: 18,
+                    color: ShelfDesignTokens.wordOfDayIconColor,
+                  ),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       item.selectedText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w700,
@@ -240,15 +437,29 @@ class _WordsHistoryCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  const Icon(
-                    Icons.chevron_right,
-                    size: 20,
-                    color: CommonDesignTokens.textSecondary,
-                  ),
                 ],
               ),
-              const SizedBox(height: 6),
+              // Context sentence with highlighted word
+              if (hasContext) ...[
+                const SizedBox(height: 10),
+                RichText(
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  text: TextSpan(
+                    style: const TextStyle(
+                      fontSize: 14,
+                      height: 1.5,
+                      color: CommonDesignTokens.textPrimary,
+                    ),
+                    children: _buildContextSpans(
+                      contextSentence,
+                      item.selectedText.trim(),
+                    ),
+                  ),
+                ),
+              ],
+              // Meaning
+              const SizedBox(height: 8),
               Text(
                 item.previewMeaning,
                 maxLines: 2,
@@ -256,12 +467,19 @@ class _WordsHistoryCard extends StatelessWidget {
                 style: const TextStyle(
                   fontSize: 14,
                   height: 1.45,
-                  color: CommonDesignTokens.textPrimary,
+                  color: CommonDesignTokens.textSecondary,
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
+              // Book source + date
               Row(
                 children: <Widget>[
+                  Icon(
+                    Icons.book_outlined,
+                    size: 13,
+                    color: CommonDesignTokens.textSecondary,
+                  ),
+                  const SizedBox(width: 6),
                   Expanded(
                     child: Text(
                       item.bookTitle,
@@ -291,96 +509,32 @@ class _WordsHistoryCard extends StatelessWidget {
       ),
     );
   }
-}
 
-class _WordDetailHero extends StatelessWidget {
-  const _WordDetailHero({required this.item});
-
-  final ExplainHistoryEntity item;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: CommonDesignTokens.cardBg,
-        borderRadius: BorderRadius.circular(CommonDesignTokens.cardRadius),
+  List<InlineSpan> _buildContextSpans(String text, String selected) {
+    if (selected.isEmpty) {
+      return <InlineSpan>[TextSpan(text: text)];
+    }
+    final lowerText = text.toLowerCase();
+    final lowerSelected = selected.toLowerCase();
+    final matchIndex = lowerText.indexOf(lowerSelected);
+    if (matchIndex < 0) {
+      return <InlineSpan>[TextSpan(text: text)];
+    }
+    final endIndex = matchIndex + selected.length;
+    return <InlineSpan>[
+      if (matchIndex > 0) TextSpan(text: text.substring(0, matchIndex)),
+      TextSpan(
+        text: text.substring(matchIndex, endIndex),
+        style: const TextStyle(
+          fontWeight: FontWeight.w700,
+          color: ShelfDesignTokens.wordOfDayIconColor,
+        ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(
-            item.selectedText,
-            style: const TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.w700,
-              color: CommonDesignTokens.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: <Widget>[
-              Expanded(
-                child: Text(
-                  item.bookTitle,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: CommonDesignTokens.textSecondary,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Text(
-                _formatDate(item.createdAt),
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: CommonDesignTokens.textSecondary,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
+      if (endIndex < text.length) TextSpan(text: text.substring(endIndex)),
+    ];
   }
 }
 
-class _WordDetailSection extends StatelessWidget {
-  const _WordDetailSection({required this.title, required this.child});
-
-  final String title;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: CommonDesignTokens.cardBg,
-        borderRadius: BorderRadius.circular(CommonDesignTokens.cardRadius),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: CommonDesignTokens.textSecondary,
-              letterSpacing: 0.4,
-            ),
-          ),
-          const SizedBox(height: 10),
-          child,
-        ],
-      ),
-    );
-  }
-}
 
 String _formatDate(DateTime value) {
   final year = value.year.toString().padLeft(4, '0');
