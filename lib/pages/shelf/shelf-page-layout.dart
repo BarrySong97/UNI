@@ -196,73 +196,81 @@ class ShelfPageLayout extends StatelessWidget {
   }
 
   Widget _buildWideContent(BuildContext context) {
-    final rightColumn = Column(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        hasReadingProgress
-            ? LibraryReadingStats(
-                readingTime:
-                    readingTime ??
-                    ReadingTimeEntity.empty(
-                      year: DateTime.now().year,
-                      month: DateTime.now().month,
+        // Top: two-column row with equal height
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              // Left column: Now Reading
+              Expanded(
+                flex: 5,
+                child: nowReadingBook != null
+                    ? BookPopInWrapper(
+                        animate: nowReadingBook!.id == lastImportedBookId,
+                        child: _buildWideNowReadingCard(),
+                      )
+                    : _buildReadingPrompt(),
+              ),
+              const SizedBox(width: 24),
+              // Right column: Stats + Words (fills height)
+              Expanded(
+                flex: 5,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    hasReadingProgress
+                        ? LibraryReadingStats(
+                            readingTime:
+                                readingTime ??
+                                ReadingTimeEntity.empty(
+                                  year: DateTime.now().year,
+                                  month: DateTime.now().month,
+                                ),
+                            booksReadThisYear: booksReadThisYear,
+                            onReadingTimeTap: () =>
+                                Navigator.of(context).pushNamed(
+                                  RouteNames.statistics,
+                                  arguments: const StatisticsPageArguments(
+                                    initialTab: StatisticsTab.readingTime,
+                                    initialPeriodPreset:
+                                        StatisticsPeriodPreset.thisMonth,
+                                  ),
+                                ),
+                            onBooksReadTap: () =>
+                                Navigator.of(context).pushNamed(
+                                  RouteNames.statistics,
+                                  arguments: const StatisticsPageArguments(
+                                    initialTab: StatisticsTab.booksRead,
+                                    initialPeriodPreset:
+                                        StatisticsPeriodPreset.thisMonth,
+                                  ),
+                                ),
+                          )
+                        : _buildStatsEmptyState(),
+                    const SizedBox(height: 24),
+                    _buildSectionHeader(
+                      'Words',
+                      actionLabel: 'More',
+                      onActionTap: onWordsMoreTap,
                     ),
-                booksReadThisYear: booksReadThisYear,
-                onReadingTimeTap: () => Navigator.of(context).pushNamed(
-                  RouteNames.statistics,
-                  arguments: const StatisticsPageArguments(
-                    initialTab: StatisticsTab.readingTime,
-                    initialPeriodPreset: StatisticsPeriodPreset.thisMonth,
-                  ),
+                    const SizedBox(height: 12),
+                    Expanded(child: _buildWordsCard(expanded: true)),
+                  ],
                 ),
-                onBooksReadTap: () => Navigator.of(context).pushNamed(
-                  RouteNames.statistics,
-                  arguments: const StatisticsPageArguments(
-                    initialTab: StatisticsTab.booksRead,
-                    initialPeriodPreset: StatisticsPeriodPreset.thisMonth,
-                  ),
-                ),
-              )
-            : _buildStatsEmptyState(),
+              ),
+            ],
+          ),
+        ),
+        // Bottom: full-width Recent Books (horizontal scroll)
         if (gridBooks.isNotEmpty) ...[
           const SizedBox(height: 24),
           _buildSectionHeader('Recent Books'),
           const SizedBox(height: 12),
-          _buildBookGrid(columns: 3),
+          _buildHorizontalBookList(),
         ],
-      ],
-    );
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        // Left column: Now Reading
-        Expanded(
-          flex: 4,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              if (nowReadingBook != null)
-                BookPopInWrapper(
-                  animate: nowReadingBook!.id == lastImportedBookId,
-                  child: _buildWideNowReadingCard(),
-                )
-              else
-                _buildReadingPrompt(),
-              const SizedBox(height: 24),
-              _buildSectionHeader(
-                'Words',
-                actionLabel: 'More',
-                onActionTap: onWordsMoreTap,
-              ),
-              const SizedBox(height: 12),
-              _buildWordsCard(),
-            ],
-          ),
-        ),
-        const SizedBox(width: 24),
-        // Right column: Stats + Recent Books grid
-        Expanded(flex: 6, child: rightColumn),
       ],
     );
   }
@@ -537,109 +545,6 @@ class ShelfPageLayout extends StatelessWidget {
     );
   }
 
-  Widget _buildBookGrid({int? columns}) {
-    final displayBooks = gridBooks.length > ShelfDesignTokens.homeGridMaxItems
-        ? gridBooks.sublist(0, ShelfDesignTokens.homeGridMaxItems)
-        : gridBooks;
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final columns0 = columns ?? responsiveGridColumns(constraints.maxWidth);
-        final rows = <Widget>[];
-        for (var i = 0; i < displayBooks.length; i += columns0) {
-          final rowChildren = <Widget>[];
-          for (var col = 0; col < columns0; col++) {
-            if (col > 0) {
-              rowChildren.add(
-                const SizedBox(width: ShelfDesignTokens.homeGridItemSpacing),
-              );
-            }
-            final index = i + col;
-            rowChildren.add(
-              Expanded(
-                child: index < displayBooks.length
-                    ? _buildGridItem(displayBooks[index], index)
-                    : const SizedBox.shrink(),
-              ),
-            );
-          }
-          rows.add(
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: rowChildren,
-            ),
-          );
-          if (i + columns0 < displayBooks.length) {
-            rows.add(const SizedBox(height: CommonDesignTokens.gridRowSpacing));
-          }
-        }
-        return Column(children: rows);
-      },
-    );
-  }
-
-  Widget _buildGridItem(BookEntity book, int index) {
-    final progress = progressMap[book.id] ?? 0;
-    final hasProgress = progress > 0 || progressBookIds.contains(book.id);
-    final isNewBook = book.id == lastImportedBookId;
-    final shouldSlide = !isNewBook && lastImportedBookId != null;
-
-    return BookPopInWrapper(
-      key: ValueKey<String>(book.id),
-      animate: isNewBook,
-      slideRight: shouldSlide,
-      child: GestureDetector(
-        onTap: () => onBookTap(book, hasProgress),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            ClipRRect(
-              borderRadius: BorderRadius.circular(
-                ShelfDesignTokens.homeGridCoverRadius,
-              ),
-              child: Stack(
-                children: <Widget>[
-                  LibraryBookTile(
-                    book: book,
-                    coverColor: _palette[index % _palette.length],
-                    coverMark: book.title.isEmpty
-                        ? 'B'
-                        : book.title.substring(0, 1).toUpperCase(),
-                    onTap: () => onBookTap(book, hasProgress),
-                    progress: progress,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              book.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: ShelfDesignTokens.homeGridTitleSize,
-                fontWeight: FontWeight.w600,
-                color: CommonDesignTokens.textPrimary,
-              ),
-            ),
-            if (book.author.isNotEmpty && book.author != 'Unknown') ...[
-              const SizedBox(height: 2),
-              Text(
-                book.author,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: ShelfDesignTokens.homeGridAuthorSize,
-                  color: CommonDesignTokens.textSecondary,
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildStatsEmptyState() {
     return Row(
       children: <Widget>[
@@ -774,8 +679,8 @@ class ShelfPageLayout extends StatelessWidget {
     );
   }
 
-  Widget _buildWordsCard() {
-    return LibraryWordsCard(preview: wordsPreview);
+  Widget _buildWordsCard({bool expanded = false}) {
+    return LibraryWordsCard(preview: wordsPreview, expanded: expanded);
   }
 
   Widget _buildSectionHeader(

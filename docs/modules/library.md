@@ -82,6 +82,7 @@ lib/stores/library/       — LibraryStore + LibraryState
 ## Page Layout
 
 ### Shelf (tab 0)
+#### Narrow (phone)
 ```
 LibraryHeader ("IMMERSED" label + "Shelf" title + "+" import button)
 LibraryReadingStats (DAILY GOAL + BOOKS READ) — empty state when no progress
@@ -89,6 +90,11 @@ Now Reading (Section Header + NowReadingCard) — first book when no progress
 Words (Section Header + preview card + `More`) — shows the latest word in its sentence context or an action hint
 Words page — compact history list with row tap to a dedicated detail page
 Horizontal book scroll (fixed-width items, edge-to-edge)
+```
+#### Wide (tablet, >= 600dp)
+```
+Left column (flex 5):  Now Reading card → Recent Books 2×2 grid (max 4)
+Right column (flex 5): Stats cards (DAILY GOAL + BOOKS READ) → Words section
 ```
 
 ### Statistics (pushed page)

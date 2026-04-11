@@ -5,12 +5,20 @@ import '../../shared/constants/common-design-tokens.dart';
 import '../../shared/constants/shelf-design-tokens.dart';
 
 class LibraryWordsCard extends StatelessWidget {
-  const LibraryWordsCard({this.preview, super.key});
+  const LibraryWordsCard({this.preview, this.expanded = false, super.key});
 
   final ExplainHistoryEntity? preview;
+  final bool expanded;
 
   @override
   Widget build(BuildContext context) {
+    if (expanded) return _buildExpandedLayout();
+    return _buildCompactLayout();
+  }
+
+  // ── Compact (phone) ──────────────────────────────────────────────
+
+  Widget _buildCompactLayout() {
     final hasPreview = preview != null;
     final previewText = _previewText(preview);
     final showSelectedTextHeader =
@@ -117,6 +125,197 @@ class LibraryWordsCard extends StatelessWidget {
       ),
     );
   }
+
+  // ── Expanded (tablet) ────────────────────────────────────────────
+
+  Widget _buildExpandedLayout() {
+    final hasPreview = preview != null;
+    final previewText = _previewText(preview);
+
+    return Container(
+      key: const ValueKey<String>('words-section-card'),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: ShelfDesignTokens.wordOfDayCardBg,
+        borderRadius: BorderRadius.circular(
+          ShelfDesignTokens.wordOfDayCardRadius,
+        ),
+      ),
+      child: hasPreview
+          ? _buildExpandedContent(preview!, previewText)
+          : _buildExpandedEmpty(),
+    );
+  }
+
+  Widget _buildExpandedEmpty() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            Icon(
+              Icons.menu_book_rounded,
+              size: 18,
+              color: ShelfDesignTokens.wordOfDayIconColor,
+            ),
+            const SizedBox(width: 8),
+            const Text(
+              'Start building your words list',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: CommonDesignTokens.textPrimary,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Select a word in Reader and tap Explain.',
+          style: TextStyle(
+            fontSize: 14,
+            height: 1.4,
+            color: CommonDesignTokens.textSecondary,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildExpandedContent(
+    ExplainHistoryEntity preview,
+    String previewText,
+  ) {
+    final structured = preview.structuredData;
+    final meaning = structured?.meaningExplain ?? preview.previewMeaning;
+    final details = structured?.detailExplain ?? const <String>[];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        // Word title with icon
+        Row(
+          children: <Widget>[
+            Icon(
+              Icons.auto_awesome,
+              size: 18,
+              color: ShelfDesignTokens.wordOfDayIconColor,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                preview.selectedText,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: CommonDesignTokens.textPrimary,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        // Context sentence
+        RichText(
+          key: const ValueKey<String>('words-preview-rich-text'),
+          text: TextSpan(
+            style: const TextStyle(
+              fontSize: 14,
+              height: 1.5,
+              color: CommonDesignTokens.textPrimary,
+            ),
+            children: _buildPreviewSpans(preview, previewText),
+          ),
+        ),
+        // Divider
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          child: Container(
+            height: 1,
+            color: ShelfDesignTokens.wordOfDayIconBg,
+          ),
+        ),
+        // Meaning
+        Text(
+          meaning,
+          style: const TextStyle(
+            fontSize: 13,
+            height: 1.5,
+            color: CommonDesignTokens.textPrimary,
+          ),
+        ),
+        // Detail points
+        if (details.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          for (final detail in details.take(3))
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  const Text(
+                    '·  ',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: ShelfDesignTokens.wordOfDayIconColor,
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      detail,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        height: 1.4,
+                        color: CommonDesignTokens.textSecondary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+        // Divider + book source
+        Padding(
+          padding: const EdgeInsets.only(top: 14),
+          child: Container(
+            height: 1,
+            color: ShelfDesignTokens.wordOfDayIconBg,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: <Widget>[
+            Icon(
+              Icons.book_outlined,
+              size: 13,
+              color: CommonDesignTokens.textSecondary,
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                preview.bookTitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: CommonDesignTokens.textSecondary,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  // ── Shared helpers ───────────────────────────────────────────────
 
   List<InlineSpan> _buildPreviewSpans(
     ExplainHistoryEntity preview,
