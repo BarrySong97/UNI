@@ -12,6 +12,7 @@ import '../../services/reader/layout/knuth_plass/width_cache.dart';
 import '../../services/reader/layout/reader_layout_engine.dart';
 import '../../services/reader/models/page_layout.dart';
 import '../../services/reader/models/parsed_chapter.dart';
+import '../../services/reader/models/render_node.dart';
 import '../../services/reader/reader_href_matcher.dart';
 import '../../services/reader/models/reader_preferences.dart';
 import 'page_navigation_strategy.dart';
@@ -86,6 +87,13 @@ class ReaderStore extends ChangeNotifier {
 
   /// Monotonic token to ignore stale async pagination results.
   int _chapterLoadToken = 0;
+
+  /// Pending block anchor from restored progress — resolved after pagination
+  /// when the viewport differs from the one used when progress was saved.
+  int? _pendingBlockAnchor;
+  int? _pendingChapterPageCount;
+  double? _pendingLocatorVw;
+  double? _pendingLocatorVh;
 
   // ---------------------------------------------------------------------------
   // Getters
@@ -478,6 +486,25 @@ class ReaderStore extends ChangeNotifier {
       );
       _debugChapterResolution('openBook');
 
+      // Resolve block anchor if the viewport differs from the one used when
+      // progress was saved. This re-maps the raw pageIndex to the correct
+      // content position in the new pagination.
+      if (_pendingBlockAnchor != null && _currentPagination != null) {
+        final viewportMatches = _pendingLocatorVw == _viewportSize.width &&
+            _pendingLocatorVh == _viewportSize.height;
+        if (!viewportMatches) {
+          _resolvePageIndexAfterRepagination(
+            savedBlockAnchor: _pendingBlockAnchor,
+            savedChapterPageCount: _pendingChapterPageCount ?? 0,
+            savedPageIndex: _currentPageIndex,
+          );
+        }
+      }
+      _pendingBlockAnchor = null;
+      _pendingChapterPageCount = null;
+      _pendingLocatorVw = null;
+      _pendingLocatorVh = null;
+
       // Clamp page index to valid range after loading.
       if (_currentPagination != null &&
           _currentPageIndex >= _currentPagination!.pages.length) {
@@ -516,26 +543,58 @@ class ReaderStore extends ChangeNotifier {
     }
   }
 
-  /// Update viewport size (e.g. after rotation).
+  /// Update viewport size (e.g. after rotation or split-screen change).
+  ///
+  /// Snapshots the current block anchor before re-pagination and resolves it
+  /// afterward so the user stays on the same content.
   Future<void> updateViewport({
     required Size viewportSize,
     required double safeAreaTop,
     required double safeAreaBottom,
+    bool? isDualPage,
   }) async {
+    final effectiveDual = isDualPage ?? _isDualPage;
     if (viewportSize == _viewportSize &&
         safeAreaTop == _safeAreaTop &&
-        safeAreaBottom == _safeAreaBottom) {
+        safeAreaBottom == _safeAreaBottom &&
+        effectiveDual == _isDualPage) {
       return;
     }
+
+    // Snapshot content position before re-pagination.
+    final savedBlockAnchor = _currentBlockAnchor();
+    final savedChapterPageCount = _currentPagination?.pages.length ?? 0;
+    final savedPageIndex = _currentPageIndex;
+
     _viewportSize = viewportSize;
     _safeAreaTop = safeAreaTop;
     _safeAreaBottom = safeAreaBottom;
+    if (effectiveDual != _isDualPage) {
+      _isDualPage = effectiveDual;
+      _strategy = effectiveDual
+          ? const DualPageStrategy()
+          : const SinglePageStrategy();
+    }
     _cache.clear();
     _absorbedChapters.clear();
     _paragraphPrepareCache?.clear();
+    _pageCountCache.clear();
+    _persistedPageCountsJson = null;
+    _allPagesComputed = false;
 
     if (_dataSource != null) {
       await _loadChapter(_currentChapterIndex);
+
+      // Resolve position in the new pagination.
+      _resolvePageIndexAfterRepagination(
+        savedBlockAnchor: savedBlockAnchor,
+        savedChapterPageCount: savedChapterPageCount,
+        savedPageIndex: savedPageIndex,
+      );
+
+      notifyListeners();
+      _saveProgress();
+      _computeAllPageCounts();
     }
   }
 
@@ -838,6 +897,12 @@ class ReaderStore extends ChangeNotifier {
     _preferences = newPrefs;
 
     if (needsRelayout || themeChanged) {
+      // Snapshot content position before re-pagination so the user stays on
+      // the same content after font/margin/theme changes.
+      final savedBlockAnchor = _currentBlockAnchor();
+      final savedChapterPageCount = _currentPagination?.pages.length ?? 0;
+      final savedPageIndex = _currentPageIndex;
+
       // Theme changes require re-pagination because text colors are baked
       // into TextPainter instances during layout.
       _cache.clear();
@@ -851,6 +916,13 @@ class ReaderStore extends ChangeNotifier {
       }
       if (_dataSource != null) {
         await _loadChapter(_currentChapterIndex);
+        if (needsRelayout) {
+          _resolvePageIndexAfterRepagination(
+            savedBlockAnchor: savedBlockAnchor,
+            savedChapterPageCount: savedChapterPageCount,
+            savedPageIndex: savedPageIndex,
+          );
+        }
       }
       if (needsRelayout) {
         _computeAllPageCounts();
@@ -1188,14 +1260,90 @@ class ReaderStore extends ChangeNotifier {
     return Object.hash(chapterIndex, _viewportSize, _preferences.layoutHash);
   }
 
+  // ---------------------------------------------------------------------------
+  // Block anchor helpers — viewport-independent content positioning
+  // ---------------------------------------------------------------------------
+
+  /// Return the [blockIndex] of the first block-level element on the current
+  /// page, or `null` if the page has no block-level content (e.g. image-only).
+  int? _currentBlockAnchor() {
+    final page = currentPageLayout;
+    if (page == null) return null;
+    for (final element in page.elements) {
+      final bi = renderNodeBlockIndex(element.sourceNode);
+      if (bi != null) return bi;
+    }
+    return null;
+  }
+
+  /// Find the page that contains (or first follows) the given [blockAnchor].
+  ///
+  /// Returns the page index within the chapter, or `null` if no match is found.
+  int? _pageIndexForBlockAnchor(
+    ChapterPagination pagination,
+    int blockAnchor,
+  ) {
+    for (final page in pagination.pages) {
+      for (final element in page.elements) {
+        final bi = renderNodeBlockIndex(element.sourceNode);
+        if (bi != null && bi >= blockAnchor) {
+          return page.pageIndexInChapter;
+        }
+      }
+    }
+    return null;
+  }
+
+  /// Resolve [_currentPageIndex] from a block anchor or chapter-proportional
+  /// fallback after re-pagination with a different viewport.
+  ///
+  /// [savedBlockAnchor] and [savedChapterPageCount] are the values captured
+  /// before re-pagination. [savedPageIndex] is the raw page index from before.
+  void _resolvePageIndexAfterRepagination({
+    required int? savedBlockAnchor,
+    required int savedChapterPageCount,
+    required int savedPageIndex,
+  }) {
+    if (_currentPagination == null || _currentPagination!.pages.isEmpty) return;
+
+    final maxIndex = _currentPagination!.pages.length - 1;
+    int? resolved;
+
+    // Primary: block anchor resolution.
+    if (savedBlockAnchor != null) {
+      resolved = _pageIndexForBlockAnchor(_currentPagination!, savedBlockAnchor);
+    }
+
+    // Fallback: chapter-proportional mapping.
+    if (resolved == null && savedChapterPageCount > 0) {
+      final ratio = savedPageIndex / savedChapterPageCount;
+      resolved = (ratio * _currentPagination!.pages.length).round();
+    }
+
+    if (resolved != null) {
+      _currentPageIndex = _strategy.alignPageIndex(
+        resolved.clamp(0, maxIndex),
+        maxIndex,
+      );
+    }
+  }
+
   void _restoreProgress(ReadingProgressEntity progress) {
     try {
       final locator = jsonDecode(progress.locatorJson) as Map<String, dynamic>;
       _currentChapterIndex = locator['chapterIndex'] as int? ?? 0;
       _currentPageIndex = locator['pageIndex'] as int? ?? 0;
+      _pendingBlockAnchor = locator['blockAnchor'] as int?;
+      _pendingChapterPageCount = locator['chapterPageCount'] as int?;
+      _pendingLocatorVw = (locator['vw'] as num?)?.toDouble();
+      _pendingLocatorVh = (locator['vh'] as num?)?.toDouble();
     } catch (_) {
       _currentChapterIndex = 0;
       _currentPageIndex = 0;
+      _pendingBlockAnchor = null;
+      _pendingChapterPageCount = null;
+      _pendingLocatorVw = null;
+      _pendingLocatorVh = null;
     }
 
     // Restore per-book preferences.
@@ -1297,6 +1445,10 @@ class ReaderStore extends ChangeNotifier {
     final locator = jsonEncode({
       'chapterIndex': _currentChapterIndex,
       'pageIndex': _currentPageIndex,
+      'blockAnchor': _currentBlockAnchor(),
+      'chapterPageCount': _currentPagination?.pages.length,
+      'vw': _viewportSize.width,
+      'vh': _viewportSize.height,
     });
 
     await _progressRepository.saveProgress(

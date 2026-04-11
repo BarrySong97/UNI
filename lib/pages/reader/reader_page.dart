@@ -127,6 +127,13 @@ class _ReaderPageState extends State<ReaderPage>
       const <String, List<_AnnotationTapTarget>>{};
   _PreviewReturnLocation? _previewReturnLocation;
   _FocusedAnnotationOverlay? _focusedAnnotationOverlay;
+
+  // Viewport change detection — tracks the last known values so build() can
+  // detect split-screen / rotation changes and trigger re-pagination.
+  Size? _lastViewportSize;
+  double _lastSafeAreaTop = 0.0;
+  double _lastSafeAreaBottom = 0.0;
+  bool _lastIsDualPage = false;
   _MarkEditorMode _markEditorMode = _MarkEditorMode.hidden;
   String _markEditorColor = ReaderConstants.defaultHighlightColor;
   AnnotationStyle _markEditorStyle = AnnotationStyle.highlight;
@@ -177,6 +184,12 @@ class _ReaderPageState extends State<ReaderPage>
     final viewportSize = isDual
         ? Size(mq.size.width / 2, mq.size.height)
         : mq.size;
+
+    // Record initial viewport so build() won't trigger a spurious update.
+    _lastViewportSize = viewportSize;
+    _lastSafeAreaTop = mq.padding.top;
+    _lastSafeAreaBottom = mq.padding.bottom;
+    _lastIsDualPage = isDual;
 
     await _store.openBook(
       book: widget.book,
@@ -2021,6 +2034,32 @@ class _ReaderPageState extends State<ReaderPage>
   Widget build(BuildContext context) {
     final prefs = _store.preferences;
     final mq = MediaQuery.of(context);
+
+    // Detect viewport changes (split-screen, rotation) and trigger
+    // re-pagination with block-anchor-based position preservation.
+    final isDual = mq.size.width >= kTabletBreakpoint;
+    final viewportSize = isDual
+        ? Size(mq.size.width / 2, mq.size.height)
+        : mq.size;
+    if (_lastViewportSize != null &&
+        (viewportSize != _lastViewportSize ||
+            mq.padding.top != _lastSafeAreaTop ||
+            mq.padding.bottom != _lastSafeAreaBottom ||
+            isDual != _lastIsDualPage)) {
+      _lastViewportSize = viewportSize;
+      _lastSafeAreaTop = mq.padding.top;
+      _lastSafeAreaBottom = mq.padding.bottom;
+      _lastIsDualPage = isDual;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _store.updateViewport(
+          viewportSize: viewportSize,
+          safeAreaTop: mq.padding.top,
+          safeAreaBottom: mq.padding.bottom,
+          isDualPage: isDual,
+        );
+      });
+    }
 
     // Update coordinate helper with latest screen dimensions and preferences.
     _coordHelper = _store.isDualPage
