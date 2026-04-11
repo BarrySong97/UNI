@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../entities/annotation-entity.dart';
+import '../../../shared/constants/common-design-tokens.dart';
+import '../../../shared/constants/shelf-design-tokens.dart';
 import '../models/reader_annotation_card_item.dart';
 import 'reader_annotation_card.dart';
 import 'reader_annotation_notes_sheet.dart';
@@ -17,6 +19,20 @@ class ReaderAnnotationSheetResult {
 
   final ReaderAnnotationSheetActionType type;
   final AnnotationEntity annotation;
+}
+
+class _ChapterGroup {
+  _ChapterGroup({
+    required this.chapterTitle,
+    required this.chapterIndex,
+    required this.items,
+  });
+
+  final String chapterTitle;
+  final int chapterIndex;
+  final List<ReaderAnnotationCardItem> items;
+
+  int get markCount => items.length;
 }
 
 class ReaderAnnotationSheet extends StatefulWidget {
@@ -39,7 +55,7 @@ class ReaderAnnotationSheet extends StatefulWidget {
       useSafeArea: false,
       enableDrag: true,
       isDismissible: true,
-      backgroundColor: const Color(0xFFF7F7F5),
+      backgroundColor: CommonDesignTokens.pageBackground,
       barrierColor: Colors.black26,
       constraints: BoxConstraints(maxWidth: mediaQuery.size.width),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
@@ -61,10 +77,17 @@ class ReaderAnnotationSheet extends StatefulWidget {
 class _ReaderAnnotationSheetState extends State<ReaderAnnotationSheet> {
   ReaderAnnotationSortMode _sortMode = ReaderAnnotationSortMode.recentActivity;
   String _searchQuery = '';
-  bool _isSearchVisible = false;
+  late Set<int> _expandedChapters;
   ReaderAnnotationCardItem? _selectedItem;
 
-  List<ReaderAnnotationCardItem> get _visibleItems {
+  @override
+  void initState() {
+    super.initState();
+    _expandedChapters =
+        widget.items.map((e) => e.chapterIndex).toSet();
+  }
+
+  List<ReaderAnnotationCardItem> get _filteredItems {
     final query = _searchQuery.trim().toLowerCase();
     final filtered = widget.items
         .where((item) {
@@ -91,15 +114,38 @@ class _ReaderAnnotationSheetState extends State<ReaderAnnotationSheet> {
     return filtered;
   }
 
+  List<_ChapterGroup> get _groupedItems {
+    final items = _filteredItems;
+    final Map<int, _ChapterGroup> groupMap = {};
+
+    for (final item in items) {
+      groupMap
+          .putIfAbsent(
+            item.chapterIndex,
+            () => _ChapterGroup(
+              chapterTitle: item.chapterTitle,
+              chapterIndex: item.chapterIndex,
+              items: [],
+            ),
+          )
+          .items
+          .add(item);
+    }
+
+    final groups = groupMap.values.toList();
+    groups.sort((a, b) => a.chapterIndex.compareTo(b.chapterIndex));
+    return groups;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
         _buildHeader(context),
-        if (_isSearchVisible) _buildSearchField(),
+        _buildSearchField(),
         Expanded(
           child: _selectedItem == null
-              ? _buildListView(context)
+              ? _buildGroupedListView(context)
               : ReaderAnnotationNotesSheet(
                   item: _selectedItem!,
                   onBack: () => setState(() => _selectedItem = null),
@@ -118,7 +164,6 @@ class _ReaderAnnotationSheetState extends State<ReaderAnnotationSheet> {
                   formatTimestamp: _formatRelativeTime,
                 ),
         ),
-        if (_selectedItem == null) _buildBottomBar(context),
       ],
     );
   }
@@ -138,7 +183,7 @@ class _ReaderAnnotationSheetState extends State<ReaderAnnotationSheet> {
             height: 4,
             margin: const EdgeInsets.only(bottom: 12),
             decoration: BoxDecoration(
-              color: const Color(0xFFD1D5DB),
+              color: CommonDesignTokens.borderColor,
               borderRadius: BorderRadius.circular(999),
             ),
           ),
@@ -148,7 +193,7 @@ class _ReaderAnnotationSheetState extends State<ReaderAnnotationSheet> {
                 title,
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.w700,
-                  color: const Color(0xFF111827),
+                  color: CommonDesignTokens.textPrimary,
                 ),
               ),
               if (subtitle != null) ...[
@@ -156,15 +201,22 @@ class _ReaderAnnotationSheetState extends State<ReaderAnnotationSheet> {
                 Text(
                   subtitle,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF6B7280),
+                    color: CommonDesignTokens.headerLabelColor,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
               const Spacer(),
+              if (_selectedItem == null)
+                IconButton(
+                  onPressed: () => _openSortMenu(context),
+                  icon: const Icon(Icons.sort_rounded),
+                  color: CommonDesignTokens.textSecondary,
+                ),
               IconButton(
                 onPressed: () => Navigator.of(context).pop(),
                 icon: const Icon(Icons.close),
+                color: CommonDesignTokens.textPrimary,
               ),
             ],
           ),
@@ -181,7 +233,11 @@ class _ReaderAnnotationSheetState extends State<ReaderAnnotationSheet> {
         onChanged: (value) => setState(() => _searchQuery = value),
         decoration: InputDecoration(
           hintText: 'Search marks',
-          prefixIcon: const Icon(Icons.search_rounded),
+          hintStyle: const TextStyle(color: CommonDesignTokens.textSecondary),
+          prefixIcon: const Icon(
+            Icons.search_rounded,
+            color: CommonDesignTokens.textSecondary,
+          ),
           suffixIcon: _searchQuery.isEmpty
               ? null
               : IconButton(
@@ -189,93 +245,96 @@ class _ReaderAnnotationSheetState extends State<ReaderAnnotationSheet> {
                   icon: const Icon(Icons.close_rounded),
                 ),
           filled: true,
-          fillColor: Colors.white,
+          fillColor: ShelfDesignTokens.statsCardBg,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
-            borderSide: BorderSide.none,
+            borderSide: BorderSide(color: CommonDesignTokens.borderColor),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide(color: CommonDesignTokens.borderColor),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide(
+              color: CommonDesignTokens.headerLabelColor,
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildListView(BuildContext context) {
-    final items = _visibleItems;
-    if (items.isEmpty) {
+  Widget _buildGroupedListView(BuildContext context) {
+    final groups = _groupedItems;
+    if (groups.isEmpty) {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(24),
           child: Text(
             'No marks found.',
-            style: TextStyle(fontSize: 15, color: Color(0xFF6B7280)),
+            style: TextStyle(
+              fontSize: 15,
+              color: CommonDesignTokens.textSecondary,
+            ),
           ),
         ),
       );
     }
 
-    return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(18, 8, 18, 18),
-      itemCount: items.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 14),
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(18, 4, 18, 24),
+      itemCount: groups.length,
       itemBuilder: (context, index) {
-        final item = items[index];
-        return ReaderAnnotationCard(
-          item: item,
-          timestampText: _formatRelativeTime(item.activityTime),
-          onTap: () => setState(() => _selectedItem = item),
-          onGoToLocation: () => Navigator.of(context).pop(
-            ReaderAnnotationSheetResult(
-              type: ReaderAnnotationSheetActionType.openLocation,
-              annotation: item.annotation,
+        final group = groups[index];
+        final isExpanded = _expandedChapters.contains(group.chapterIndex);
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _ChapterSectionHeader(
+              title: group.chapterTitle,
+              markCount: group.markCount,
+              isExpanded: isExpanded,
+              onToggle: () {
+                setState(() {
+                  if (isExpanded) {
+                    _expandedChapters.remove(group.chapterIndex);
+                  } else {
+                    _expandedChapters.add(group.chapterIndex);
+                  }
+                });
+              },
             ),
-          ),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeInOut,
+              alignment: Alignment.topCenter,
+              clipBehavior: Clip.hardEdge,
+              child: isExpanded
+                  ? Column(
+                      children: [
+                        for (int i = 0; i < group.items.length; i++) ...[
+                          if (i > 0) const SizedBox(height: 10),
+                          ReaderAnnotationCard(
+                            item: group.items[i],
+                            timestampText: _formatRelativeTime(
+                              group.items[i].activityTime,
+                            ),
+                            onTap: () => setState(
+                              () => _selectedItem = group.items[i],
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 16),
+                      ],
+                    )
+                  : const SizedBox.shrink(),
+            ),
+          ],
         );
       },
     );
-  }
-
-  Widget _buildBottomBar(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 8, 18, 18),
-      child: Container(
-        decoration: BoxDecoration(
-          color: const Color(0xFF111111),
-          borderRadius: BorderRadius.circular(28),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        child: Row(
-          children: [
-            _BottomAction(
-              icon: Icons.sort_rounded,
-              label: 'Sort',
-              onTap: () => _openSortMenu(context),
-            ),
-            _buildDivider(),
-            const _BottomAction(
-              icon: Icons.file_upload_outlined,
-              label: 'Export',
-              enabled: false,
-            ),
-            _buildDivider(),
-            _BottomAction(
-              icon: Icons.search_rounded,
-              label: 'Search',
-              highlighted: _isSearchVisible,
-              onTap: () => setState(() {
-                _isSearchVisible = !_isSearchVisible;
-                if (!_isSearchVisible) {
-                  _searchQuery = '';
-                }
-              }),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDivider() {
-    return Container(width: 1, height: 28, color: Colors.white24);
   }
 
   Future<void> _openSortMenu(BuildContext context) async {
@@ -318,47 +377,68 @@ class _ReaderAnnotationSheetState extends State<ReaderAnnotationSheet> {
   }
 }
 
-class _BottomAction extends StatelessWidget {
-  const _BottomAction({
-    required this.icon,
-    required this.label,
-    this.onTap,
-    this.enabled = true,
-    this.highlighted = false,
+class _ChapterSectionHeader extends StatelessWidget {
+  const _ChapterSectionHeader({
+    required this.title,
+    required this.markCount,
+    required this.isExpanded,
+    required this.onToggle,
   });
 
-  final IconData icon;
-  final String label;
-  final VoidCallback? onTap;
-  final bool enabled;
-  final bool highlighted;
+  final String title;
+  final int markCount;
+  final bool isExpanded;
+  final VoidCallback onToggle;
 
   @override
   Widget build(BuildContext context) {
-    final color = enabled
-        ? (highlighted ? const Color(0xFF60A5FA) : Colors.white)
-        : Colors.white38;
-    return Expanded(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
-        onTap: enabled ? onTap : null,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, color: color, size: 20),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  color: color,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+    return InkWell(
+      onTap: onToggle,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(2, 12, 2, 8),
+        child: Row(
+          children: [
+            AnimatedRotation(
+              turns: isExpanded ? 0.25 : 0.0,
+              duration: const Duration(milliseconds: 200),
+              child: const Icon(
+                Icons.chevron_right,
+                size: 20,
+                color: CommonDesignTokens.headerLabelColor,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                title.toUpperCase(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.8,
+                  color: CommonDesignTokens.headerLabelColor,
                 ),
               ),
-            ],
-          ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+              decoration: BoxDecoration(
+                color: ShelfDesignTokens.statsCardBg,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '$markCount',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: ShelfDesignTokens.statsNumberColor,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

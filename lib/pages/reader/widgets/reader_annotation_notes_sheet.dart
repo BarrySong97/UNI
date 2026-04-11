@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../../pages/reader/models/reader_annotation_card_item.dart';
 import '../../../services/reader/annotation/annotation_text_utils.dart';
+import '../../../shared/constants/common-design-tokens.dart';
+import '../../../shared/constants/shelf-design-tokens.dart';
 
 class ReaderAnnotationNotesSheet extends StatelessWidget {
   const ReaderAnnotationNotesSheet({
@@ -33,6 +35,7 @@ class ReaderAnnotationNotesSheet extends StatelessWidget {
               IconButton(
                 onPressed: onBack,
                 icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                color: CommonDesignTokens.textPrimary,
               ),
               Expanded(
                 child: Text(
@@ -41,7 +44,7 @@ class ReaderAnnotationNotesSheet extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
-                    color: const Color(0xFF111827),
+                    color: CommonDesignTokens.textPrimary,
                   ),
                 ),
               ),
@@ -53,7 +56,7 @@ class ReaderAnnotationNotesSheet extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
             children: [
               Container(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: quoteBg,
                   borderRadius: BorderRadius.circular(16),
@@ -62,7 +65,7 @@ class ReaderAnnotationNotesSheet extends StatelessWidget {
                 child: Text(
                   item.annotation.quoteText,
                   style: const TextStyle(
-                    color: Color(0xFF1F2937),
+                    color: CommonDesignTokens.textPrimary,
                     fontSize: 16,
                     height: 1.55,
                   ),
@@ -73,7 +76,7 @@ class ReaderAnnotationNotesSheet extends StatelessWidget {
                 const Text(
                   'No notes yet.',
                   style: TextStyle(
-                    color: Color(0xFF9CA3AF),
+                    color: CommonDesignTokens.textSecondary,
                     fontSize: 15,
                     fontWeight: FontWeight.w500,
                   ),
@@ -84,9 +87,9 @@ class ReaderAnnotationNotesSheet extends StatelessWidget {
                     margin: const EdgeInsets.only(bottom: 12),
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF8FAFC),
+                      color: ShelfDesignTokens.statsCardBg,
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: const Color(0xFFE5E7EB)),
+                      border: Border.all(color: CommonDesignTokens.borderColor),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -94,7 +97,7 @@ class ReaderAnnotationNotesSheet extends StatelessWidget {
                         Text(
                           note.text,
                           style: const TextStyle(
-                            color: Color(0xFF374151),
+                            color: CommonDesignTokens.textPrimary,
                             fontSize: 15,
                             height: 1.45,
                           ),
@@ -103,7 +106,7 @@ class ReaderAnnotationNotesSheet extends StatelessWidget {
                         Text(
                           formatTimestamp(note.createdAt),
                           style: const TextStyle(
-                            color: Color(0xFF9CA3AF),
+                            color: CommonDesignTokens.headerLabelColor,
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
                           ),
@@ -123,8 +126,8 @@ class ReaderAnnotationNotesSheet extends StatelessWidget {
                 child: OutlinedButton(
                   onPressed: onAddNote,
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF111827),
-                    side: const BorderSide(color: Color(0xFFE5E7EB)),
+                    foregroundColor: CommonDesignTokens.textPrimary,
+                    side: const BorderSide(color: CommonDesignTokens.borderColor),
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
@@ -138,8 +141,8 @@ class ReaderAnnotationNotesSheet extends StatelessWidget {
                 child: TextButton(
                   onPressed: onGoToLocation,
                   style: TextButton.styleFrom(
-                    backgroundColor: const Color(0xFFEFF6FF),
-                    foregroundColor: const Color(0xFF2563EB),
+                    backgroundColor: ShelfDesignTokens.statsCardBg,
+                    foregroundColor: ShelfDesignTokens.statsNumberColor,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),

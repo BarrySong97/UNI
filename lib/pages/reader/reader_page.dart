@@ -497,14 +497,16 @@ class _ReaderPageState extends State<ReaderPage>
               _annotationStore.state.notesByAnnotationId[annotation.id] ??
               const [];
           final anchor = AnnotationAnchorV1.tryParse(annotation.anchorJson);
+          final chapterIdx = anchor?.jumpTarget.chapterIndex ?? -1;
           final chapterTitle = anchor == null
               ? 'Unknown chapter'
-              : _store.chapterTitleAt(anchor.jumpTarget.chapterIndex);
+              : _store.chapterTitleAt(chapterIdx);
           final latestNote = notes.isEmpty ? null : notes.last.text;
           return ReaderAnnotationCardItem(
             annotation: annotation,
             notes: notes,
             chapterTitle: chapterTitle,
+            chapterIndex: chapterIdx,
             latestNoteText: latestNote,
             noteCount: notes.length,
             activityTime: annotation.updatedAt,

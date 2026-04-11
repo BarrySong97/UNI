@@ -34,6 +34,7 @@ void main() {
           ),
         ],
         chapterTitle: 'Chapter 1',
+        chapterIndex: 0,
         latestNoteText: 'alpha note',
         noteCount: 1,
         activityTime: now.subtract(const Duration(hours: 4)),
@@ -61,6 +62,7 @@ void main() {
           ),
         ],
         chapterTitle: 'Chapter 2',
+        chapterIndex: 1,
         latestNoteText: 'beta thought',
         noteCount: 1,
         activityTime: now.subtract(const Duration(hours: 1)),
@@ -74,11 +76,10 @@ void main() {
     );
 
     expect(find.text('Marks'), findsOneWidget);
-    expect(find.text('CHAPTER 2'), findsOneWidget);
     expect(find.text('CHAPTER 1'), findsOneWidget);
+    expect(find.text('CHAPTER 2'), findsOneWidget);
 
-    await tester.tap(find.text('Search'));
-    await tester.pumpAndSettle();
+    // Search is always visible — enter text directly
     await tester.enterText(
       find.byKey(const ValueKey('marks-search-input')),
       'beta',
