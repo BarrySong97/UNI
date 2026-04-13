@@ -69,6 +69,26 @@ void main() {
     expect(decision, AnnotationOverlapDecision.overlap);
   });
 
+  test('detects nested marks inside an existing mark', () {
+    final existing = entity('a1', anchor(start: 10, end: 20));
+    final decision = detectAnnotationOverlap(
+      candidate: anchor(start: 12, end: 18),
+      existingAnnotations: <AnnotationEntity>[existing],
+    );
+
+    expect(decision, AnnotationOverlapDecision.overlap);
+  });
+
+  test('detects marks that fully contain an existing mark', () {
+    final existing = entity('a1', anchor(start: 10, end: 20));
+    final decision = detectAnnotationOverlap(
+      candidate: anchor(start: 8, end: 24),
+      existingAnnotations: <AnnotationEntity>[existing],
+    );
+
+    expect(decision, AnnotationOverlapDecision.overlap);
+  });
+
   test('allows disjoint marks', () {
     final existing = entity('a1', anchor(start: 10, end: 20));
     final decision = detectAnnotationOverlap(
