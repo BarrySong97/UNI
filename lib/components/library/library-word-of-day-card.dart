@@ -5,10 +5,16 @@ import '../../shared/constants/common-design-tokens.dart';
 import '../../shared/constants/shelf-design-tokens.dart';
 
 class LibraryWordsCard extends StatelessWidget {
-  const LibraryWordsCard({this.preview, this.expanded = false, super.key});
+  const LibraryWordsCard({
+    this.preview,
+    this.expanded = false,
+    this.onTap,
+    super.key,
+  });
 
   final ExplainHistoryEntity? preview;
   final bool expanded;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -26,7 +32,7 @@ class LibraryWordsCard extends StatelessWidget {
         preview!.selectedText.trim().isNotEmpty &&
         preview!.selectedText.trim() != previewText;
 
-    return Container(
+    final card = Container(
       key: const ValueKey<String>('words-section-card'),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
@@ -124,6 +130,22 @@ class LibraryWordsCard extends StatelessWidget {
         ],
       ),
     );
+
+    if (preview == null || onTap == null) {
+      return card;
+    }
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        key: const ValueKey<String>('words-section-card-tap-target'),
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(
+          ShelfDesignTokens.wordOfDayCardRadius,
+        ),
+        child: card,
+      ),
+    );
   }
 
   // ── Expanded (tablet) ────────────────────────────────────────────
@@ -132,7 +154,7 @@ class LibraryWordsCard extends StatelessWidget {
     final hasPreview = preview != null;
     final previewText = _previewText(preview);
 
-    return Container(
+    final card = Container(
       key: const ValueKey<String>('words-section-card'),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -144,6 +166,22 @@ class LibraryWordsCard extends StatelessWidget {
       child: hasPreview
           ? _buildExpandedContent(preview!, previewText)
           : _buildExpandedEmpty(),
+    );
+
+    if (!hasPreview || onTap == null) {
+      return card;
+    }
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        key: const ValueKey<String>('words-section-card-tap-target'),
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(
+          ShelfDesignTokens.wordOfDayCardRadius,
+        ),
+        child: card,
+      ),
     );
   }
 
@@ -159,12 +197,16 @@ class LibraryWordsCard extends StatelessWidget {
               color: ShelfDesignTokens.wordOfDayIconColor,
             ),
             const SizedBox(width: 8),
-            const Text(
-              'Start building your words list',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: CommonDesignTokens.textPrimary,
+            const Expanded(
+              child: Text(
+                'Start building your words list',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: CommonDesignTokens.textPrimary,
+                ),
               ),
             ),
           ],
@@ -232,10 +274,7 @@ class LibraryWordsCard extends StatelessWidget {
         // Divider
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 14),
-          child: Container(
-            height: 1,
-            color: ShelfDesignTokens.wordOfDayIconBg,
-          ),
+          child: Container(height: 1, color: ShelfDesignTokens.wordOfDayIconBg),
         ),
         // Meaning
         Text(
@@ -282,10 +321,7 @@ class LibraryWordsCard extends StatelessWidget {
         // Divider + book source
         Padding(
           padding: const EdgeInsets.only(top: 14),
-          child: Container(
-            height: 1,
-            color: ShelfDesignTokens.wordOfDayIconBg,
-          ),
+          child: Container(height: 1, color: ShelfDesignTokens.wordOfDayIconBg),
         ),
         const SizedBox(height: 10),
         Row(

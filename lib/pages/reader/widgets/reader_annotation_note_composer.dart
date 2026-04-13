@@ -104,8 +104,35 @@ class ReaderAnnotationNoteComposer extends StatefulWidget {
       _ReaderAnnotationNoteComposerState();
 }
 
-class _ReaderAnnotationNoteComposerState
-    extends State<ReaderAnnotationNoteComposer> {
+class ReaderAnnotationNoteEditor extends StatefulWidget {
+  const ReaderAnnotationNoteEditor({
+    super.key,
+    required this.quoteText,
+    required this.onSubmit,
+    this.inputKey = const ValueKey('note-composer-input'),
+    this.initialText = '',
+    this.autoFocus = true,
+    this.isSubmitting = false,
+    this.showQuote = true,
+    this.bottomPadding = 16,
+  });
+
+  final String quoteText;
+  final Future<void> Function(String noteText) onSubmit;
+  final Key inputKey;
+  final String initialText;
+  final bool autoFocus;
+  final bool isSubmitting;
+  final bool showQuote;
+  final double bottomPadding;
+
+  @override
+  State<ReaderAnnotationNoteEditor> createState() =>
+      _ReaderAnnotationNoteEditorState();
+}
+
+class _ReaderAnnotationNoteEditorState
+    extends State<ReaderAnnotationNoteEditor> {
   late final TextEditingController _controller;
   late final FocusNode _focusNode;
 
@@ -118,10 +145,29 @@ class _ReaderAnnotationNoteComposerState
     _focusNode = FocusNode();
     _controller.addListener(_handleTextChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
+      if (mounted && widget.autoFocus) {
         _focusNode.requestFocus();
       }
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant ReaderAnnotationNoteEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialText != oldWidget.initialText &&
+        widget.initialText != _controller.text) {
+      _controller.value = TextEditingValue(
+        text: widget.initialText,
+        selection: TextSelection.collapsed(offset: widget.initialText.length),
+      );
+    }
+    if (widget.autoFocus && !oldWidget.autoFocus) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _focusNode.requestFocus();
+        }
+      });
+    }
   }
 
   @override
@@ -136,17 +182,19 @@ class _ReaderAnnotationNoteComposerState
     setState(() {});
   }
 
+  Future<void> _submit() async {
+    if (_trimmedText.isEmpty || widget.isSubmitting) {
+      return;
+    }
+    await widget.onSubmit(_trimmedText);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final mq = MediaQuery.of(context);
-    final bottomPadding = widget.isTablet
-        ? 16.0
-        : math.max(16.0, mq.padding.bottom);
-
     return SafeArea(
       top: false,
       child: Padding(
-        padding: EdgeInsets.fromLTRB(16, 12, 16, bottomPadding),
+        padding: EdgeInsets.fromLTRB(16, 12, 16, widget.bottomPadding),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -165,9 +213,10 @@ class _ReaderAnnotationNoteComposerState
                 const SizedBox(width: 10),
                 Expanded(
                   child: TextField(
-                    key: const ValueKey('note-composer-input'),
+                    key: widget.inputKey,
                     controller: _controller,
                     focusNode: _focusNode,
+                    enabled: !widget.isSubmitting,
                     minLines: 1,
                     maxLines: 4,
                     textInputAction: TextInputAction.newline,
@@ -189,9 +238,9 @@ class _ReaderAnnotationNoteComposerState
                 ),
                 TextButton(
                   key: const ValueKey('note-composer-publish'),
-                  onPressed: _trimmedText.isEmpty
+                  onPressed: _trimmedText.isEmpty || widget.isSubmitting
                       ? null
-                      : () => Navigator.of(context).pop(_trimmedText),
+                      : _submit,
                   style: TextButton.styleFrom(
                     foregroundColor: const Color(0xFF60A5FA),
                     textStyle: const TextStyle(
@@ -199,31 +248,62 @@ class _ReaderAnnotationNoteComposerState
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  child: const Text('Publish'),
+                  child: widget.isSubmitting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Publish'),
                 ),
               ],
             ),
-            const SizedBox(height: 10),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.only(top: 10),
-              decoration: const BoxDecoration(
-                border: Border(top: BorderSide(color: Color(0xFFE5E7EB))),
-              ),
-              child: Text(
-                'Quote: ${widget.quoteText}',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFF6B7280),
-                  fontSize: 14,
-                  height: 1.35,
+            if (widget.showQuote) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.only(top: 10),
+                decoration: const BoxDecoration(
+                  border: Border(top: BorderSide(color: Color(0xFFE5E7EB))),
+                ),
+                child: Text(
+                  'Quote: ${widget.quoteText}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF6B7280),
+                    fontSize: 14,
+                    height: 1.35,
+                  ),
                 ),
               ),
-            ),
+            ],
           ],
         ),
       ),
+    );
+  }
+}
+
+class _ReaderAnnotationNoteComposerState
+    extends State<ReaderAnnotationNoteComposer> {
+  @override
+  Widget build(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    final bottomPadding = widget.isTablet
+        ? 16.0
+        : math.max(16.0, mq.padding.bottom);
+
+    return ReaderAnnotationNoteEditor(
+      quoteText: widget.quoteText,
+      initialText: widget.initialText,
+      bottomPadding: bottomPadding,
+      onSubmit: (noteText) async {
+        if (!mounted) {
+          return;
+        }
+        Navigator.of(context).pop(noteText);
+      },
     );
   }
 }

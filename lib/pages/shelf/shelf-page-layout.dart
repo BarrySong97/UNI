@@ -36,6 +36,7 @@ class ShelfPageLayout extends StatelessWidget {
     this.onContinueReadingTap,
     this.wordsPreview,
     this.onWordsMoreTap,
+    this.onWordsCardTap,
     this.lastImportedBookId,
     super.key,
   });
@@ -57,6 +58,7 @@ class ShelfPageLayout extends StatelessWidget {
   final VoidCallback? onContinueReadingTap;
   final ExplainHistoryEntity? wordsPreview;
   final VoidCallback? onWordsMoreTap;
+  final VoidCallback? onWordsCardTap;
   final String? lastImportedBookId;
 
   static const _palette = <Color>[
@@ -680,7 +682,11 @@ class ShelfPageLayout extends StatelessWidget {
   }
 
   Widget _buildWordsCard({bool expanded = false}) {
-    return LibraryWordsCard(preview: wordsPreview, expanded: expanded);
+    return LibraryWordsCard(
+      preview: wordsPreview,
+      expanded: expanded,
+      onTap: onWordsCardTap,
+    );
   }
 
   Widget _buildSectionHeader(

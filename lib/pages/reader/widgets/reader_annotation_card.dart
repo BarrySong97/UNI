@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../pages/reader/models/reader_annotation_card_item.dart';
 import '../../../shared/constants/common-design-tokens.dart';
+import '../../../shared/constants/shelf-design-tokens.dart';
 
 class ReaderAnnotationCard extends StatelessWidget {
   const ReaderAnnotationCard({
@@ -10,9 +11,6 @@ class ReaderAnnotationCard extends StatelessWidget {
     required this.timestampText,
     required this.onTap,
   });
-
-  static const _cardBg = Color(0xFFF8F6F2);
-  static const _cardBorder = Color(0xFFE8E4DF);
 
   final ReaderAnnotationCardItem item;
   final String timestampText;
@@ -25,9 +23,9 @@ class ReaderAnnotationCard extends StatelessWidget {
       onTap: onTap,
       child: Ink(
         decoration: BoxDecoration(
-          color: _cardBg,
+          color: ShelfDesignTokens.wordOfDayCardBg,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: _cardBorder),
+          border: Border.all(color: ShelfDesignTokens.wordOfDayIconBg),
         ),
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
         child: Column(
