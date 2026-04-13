@@ -31,4 +31,57 @@ void main() {
     expect(enabled.onPressed, isNotNull);
     expect(find.textContaining('Quote: Selected quote'), findsOneWidget);
   });
+
+  testWidgets('shared editor submits and disables while saving', (
+    tester,
+  ) async {
+    var submittedText = '';
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ReaderAnnotationNoteEditor(
+            quoteText: 'Inline quote',
+            onSubmit: (value) async {
+              submittedText = value;
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.enterText(
+      find.byKey(const ValueKey('note-composer-input')),
+      'Inline note',
+    );
+    await tester.pump();
+    final publish = tester.widget<TextButton>(
+      find.byKey(const ValueKey('note-composer-publish')),
+    );
+    publish.onPressed!.call();
+    await tester.pump();
+
+    expect(submittedText, 'Inline note');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ReaderAnnotationNoteEditor(
+            quoteText: 'Inline quote',
+            isSubmitting: true,
+            onSubmit: (value) async {
+              submittedText = value;
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final disabled = tester.widget<TextButton>(
+      find.byKey(const ValueKey('note-composer-publish')),
+    );
+    expect(disabled.onPressed, isNull);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+  });
 }

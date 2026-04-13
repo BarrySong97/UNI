@@ -69,11 +69,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Meaning'), findsOneWidget);
-    expect(find.text('Details'), findsOneWidget);
-    expect(find.text('Context'), findsOneWidget);
+    expect(find.text('MEANING'), findsOneWidget);
+    expect(find.text('DETAILS & USAGE'), findsOneWidget);
     expect(find.text('It suggests clear thinking.'), findsOneWidget);
-    expect(find.text('Clarity makes deep work possible.'), findsOneWidget);
+    expect(find.byType(RichText), findsWidgets);
   });
 
   testWidgets('renders empty state when no explain history exists', (

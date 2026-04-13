@@ -71,6 +71,7 @@ lib/stores/library/       — LibraryStore + LibraryState
 9. User taps the left Shelf stat card (`Reading Time`) or right Shelf stat card (`Books Read`) -> both navigate to `/statistics`, but pass different initial tab arguments while keeping the same route.
 10. Shelf loads recent `Explain` history from `explain_cache` and picks the newest word-like entry (`<= 3` tokens, short text) for the `Words` preview card; the card body prefers the containing sentence, falls back to the selected text, truncates to two lines, and highlights the selected word when it appears in the sentence.
 11. User taps `More` in the Shelf `Words` section -> opens the `Words` page, which lists all explain history entries with preview meaning, source book, and time. Tapping a row opens a detail page with full meaning, details, and context sentence.
+12. User can also tap the Shelf `Words` preview card itself -> opens the latest word detail directly. The empty-state card remains non-interactive.
 12. Statistics resolves a reusable time block from the selected preset:
    - `This Month`: current calendar month
    - `This Year`: current calendar year
@@ -87,7 +88,7 @@ lib/stores/library/       — LibraryStore + LibraryState
 LibraryHeader ("IMMERSED" label + "Shelf" title + "+" import button)
 LibraryReadingStats (DAILY GOAL + BOOKS READ) — empty state when no progress
 Now Reading (Section Header + NowReadingCard) — first book when no progress
-Words (Section Header + preview card + `More`) — shows the latest word in its sentence context or an action hint
+Words (Section Header + preview card + `More`) — shows the latest word in its sentence context or an action hint; `More` opens the list while the preview card opens the latest word detail
 Words page — compact history list with row tap to a dedicated detail page
 Horizontal book scroll (fixed-width items, edge-to-edge)
 ```
@@ -150,7 +151,7 @@ Header + "Add Your First Book" button (on Shelf).
 - Import success: new book pops in (scale + fade), existing items smoothly slide to new positions (no snackbar).
 - Cover decode failure: falls back to placeholder cover.
 - Now Reading: uses first book when no progress, always shown on Shelf.
-- Words section: always shown when Shelf has books; empty state says `Select a word in Reader and tap Explain.` Preview cards show the containing sentence (or the selected sentence itself) and do not show the explain meaning.
+- Words section: always shown when Shelf has books; empty state says `Select a word in Reader and tap Explain.` Preview cards show the containing sentence (or the selected sentence itself), do not show the explain meaning, and open the latest word detail when tapped.
 - Words `More` page: if no explain history exists, shows the same empty-state guidance instead of a blank list.
 - Real cover uses `BoxFit.cover`.
 - Book Profile top background uses `profileBgColor` gradient.

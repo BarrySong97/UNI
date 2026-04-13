@@ -40,7 +40,8 @@
    - same-block fallback
    - same-chapter fallback
 9. 成功恢复的 segment 被投影到当前 `PageLayout`：`Highlight` 以底色 overlay 绘制，`Underline` 在文本上方绘制下划线。
-10. 用户点击 controls 中的 marks icon 时，Reader 打开侧边列表；点击某条 mark 后以 preview jump 方式跳转，并显示 `Back to previous location`。
+10. 用户点击 controls 中的 marks icon 时，Reader 打开 marks 列表；点击某条 mark 后先进入 `Mark Details`，可在当前详情中内联添加 note，或点击单独的 `Go to mark` 按钮执行 preview jump，并显示 `Back to previous location`。
+11. 用户在正文中遇到已标记文字时，**短按**继续打开原顶部悬浮 tooltip；**长按**该文字打开 note sheet：手机走底部 sheet，双页模式下像 Explain 一样从文字对侧滑入半屏面板（左页文字从右侧弹出，右页文字从左侧弹出），并展示该 mark 的全部 notes。
 
 ## 关键状态与数据
 - `AnnotationEntity.id / bookId / kind / style / quoteText / anchorJson / color / note / createdAt / updatedAt`
@@ -78,8 +79,10 @@
 - 点击 `Mark` 时立即保存；上方紧凑样式栏只负责修改当前 mark 的颜色与样式，不再需要单独确认。
 - 点击 `Note` 时打开底部 composer；空文本不得发布。
 - 不允许创建与已有 mark 完全重复或重叠的 mark。
-- 用户直接点击正文里已有的 mark 时，会直接弹出 mark tooltip 与已展开的 mark editor；tooltip 提供 `Phonetics`、`Explain`、`Note`、`Unmark`、`Read Aloud`，无需额外的 `Edit` 入口。
+- 用户短按正文里已有的 mark 时，仍打开原顶部悬浮 tooltip。
+- 用户长按正文里已有的单个 mark 时，打开 note sheet，而不是替代 tooltip；sheet 只承载该 mark 的 notes 时间线与内联 `Add Note`。
 - 当一次选区命中多个已有 marks 时，只允许 `Unmark`，不支持批量修改颜色/样式或批量加 note。
+- `Mark Details` 中点击 `Add Note` 不会关闭详情，也不会触发跳转；保存后需留在当前详情页并立即刷新 note 时间线。
 - 已保存 mark 在重新打开 Reader、修改字号、边距、行距后仍应尽量恢复。
 - 从 marks 列表点进正文时，首次 preview jump 不应立即覆盖持久化阅读进度；只有用户继续翻页/继续阅读后，才把新位置视为当前进度。
 - block 精确恢复失败时，允许退化到 same-block / same-chapter 文本匹配。
@@ -92,7 +95,7 @@
 - 用户点击 `Mark` 后会立即看到持久化标记；点击 `Note` 可以创建或追加 note；在样式栏切换颜色或样式时，当前页会立即更新。
 - 重复或重叠 mark 会被拦截且不会产生重复数据。
 - 重启应用后 annotation 仍可读取并重新渲染。
-- controls 中可打开 marks 列表，点击列表项可以跳转并可返回原位置。
+- controls 中可打开 marks 列表，点击列表项可进入详情；点击 `Go to mark` 后可以跳转并返回原位置。
 - 调整 ReaderPreferences 后 annotation 仍可正确恢复。
 - `flutter analyze` 通过。
 - `flutter test` 通过。

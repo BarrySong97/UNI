@@ -38,6 +38,7 @@ import 'widgets/reader_annotation_note_composer.dart';
 import 'widgets/reader_annotation_sheet.dart';
 import 'widgets/reader_controls_overlay.dart';
 import 'widgets/reader_explain_sheet.dart';
+import 'widgets/reader_focused_annotation_sheet.dart';
 import 'widgets/reader_mark_style_editor.dart';
 import 'widgets/reader_tooltip_actions_bar.dart';
 import 'widgets/reader_phonetics_sheet.dart';
@@ -294,12 +295,6 @@ class _ReaderPageState extends State<ReaderPage>
     _setMarkEditorAppearance(color: annotation.color, style: annotation.style);
   }
 
-  void _openFocusedMarkEditor(AnnotationEntity annotation) {
-    _markEditorMode = _MarkEditorMode.editFocused;
-    _editingAnnotationId = annotation.id;
-    _setMarkEditorAppearance(color: annotation.color, style: annotation.style);
-  }
-
   AnnotationEntity? _activeEditingAnnotation() {
     final annotationId = _editingAnnotationId;
     if (annotationId == null) {
@@ -505,27 +500,73 @@ class _ReaderPageState extends State<ReaderPage>
 
   List<ReaderAnnotationCardItem> _buildAnnotationCardItems() {
     return _annotationStore.state.items
-        .map((annotation) {
-          final notes =
-              _annotationStore.state.notesByAnnotationId[annotation.id] ??
-              const [];
-          final anchor = AnnotationAnchorV1.tryParse(annotation.anchorJson);
-          final chapterIdx = anchor?.jumpTarget.chapterIndex ?? -1;
-          final chapterTitle = anchor == null
-              ? 'Unknown chapter'
-              : _store.chapterTitleAt(chapterIdx);
-          final latestNote = notes.isEmpty ? null : notes.last.text;
-          return ReaderAnnotationCardItem(
-            annotation: annotation,
-            notes: notes,
-            chapterTitle: chapterTitle,
-            chapterIndex: chapterIdx,
-            latestNoteText: latestNote,
-            noteCount: notes.length,
-            activityTime: annotation.updatedAt,
-          );
-        })
+        .map((annotation) => _buildAnnotationCardItem(annotation.id))
+        .whereType<ReaderAnnotationCardItem>()
         .toList(growable: false);
+  }
+
+  ReaderAnnotationCardItem? _buildAnnotationCardItem(String annotationId) {
+    AnnotationEntity? annotation;
+    try {
+      annotation = _annotationStore.state.items.firstWhere(
+        (item) => item.id == annotationId,
+      );
+    } catch (_) {
+      return null;
+    }
+
+    final notes =
+        _annotationStore.state.notesByAnnotationId[annotation.id] ?? const [];
+    final anchor = AnnotationAnchorV1.tryParse(annotation.anchorJson);
+    final chapterIdx = anchor?.jumpTarget.chapterIndex ?? -1;
+    final chapterTitle = anchor == null
+        ? 'Unknown chapter'
+        : _store.chapterTitleAt(chapterIdx);
+    final latestNote = notes.isEmpty ? null : notes.last.text;
+    return ReaderAnnotationCardItem(
+      annotation: annotation,
+      notes: notes,
+      chapterTitle: chapterTitle,
+      chapterIndex: chapterIdx,
+      latestNoteText: latestNote,
+      noteCount: notes.length,
+      activityTime: annotation.updatedAt,
+    );
+  }
+
+  _AnnotationTapTarget? _annotationTapTargetAt(
+    PageLayout page,
+    Offset contentOffset,
+  ) {
+    final matches = _annotationTapTargetsForPage(
+      page,
+    ).where((target) => target.contains(contentOffset)).toList(growable: false);
+    if (matches.isEmpty) {
+      return null;
+    }
+    return matches.first;
+  }
+
+  String _formatAnnotationTimestamp(DateTime value) {
+    final now = DateTime.now();
+    final diff = now.difference(value);
+    if (diff.inMinutes < 60) {
+      final minutes = diff.inMinutes <= 0 ? 1 : diff.inMinutes;
+      return '$minutes min ago';
+    }
+    if (diff.inHours < 24) {
+      final hours = diff.inHours;
+      return hours == 1 ? '1 hour ago' : '$hours hours ago';
+    }
+    if (diff.inDays < 7) {
+      final days = diff.inDays;
+      return days == 1 ? '1 day ago' : '$days days ago';
+    }
+    final month = value.month.toString().padLeft(2, '0');
+    final day = value.day.toString().padLeft(2, '0');
+    final hour = value.hour.toString().padLeft(2, '0');
+    final minute = value.minute.toString().padLeft(2, '0');
+    return '${value.year}-$month-$day $hour:$minute';
   }
 
   void _recordInteraction() {
@@ -739,6 +780,33 @@ class _ReaderPageState extends State<ReaderPage>
     _hideMarkEditor();
   }
 
+  void _focusAnnotationOverlay(
+    _AnnotationTapTarget tappedAnnotation, {
+    required bool isRightPage,
+  }) {
+    final focusedAnnotation = tappedAnnotation.annotations.length == 1
+        ? tappedAnnotation.annotations.first
+        : null;
+    _focusedAnnotationOverlay = _FocusedAnnotationOverlay(
+      chapterIndex: tappedAnnotation.chapterIndex,
+      pageIndexInChapter: tappedAnnotation.pageIndexInChapter,
+      isRightPage: isRightPage,
+      annotations: List<AnnotationEntity>.unmodifiable(
+        tappedAnnotation.annotations,
+      ),
+      rects: List<Rect>.unmodifiable(tappedAnnotation.rects),
+    );
+    if (focusedAnnotation == null) {
+      _markEditorMode = _MarkEditorMode.hidden;
+      _editingAnnotationId = null;
+      return;
+    }
+    _markEditorMode = _MarkEditorMode.editFocused;
+    _editingAnnotationId = focusedAnnotation.id;
+    _markEditorColor = focusedAnnotation.color;
+    _markEditorStyle = focusedAnnotation.style;
+  }
+
   void _updateSelectionRects() {
     if (_crossSelection == null) {
       _selectionRects = const [];
@@ -776,6 +844,22 @@ class _ReaderPageState extends State<ReaderPage>
       details.globalPosition,
       isRightPage: isRight,
     );
+    final tappedAnnotation = _annotationTapTargetAt(page, contentOffset);
+    if (tappedAnnotation != null && tappedAnnotation.annotations.length == 1) {
+      final item = _buildAnnotationCardItem(
+        tappedAnnotation.annotations.first.id,
+      );
+      if (item != null) {
+        HapticFeedback.selectionClick();
+        unawaited(
+          _openFocusedAnnotationActionsSheet(
+            item,
+            isRightPage: isRight,
+          ),
+        );
+      }
+      return;
+    }
     final hit = hitTestPage(page, contentOffset);
     if (hit == null) return;
 
@@ -1596,22 +1680,10 @@ class _ReaderPageState extends State<ReaderPage>
         : _toContentOffset(details.globalPosition, isRightPage: isRight);
 
     if (page != null && contentOffset != null) {
-      final tappedAnnotation = _annotationTapTargetsForPage(page)
-          .where((target) => target.contains(contentOffset))
-          .toList(growable: false);
-      if (tappedAnnotation.isNotEmpty) {
+      final tappedAnnotation = _annotationTapTargetAt(page, contentOffset);
+      if (tappedAnnotation != null) {
         setState(() {
-          _clearSelection();
-          _focusedAnnotationOverlay = _FocusedAnnotationOverlay(
-            chapterIndex: page.chapterIndex,
-            pageIndexInChapter: page.pageIndexInChapter,
-            isRightPage: isRight,
-            annotations: tappedAnnotation.first.annotations,
-            rects: tappedAnnotation.first.rects,
-          );
-          if (tappedAnnotation.first.annotations.length == 1) {
-            _openFocusedMarkEditor(tappedAnnotation.first.annotations.first);
-          }
+          _focusAnnotationOverlay(tappedAnnotation, isRightPage: isRight);
         });
         return;
       }
@@ -1837,17 +1909,39 @@ class _ReaderPageState extends State<ReaderPage>
     final selected = await ReaderAnnotationSheet.show(
       context: context,
       items: _buildAnnotationCardItems(),
+      onAddNote: _handleAnnotationSheetAddNote,
       isTablet: _store.isDualPage,
       showOnLeft: _store.isDualPage,
     );
     if (selected == null || !mounted) {
       return;
     }
-    if (selected.type == ReaderAnnotationSheetActionType.addNote) {
-      await _openNoteComposerForAnnotation(selected.annotation);
-      return;
-    }
     await _jumpToAnnotationPreview(selected.annotation);
+  }
+
+  Future<ReaderAnnotationCardItem> _handleAnnotationSheetAddNote(
+    ReaderAnnotationCardItem item,
+    String noteText,
+  ) async {
+    await _handleAppendNote(item.annotation, noteText: noteText);
+    return _buildAnnotationCardItem(item.annotation.id) ?? item;
+  }
+
+  Future<void> _openFocusedAnnotationActionsSheet(
+    ReaderAnnotationCardItem item, {
+    required bool isRightPage,
+  }) async {
+    await ReaderFocusedAnnotationSheet.show(
+      context: context,
+      item: item,
+      isTablet: _store.isDualPage,
+      showOnLeft: isRightPage,
+      formatTimestamp: _formatAnnotationTimestamp,
+      onAddNote: (noteText) async {
+        await _handleAppendNote(item.annotation, noteText: noteText);
+        return _buildAnnotationCardItem(item.annotation.id) ?? item;
+      },
+    );
   }
 
   Future<void> _jumpToAnnotationPreview(AnnotationEntity annotation) async {
