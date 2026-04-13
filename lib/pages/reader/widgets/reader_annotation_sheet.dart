@@ -91,6 +91,7 @@ class ReaderAnnotationSheet extends StatefulWidget {
 class _ReaderAnnotationSheetState extends State<ReaderAnnotationSheet> {
   ReaderAnnotationSortMode _sortMode = ReaderAnnotationSortMode.recentActivity;
   String _searchQuery = '';
+  late final TextEditingController _searchController;
   late Set<int> _expandedChapters;
   late List<ReaderAnnotationCardItem> _items;
   ReaderAnnotationCardItem? _selectedItem;
@@ -100,8 +101,15 @@ class _ReaderAnnotationSheetState extends State<ReaderAnnotationSheet> {
   @override
   void initState() {
     super.initState();
+    _searchController = TextEditingController();
     _items = List<ReaderAnnotationCardItem>.from(widget.items);
     _expandedChapters = _items.map((e) => e.chapterIndex).toSet();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   List<ReaderAnnotationCardItem> get _filteredItems {
@@ -156,66 +164,69 @@ class _ReaderAnnotationSheetState extends State<ReaderAnnotationSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        _buildHeader(context),
-        _buildSearchField(),
-        Expanded(
-          child: _selectedItem == null
-              ? _buildGroupedListView(context)
-              : ReaderAnnotationNotesSheet(
-                  item: _selectedItem!,
-                  isComposing: _isDetailComposerOpen,
-                  composerVersion: _detailComposerVersion,
-                  onBack: () => setState(() {
-                    _selectedItem = null;
-                    _isDetailComposerOpen = false;
-                  }),
-                  onStartAddNote: () => setState(() {
-                    _isDetailComposerOpen = true;
-                    _detailComposerVersion += 1;
-                  }),
-                  onAddNote: (noteText) async {
-                    setState(() {
-                      _isDetailComposerOpen = false;
-                      _detailComposerVersion += 1;
-                    });
-                    final updated = await widget.onAddNote(
-                      _selectedItem!,
-                      noteText,
-                    );
-                    if (!mounted) {
-                      return updated;
-                    }
-                    setState(() {
-                      final index = _items.indexWhere(
-                        (item) => item.annotation.id == updated.annotation.id,
-                      );
-                      if (index >= 0) {
-                        _items[index] = updated;
-                      }
-                      _selectedItem = null;
-                    });
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (!mounted) {
-                        return;
-                      }
-                      setState(() {
-                        _selectedItem = updated;
-                      });
-                    });
-                    return updated;
-                  },
-                  onGoToLocation: () => Navigator.of(context).pop(
-                    ReaderAnnotationSheetResult(
-                      type: ReaderAnnotationSheetActionType.openLocation,
-                      annotation: _selectedItem!.annotation,
-                    ),
-                  ),
-                  formatTimestamp: _formatRelativeTime,
-                ),
+    if (_selectedItem == null) {
+      return Column(
+        children: [
+          _buildHeader(context),
+          _buildSearchField(),
+          Expanded(child: _buildGroupedListView(context)),
+        ],
+      );
+    }
+
+    return ReaderAnnotationNotesSheet(
+      item: _selectedItem!,
+      searchController: _searchController,
+      isComposing: _isDetailComposerOpen,
+      composerVersion: _detailComposerVersion,
+      onBack: () => setState(() {
+        _selectedItem = null;
+        _isDetailComposerOpen = false;
+      }),
+      onSearchChanged: (value) => setState(() => _searchQuery = value),
+      onClearSearch: () {
+        _searchController.clear();
+        setState(() => _searchQuery = '');
+      },
+      onStartAddNote: () => setState(() {
+        _isDetailComposerOpen = true;
+        _detailComposerVersion += 1;
+      }),
+      onAddNote: (noteText) async {
+        setState(() {
+          _isDetailComposerOpen = false;
+          _detailComposerVersion += 1;
+        });
+        final updated = await widget.onAddNote(_selectedItem!, noteText);
+        if (!mounted) {
+          return updated;
+        }
+        setState(() {
+          final index = _items.indexWhere(
+            (item) => item.annotation.id == updated.annotation.id,
+          );
+          if (index >= 0) {
+            _items[index] = updated;
+          }
+          _selectedItem = null;
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            _selectedItem = updated;
+          });
+        });
+        return updated;
+      },
+      onGoToLocation: () => Navigator.of(context).pop(
+        ReaderAnnotationSheetResult(
+          type: ReaderAnnotationSheetActionType.openLocation,
+          annotation: _selectedItem!.annotation,
         ),
-      ],
+      ),
+      formatTimestamp: _formatRelativeTime,
     );
   }
 
@@ -281,6 +292,7 @@ class _ReaderAnnotationSheetState extends State<ReaderAnnotationSheet> {
       padding: const EdgeInsets.fromLTRB(18, 0, 18, 10),
       child: TextField(
         key: const ValueKey('marks-search-input'),
+        controller: _searchController,
         onChanged: (value) => setState(() => _searchQuery = value),
         decoration: InputDecoration(
           hintText: 'Search marks',
@@ -292,7 +304,10 @@ class _ReaderAnnotationSheetState extends State<ReaderAnnotationSheet> {
           suffixIcon: _searchQuery.isEmpty
               ? null
               : IconButton(
-                  onPressed: () => setState(() => _searchQuery = ''),
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() => _searchQuery = '');
+                  },
                   icon: const Icon(Icons.close_rounded),
                 ),
           filled: true,

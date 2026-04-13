@@ -102,9 +102,14 @@ void main() {
     await tester.tap(find.text('Second quote'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Mark Details'), findsOneWidget);
+    expect(find.text('Chapter 2'), findsOneWidget);
     expect(find.text('Add Note'), findsOneWidget);
     expect(find.text('Go to mark'), findsOneWidget);
+    expect(find.byKey(const ValueKey('marks-search-input')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('mark-detail-search-input')),
+      findsOneWidget,
+    );
     expect(
       find.byKey(const ValueKey('mark-detail-quote-card')),
       findsOneWidget,
@@ -169,18 +174,25 @@ void main() {
     await tester.tap(find.text('Inline quote'));
     await tester.pumpAndSettle();
 
+    final hiddenInputFinder = find.byKey(
+      const ValueKey('mark-detail-note-input'),
+      skipOffstage: false,
+    );
+    expect(hiddenInputFinder, findsOneWidget);
+    final hiddenInput = tester.widget<TextField>(hiddenInputFinder);
+    expect(hiddenInput.focusNode?.hasFocus, isFalse);
+
     await tester.tap(find.text('Add Note'));
     await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const ValueKey('mark-detail-note-input')),
-      findsOneWidget,
+    final visibleInputFinder = find.byKey(
+      const ValueKey('mark-detail-note-input'),
     );
+    expect(visibleInputFinder, findsOneWidget);
+    final visibleInput = tester.widget<TextField>(visibleInputFinder);
+    expect(visibleInput.focusNode?.hasFocus, isTrue);
 
-    await tester.enterText(
-      find.byKey(const ValueKey('mark-detail-note-input')),
-      'second note',
-    );
+    await tester.enterText(visibleInputFinder, 'second note');
     await tester.pump();
     final publishButton = tester.widget<TextButton>(
       find.byKey(const ValueKey('note-composer-publish')),
@@ -188,7 +200,7 @@ void main() {
     publishButton.onPressed!.call();
     await tester.pumpAndSettle();
 
-    expect(find.text('Mark Details'), findsOneWidget);
+    expect(find.text('Chapter 1'), findsOneWidget);
     expect(find.text('second note'), findsOneWidget);
     final offstage = tester.widget<Offstage>(
       find
@@ -319,7 +331,7 @@ void main() {
       find.byKey(const ValueKey('mark-detail-quote-card')),
     );
     final decoration = quoteContainer.decoration! as BoxDecoration;
-    expect(decoration.color, Colors.white);
+    expect(decoration.color, isNull);
 
     final richText = tester.widget<RichText>(
       find.descendant(

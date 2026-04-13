@@ -40,7 +40,7 @@
    - same-block fallback
    - same-chapter fallback
 9. 成功恢复的 segment 被投影到当前 `PageLayout`：`Highlight` 以底色 overlay 绘制，`Underline` 在文本上方绘制下划线。
-10. 用户点击 controls 中的 marks icon 时，Reader 打开 marks 列表；点击某条 mark 后先进入 `Mark Details`，可在当前详情中内联添加 note，或点击单独的 `Go to mark` 按钮执行 preview jump，并显示 `Back to previous location`。
+10. 用户点击 controls 中的 marks icon 时，Reader 打开 marks 列表；点击某条 mark 后先进入 `Mark Details`。详情顶部显示 `Chapter` 标题与 close 导航按钮，底部使用浮动操作条承载 `Search`、`Add Note`、`Go to mark`。进入详情时不得自动弹出键盘，只有点击 `Add Note` 后才打开内联 note 输入；点击 `Go to mark` 执行 preview jump，并显示 `Back to previous location`。
 11. 用户在正文中遇到已标记文字时，**短按**继续打开原顶部悬浮 tooltip；**长按**该文字打开 note sheet：手机走底部 sheet，双页模式下像 Explain 一样从文字对侧滑入半屏面板（左页文字从右侧弹出，右页文字从左侧弹出），并展示该 mark 的全部 notes。
 
 ## 关键状态与数据
@@ -83,6 +83,7 @@
 - 用户长按正文里已有的单个 mark 时，打开 note sheet，而不是替代 tooltip；sheet 只承载该 mark 的 notes 时间线与内联 `Add Note`。
 - 当一次选区命中多个已有 marks 时，只允许 `Unmark`，不支持批量修改颜色/样式或批量加 note。
 - `Mark Details` 中点击 `Add Note` 不会关闭详情，也不会触发跳转；保存后需留在当前详情页并立即刷新 note 时间线。
+- 进入 `Mark Details` 时搜索控件位于底部浮动操作条内，不再占用顶部标题区。
 - 已保存 mark 在重新打开 Reader、修改字号、边距、行距后仍应尽量恢复。
 - 从 marks 列表点进正文时，首次 preview jump 不应立即覆盖持久化阅读进度；只有用户继续翻页/继续阅读后，才把新位置视为当前进度。
 - block 精确恢复失败时，允许退化到 same-block / same-chapter 文本匹配。

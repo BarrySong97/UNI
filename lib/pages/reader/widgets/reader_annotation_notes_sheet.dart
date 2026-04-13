@@ -9,9 +9,12 @@ class ReaderAnnotationNotesSheet extends StatefulWidget {
   const ReaderAnnotationNotesSheet({
     super.key,
     required this.item,
+    required this.searchController,
     required this.isComposing,
     required this.composerVersion,
     required this.onBack,
+    required this.onSearchChanged,
+    required this.onClearSearch,
     required this.onStartAddNote,
     required this.onAddNote,
     required this.onGoToLocation,
@@ -19,9 +22,12 @@ class ReaderAnnotationNotesSheet extends StatefulWidget {
   });
 
   final ReaderAnnotationCardItem item;
+  final TextEditingController searchController;
   final bool isComposing;
   final int composerVersion;
   final VoidCallback onBack;
+  final ValueChanged<String> onSearchChanged;
+  final VoidCallback onClearSearch;
   final VoidCallback onStartAddNote;
   final Future<ReaderAnnotationCardItem> Function(String noteText) onAddNote;
   final VoidCallback onGoToLocation;
@@ -90,17 +96,18 @@ class _ReaderAnnotationNotesSheetState
 
   @override
   Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 18, 16, 8),
+          padding: EdgeInsets.fromLTRB(
+            18,
+            MediaQuery.paddingOf(context).top + 12,
+            12,
+            8,
+          ),
           child: Row(
             children: [
-              IconButton(
-                onPressed: widget.onBack,
-                icon: const Icon(Icons.arrow_back_ios_new_rounded),
-                color: CommonDesignTokens.textPrimary,
-              ),
               Expanded(
                 child: Text(
                   _item.chapterTitle,
@@ -112,49 +119,46 @@ class _ReaderAnnotationNotesSheetState
                   ),
                 ),
               ),
+              IconButton(
+                onPressed: widget.onBack,
+                icon: const Icon(Icons.close),
+                color: CommonDesignTokens.textPrimary,
+              ),
             ],
           ),
         ),
         Expanded(
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
+            padding: const EdgeInsets.fromLTRB(18, 8, 18, 140),
             children: [
               Container(
                 key: const ValueKey('mark-detail-quote-card'),
-                padding: const EdgeInsets.all(12),
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: CommonDesignTokens.borderColor),
                 ),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: RichText(
-                    text: TextSpan(
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: CommonDesignTokens.textSecondary,
-                        fontStyle: FontStyle.italic,
-                        height: 1.5,
-                      ),
-                      children: <InlineSpan>[
-                        const TextSpan(text: '"'),
-                        TextSpan(
-                          text: _item.annotation.quoteText,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: CommonDesignTokens.textPrimary,
-                            backgroundColor: CommonDesignTokens.pageBackground,
-                          ),
-                        ),
-                        const TextSpan(text: '"'),
-                      ],
+                child: RichText(
+                  text: TextSpan(
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: CommonDesignTokens.textSecondary,
+                      fontStyle: FontStyle.italic,
+                      height: 1.5,
                     ),
+                    children: <InlineSpan>[
+                      const TextSpan(text: '"'),
+                      TextSpan(
+                        text: _item.annotation.quoteText,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: CommonDesignTokens.textPrimary,
+                          backgroundColor: CommonDesignTokens.pageBackground,
+                        ),
+                      ),
+                      const TextSpan(text: '"'),
+                    ],
                   ),
                 ),
               ),
@@ -217,6 +221,7 @@ class _ReaderAnnotationNotesSheetState
                     ),
                     inputKey: const ValueKey('mark-detail-note-input'),
                     quoteText: _item.annotation.quoteText,
+                    autoFocus: widget.isComposing && !_hideComposerAfterSubmit,
                     isSubmitting: _isSubmitting,
                     onSubmit: _handleAddNote,
                   ),
@@ -226,45 +231,111 @@ class _ReaderAnnotationNotesSheetState
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(18, 8, 18, 20),
-          child: Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: _isSubmitting ? null : widget.onStartAddNote,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: CommonDesignTokens.textPrimary,
-                    side: const BorderSide(
-                      color: CommonDesignTokens.borderColor,
+          padding: EdgeInsets.fromLTRB(18, 8, 18, bottomInset > 0 ? 12 : 20),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(28),
+            child: ColoredBox(
+              color: Colors.white.withValues(alpha: 0.82),
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 15,
+                      child: Container(
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: ShelfDesignTokens.statsCardBg,
+                          borderRadius: BorderRadius.circular(22),
+                        ),
+                        child: TextField(
+                          key: const ValueKey('mark-detail-search-input'),
+                          controller: widget.searchController,
+                          onChanged: widget.onSearchChanged,
+                          textAlignVertical: TextAlignVertical.center,
+                          decoration: InputDecoration(
+                            hintText: 'Search',
+                            hintStyle: const TextStyle(
+                              color: CommonDesignTokens.textSecondary,
+                              fontSize: 13,
+                            ),
+                            prefixIcon: const Icon(
+                              Icons.search_rounded,
+                              size: 18,
+                              color: CommonDesignTokens.textSecondary,
+                            ),
+                            suffixIcon: widget.searchController.text.isEmpty
+                                ? null
+                                : IconButton(
+                                    onPressed: widget.onClearSearch,
+                                    icon: const Icon(
+                                      Icons.close_rounded,
+                                      size: 18,
+                                    ),
+                                    color: CommonDesignTokens.textSecondary,
+                                  ),
+                            border: InputBorder.none,
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 12,
+                            ),
+                          ),
+                          style: const TextStyle(
+                            color: CommonDesignTokens.textPrimary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
                     ),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                    const SizedBox(width: 8),
+                    _ActionButton(
+                      label: 'Add Note',
+                      onTap: _isSubmitting ? null : widget.onStartAddNote,
                     ),
-                  ),
-                  child: const Text('Add Note'),
+                    const SizedBox(width: 8),
+                    _ActionButton(
+                      label: 'Go to mark',
+                      onTap: _isSubmitting ? null : widget.onGoToLocation,
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextButton(
-                  onPressed: _isSubmitting ? null : widget.onGoToLocation,
-                  style: TextButton.styleFrom(
-                    backgroundColor: ShelfDesignTokens.statsCardBg,
-                    foregroundColor: ShelfDesignTokens.statsNumberColor,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    textStyle: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  child: const Text('Go to mark'),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ActionButton extends StatelessWidget {
+  const _ActionButton({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: onTap == null ? Colors.black26 : CommonDesignTokens.tabActiveBg,
+      borderRadius: BorderRadius.circular(22),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(22),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
