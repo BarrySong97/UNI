@@ -31,7 +31,7 @@
    - `blockTextHash`
 4. 创建前先检测与现有 annotations 的关系：
    - 完全相同范围：拦截并提示 `Already marked`
-   - 任意重叠：拦截并提示 `Overlaps an existing mark`
+   - 任意重叠（包含“在已有 mark 内继续 Mark”或“新选区包住已有 mark”）：拦截并提示 `Overlaps an existing mark`
 5. 新建 mark 时直接使用当前默认颜色与样式；点击 `Note` 时若选区尚未标注，则创建 mark 并同时写入首条 note；若已有单个 mark，则追加新 note。style bar 中可切换 `Highlight`（底色）或 `Underline`（下划线），并立即更新当前 mark。
 6. `AnnotationStore.createMark()` / `createMarkWithNote()` / `createNote()` / `updateAnnotationAppearance()` 创建或更新 `AnnotationEntity` 与 notes 数据，并写入 `annotations` / `annotation_notes` 表。
 7. Reader 同步更新当前书的 `ReaderPreferences.defaultMarkColor / defaultMarkStyle`，作为下次创建 mark 的默认值。
@@ -78,8 +78,8 @@
 - 无有效选区时不得创建 mark。
 - 点击 `Mark` 时立即保存；上方紧凑样式栏只负责修改当前 mark 的颜色与样式，不再需要单独确认。
 - 点击 `Note` 时打开底部 composer；空文本不得发布。
-- 不允许创建与已有 mark 完全重复或重叠的 mark。
-- 用户短按正文里已有的 mark 时，仍打开原顶部悬浮 tooltip。
+- 不允许创建与已有 mark 完全重复或重叠的 mark；已标记文本内部也不能继续创建新的嵌套 mark。
+- 用户直接点击正文里已有的 mark 时，会直接弹出 mark tooltip 与已展开的 mark editor；tooltip 提供 `Phonetics`、`Explain`、`Note`、`Unmark`、`Read Aloud`，无需额外的 `Edit` 入口。
 - 用户长按正文里已有的单个 mark 时，打开 note sheet，而不是替代 tooltip；sheet 只承载该 mark 的 notes 时间线与内联 `Add Note`。
 - 当一次选区命中多个已有 marks 时，只允许 `Unmark`，不支持批量修改颜色/样式或批量加 note。
 - `Mark Details` 中点击 `Add Note` 不会关闭详情，也不会触发跳转；保存后需留在当前详情页并立即刷新 note 时间线。
@@ -94,7 +94,7 @@
 ## 验收标准
 - Tooltip 中存在 `Mark` / `Edit` / `Note` / `Unmark` 动作。
 - 用户点击 `Mark` 后会立即看到持久化标记；点击 `Note` 可以创建或追加 note；在样式栏切换颜色或样式时，当前页会立即更新。
-- 重复或重叠 mark 会被拦截且不会产生重复数据。
+- 重复、部分重叠、完全包含、嵌套 mark 都会被拦截且不会产生重复数据。
 - 重启应用后 annotation 仍可读取并重新渲染。
 - controls 中可打开 marks 列表，点击列表项可进入详情；点击 `Go to mark` 后可以跳转并返回原位置。
 - 调整 ReaderPreferences 后 annotation 仍可正确恢复。
