@@ -78,6 +78,7 @@
 - 无有效选区时不得创建 mark。
 - 点击 `Mark` 时立即保存；上方紧凑样式栏只负责修改当前 mark 的颜色与样式，不再需要单独确认。
 - 点击 `Note` 时打开底部 composer；空文本不得发布。
+- note composer / note sheet 打开期间及关闭后的短暂收束阶段，不得把同一次点击透传给 Reader 底层翻页手势。
 - 不允许创建与已有 mark 完全重复或重叠的 mark；已标记文本内部也不能继续创建新的嵌套 mark。
 - 用户直接点击正文里已有的 mark 时，会直接弹出 mark tooltip 与已展开的 mark editor；tooltip 提供 `Phonetics`、`Explain`、`Note`、`Unmark`、`Read Aloud`，无需额外的 `Edit` 入口。
 - 用户长按正文里已有的单个 mark 时，打开 note sheet，而不是替代 tooltip；sheet 只承载该 mark 的 notes 时间线与内联 `Add Note`。
@@ -94,6 +95,7 @@
 ## 验收标准
 - Tooltip 中存在 `Mark` / `Edit` / `Note` / `Unmark` 动作。
 - 用户点击 `Mark` 后会立即看到持久化标记；点击 `Note` 可以创建或追加 note；在样式栏切换颜色或样式时，当前页会立即更新。
+- 打开或提交 note composer 后，Reader 不会误触发上一页 / 下一页翻页。
 - 重复、部分重叠、完全包含、嵌套 mark 都会被拦截且不会产生重复数据。
 - 重启应用后 annotation 仍可读取并重新渲染。
 - controls 中可打开 marks 列表，点击列表项可进入详情；点击 `Go to mark` 后可以跳转并返回原位置。
