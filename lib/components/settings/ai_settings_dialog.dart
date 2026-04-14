@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 
+import '../../app/providers/app-providers.dart';
 import '../../services/ai/ai_settings_service.dart';
 import '../../services/ai/openai_llm_provider.dart';
 import '../../services/search/image_search_service.dart';
@@ -10,6 +11,7 @@ import '../../shared/constants/common-design-tokens.dart';
 import '../../shared/constants/form-design-tokens.dart';
 import '../../shared/constants/settings-design-tokens.dart';
 import '../../shared/layout/responsive_layout.dart';
+import '../../shared/widgets/english_pronunciation_selection_area.dart';
 
 class AiSettingsPage extends StatefulWidget {
   const AiSettingsPage({
@@ -254,8 +256,9 @@ class _AiSettingsPageState extends State<AiSettingsPage> {
                                 ],
                                 onChanged: (engine) {
                                   if (engine != null) {
-                                    widget.aiSettings
-                                        .setImageSearchEngine(engine);
+                                    widget.aiSettings.setImageSearchEngine(
+                                      engine,
+                                    );
                                   }
                                 },
                               ),
@@ -1257,21 +1260,41 @@ class _TestExplainSheetState extends State<_TestExplainSheet>
       );
     }
 
+    final providers = AppProvidersScope.maybeOf(context);
+    final markdownBody = MarkdownBody(
+      data: _aiResponse,
+      selectable: false,
+      styleSheet: MarkdownStyleSheet(
+        p: const TextStyle(
+          fontSize: 15,
+          height: 1.5,
+          color: Colors.black87,
+          decoration: TextDecoration.none,
+        ),
+      ),
+    );
+
     return SingleChildScrollView(
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: MarkdownBody(
-        data: _aiResponse,
-        selectable: true,
-        styleSheet: MarkdownStyleSheet(
-          p: const TextStyle(
-            fontSize: 15,
-            height: 1.5,
-            color: Colors.black87,
-            decoration: TextDecoration.none,
-          ),
-        ),
-      ),
+      child: providers != null
+          ? EnglishPronunciationSelectionArea(
+              phoneticsService: providers.phoneticsService,
+              ttsService: providers.ttsService,
+              child: markdownBody,
+            )
+          : MarkdownBody(
+              data: _aiResponse,
+              selectable: true,
+              styleSheet: MarkdownStyleSheet(
+                p: const TextStyle(
+                  fontSize: 15,
+                  height: 1.5,
+                  color: Colors.black87,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ),
     );
   }
 
