@@ -30,12 +30,13 @@ class EnglishPronunciationSelectionArea extends StatefulWidget {
 
 class _EnglishPronunciationSelectionAreaState
     extends State<EnglishPronunciationSelectionArea> {
-  final Map<String, PhoneticsResult> _phoneticsCache =
-      <String, PhoneticsResult>{};
+  final Map<String, PhoneticsLookupOutcome> _phoneticsCache =
+      <String, PhoneticsLookupOutcome>{};
   String _rawSelectedText = '';
   String _normalizedSelectedText = '';
   String? _lookupKey;
   bool _isPhoneticsLoading = false;
+  bool _isAiLookupLoading = false;
 
   @override
   Widget build(BuildContext context) {
@@ -65,6 +66,7 @@ class _EnglishPronunciationSelectionAreaState
       if (!isWordOrPhrase) {
         _lookupKey = null;
         _isPhoneticsLoading = false;
+        _isAiLookupLoading = false;
       }
     });
 
@@ -93,10 +95,12 @@ class _EnglishPronunciationSelectionAreaState
     setState(() => _isPhoneticsLoading = true);
 
     try {
-      final result = await widget.phoneticsService.lookup(text);
+      final result = await widget.phoneticsService.lookupWithOutcome(text);
       _phoneticsCache[text] = result;
     } catch (_) {
-      _phoneticsCache[text] = const PhoneticsResult(us: '', uk: '');
+      _phoneticsCache[text] = PhoneticsLookupOutcome.empty(
+        canTryAi: widget.phoneticsService.supportsAiLookup,
+      );
     }
 
     if (!mounted || _lookupKey != text) {
@@ -104,6 +108,45 @@ class _EnglishPronunciationSelectionAreaState
     }
 
     setState(() => _isPhoneticsLoading = false);
+  }
+
+  Future<void> _lookupPhoneticsWithAi() async {
+    final text = _normalizedSelectedText;
+    if (text.isEmpty || _isAiLookupLoading) {
+      return;
+    }
+
+    setState(() => _isAiLookupLoading = true);
+    try {
+      final result = await widget.phoneticsService.fetchWithAiAndCache(text);
+      _phoneticsCache[text] = PhoneticsLookupOutcome(
+        result: result,
+        foundLocally: false,
+        foundInAiCache: true,
+        canTryAi: widget.phoneticsService.supportsAiLookup,
+      );
+    } on PhoneticsAiNotConfiguredException {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'AI phonetics is not configured. Set it up in Settings.',
+            ),
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('AI phonetics lookup failed.')),
+        );
+      }
+    }
+
+    if (!mounted || _normalizedSelectedText != text) {
+      return;
+    }
+    setState(() => _isAiLookupLoading = false);
   }
 
   Widget _buildContextMenu(
@@ -127,6 +170,9 @@ class _EnglishPronunciationSelectionAreaState
     return PronunciationSelectionToolbar(
       anchors: selectableRegionState.contextMenuAnchors,
       ipaLabel: _ipaLabel,
+      aiButtonLabel: _showAiButton ? 'AI' : null,
+      onAiPressed: _showAiButton ? _lookupPhoneticsWithAi : null,
+      isAiLoading: _isAiLookupLoading,
       buttonItems: [
         ContextMenuButtonItem(
           label: 'Pronounce',
@@ -158,7 +204,8 @@ class _EnglishPronunciationSelectionAreaState
       return null;
     }
 
-    final phonetics = _phoneticsCache[_normalizedSelectedText];
+    final outcome = _phoneticsCache[_normalizedSelectedText];
+    final phonetics = outcome?.result;
     if (phonetics == null) {
       return null;
     }
@@ -178,6 +225,17 @@ class _EnglishPronunciationSelectionAreaState
     }
 
     return null;
+  }
+
+  bool get _showAiButton {
+    if (_normalizedSelectedText.isEmpty || _isPhoneticsLoading) {
+      return false;
+    }
+    final outcome = _phoneticsCache[_normalizedSelectedText];
+    if (outcome == null) {
+      return false;
+    }
+    return !outcome.result.hasAny && outcome.canTryAi;
   }
 
   Future<void> _playPronunciation(String text) async {

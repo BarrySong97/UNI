@@ -10,6 +10,7 @@ import '../../dtos/db/highlight-dto.dart';
 import '../../entities/explain-history-entity.dart';
 import '../../entities/reading-time-entity.dart';
 import '../../entities/statistics-entity.dart';
+import '../phonetics/phonetics_models.dart';
 import '../../dtos/db/reading-progress-dto.dart';
 import 'tables/annotation-notes-table.dart';
 import 'tables/annotations-table.dart';
@@ -18,6 +19,7 @@ import 'tables/chapters-table.dart';
 import 'tables/explain-cache-table.dart';
 import 'tables/highlights-table.dart';
 import 'tables/book-stats-table.dart';
+import 'tables/phonetics-cache-table.dart';
 import 'tables/reading-progress-table.dart';
 import 'tables/reading-time-daily-table.dart';
 
@@ -26,7 +28,7 @@ class AppDatabase {
 
   AppDatabase._(this._backend);
 
-  static const int _databaseVersion = 19;
+  static const int _databaseVersion = 20;
 
   final _DatabaseBackend _backend;
 
@@ -121,6 +123,16 @@ CREATE TABLE ${ReadingTimeDailyTable.tableName} (
   PRIMARY KEY (${ReadingTimeDailyTable.bookId}, ${ReadingTimeDailyTable.dateKey})
 )
 ''');
+        await db.execute('''
+CREATE TABLE ${PhoneticsCacheTable.tableName} (
+  ${PhoneticsCacheTable.normalizedText} TEXT PRIMARY KEY,
+  ${PhoneticsCacheTable.usIpa} TEXT NOT NULL DEFAULT '',
+  ${PhoneticsCacheTable.ukIpa} TEXT NOT NULL DEFAULT '',
+  ${PhoneticsCacheTable.source} TEXT NOT NULL,
+  ${PhoneticsCacheTable.createdAt} INTEGER NOT NULL,
+  ${PhoneticsCacheTable.updatedAt} INTEGER NOT NULL
+)
+''');
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 7) {
@@ -161,6 +173,9 @@ CREATE TABLE ${ReadingTimeDailyTable.tableName} (
         }
         if (oldVersion < 19) {
           await _migrateToV19(db);
+        }
+        if (oldVersion < 20) {
+          await _migrateToV20(db);
         }
       },
     );
@@ -341,6 +356,23 @@ CREATE TABLE ${AnnotationsTable.tableName} (
     }
   }
 
+  @visibleForTesting
+  static Future<void> migrateToV20ForTest(DatabaseExecutor db) =>
+      _migrateToV20(db);
+
+  static Future<void> _migrateToV20(DatabaseExecutor db) async {
+    await db.execute('''
+CREATE TABLE IF NOT EXISTS ${PhoneticsCacheTable.tableName} (
+  ${PhoneticsCacheTable.normalizedText} TEXT PRIMARY KEY,
+  ${PhoneticsCacheTable.usIpa} TEXT NOT NULL DEFAULT '',
+  ${PhoneticsCacheTable.ukIpa} TEXT NOT NULL DEFAULT '',
+  ${PhoneticsCacheTable.source} TEXT NOT NULL,
+  ${PhoneticsCacheTable.createdAt} INTEGER NOT NULL,
+  ${PhoneticsCacheTable.updatedAt} INTEGER NOT NULL
+)
+''');
+  }
+
   static Future<void> _createAnnotationNotesSchema(DatabaseExecutor db) async {
     await db.execute('''
 CREATE TABLE IF NOT EXISTS ${AnnotationNotesTable.tableName} (
@@ -463,6 +495,22 @@ CREATE TABLE IF NOT EXISTS ${AnnotationNotesTable.tableName} (
   Future<void> incrementPhoneticsCount(String bookId) =>
       _backend.incrementPhoneticsCount(bookId);
 
+  Future<PhoneticsResult?> getPhoneticsCache({
+    required String normalizedText,
+  }) => _backend.getPhoneticsCache(normalizedText: normalizedText);
+
+  Future<void> upsertPhoneticsCache({
+    required String normalizedText,
+    required String usIpa,
+    required String ukIpa,
+    required String source,
+  }) => _backend.upsertPhoneticsCache(
+    normalizedText: normalizedText,
+    usIpa: usIpa,
+    ukIpa: ukIpa,
+    source: source,
+  );
+
   Future<List<ExplainHistoryEntity>> listExplainHistory({int? limit}) =>
       _backend.listExplainHistory(limit: limit);
 
@@ -556,6 +604,13 @@ abstract class _DatabaseBackend {
   });
   Future<void> incrementExplainCount(String bookId);
   Future<void> incrementPhoneticsCount(String bookId);
+  Future<PhoneticsResult?> getPhoneticsCache({required String normalizedText});
+  Future<void> upsertPhoneticsCache({
+    required String normalizedText,
+    required String usIpa,
+    required String ukIpa,
+    required String source,
+  });
   Future<List<ExplainHistoryEntity>> listExplainHistory({int? limit});
   Future<void> addReadingTime({
     required String bookId,
@@ -597,6 +652,8 @@ class _InMemoryBackend implements _DatabaseBackend {
       <String, _ExplainCacheRecord>{};
   final Map<String, int> _explainCounts = <String, int>{};
   final Map<String, int> _phoneticsCounts = <String, int>{};
+  final Map<String, _PhoneticsCacheRecord> _phoneticsCache =
+      <String, _PhoneticsCacheRecord>{};
   final Map<String, int> _readingTimeSeconds = <String, int>{};
   final Map<String, int> _dailyReadingTimeSeconds = <String, int>{};
 
@@ -775,6 +832,36 @@ class _InMemoryBackend implements _DatabaseBackend {
   @override
   Future<void> incrementPhoneticsCount(String bookId) async {
     _phoneticsCounts[bookId] = (_phoneticsCounts[bookId] ?? 0) + 1;
+  }
+
+  @override
+  Future<PhoneticsResult?> getPhoneticsCache({
+    required String normalizedText,
+  }) async {
+    final record = _phoneticsCache[normalizedText];
+    if (record == null) {
+      return null;
+    }
+    return PhoneticsResult(us: record.usIpa, uk: record.ukIpa);
+  }
+
+  @override
+  Future<void> upsertPhoneticsCache({
+    required String normalizedText,
+    required String usIpa,
+    required String ukIpa,
+    required String source,
+  }) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final existing = _phoneticsCache[normalizedText];
+    _phoneticsCache[normalizedText] = _PhoneticsCacheRecord(
+      normalizedText: normalizedText,
+      usIpa: usIpa,
+      ukIpa: ukIpa,
+      source: source,
+      createdAtMillis: existing?.createdAtMillis ?? now,
+      updatedAtMillis: now,
+    );
   }
 
   @override
@@ -1395,6 +1482,44 @@ class _SqfliteBackend implements _DatabaseBackend {
   }
 
   @override
+  Future<PhoneticsResult?> getPhoneticsCache({
+    required String normalizedText,
+  }) async {
+    final rows = await _database.query(
+      PhoneticsCacheTable.tableName,
+      columns: <String>[PhoneticsCacheTable.usIpa, PhoneticsCacheTable.ukIpa],
+      where: '${PhoneticsCacheTable.normalizedText} = ?',
+      whereArgs: <Object?>[normalizedText],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return null;
+    }
+    return PhoneticsResult(
+      us: rows.first[PhoneticsCacheTable.usIpa] as String? ?? '',
+      uk: rows.first[PhoneticsCacheTable.ukIpa] as String? ?? '',
+    );
+  }
+
+  @override
+  Future<void> upsertPhoneticsCache({
+    required String normalizedText,
+    required String usIpa,
+    required String ukIpa,
+    required String source,
+  }) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    return _database.insert(PhoneticsCacheTable.tableName, <String, Object?>{
+      PhoneticsCacheTable.normalizedText: normalizedText,
+      PhoneticsCacheTable.usIpa: usIpa,
+      PhoneticsCacheTable.ukIpa: ukIpa,
+      PhoneticsCacheTable.source: source,
+      PhoneticsCacheTable.createdAt: now,
+      PhoneticsCacheTable.updatedAt: now,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  @override
   Future<List<ExplainHistoryEntity>> listExplainHistory({int? limit}) async {
     final rows = await _database.rawQuery(
       'SELECT e.${ExplainCacheTable.bookId} AS book_id, '
@@ -1805,4 +1930,22 @@ class _ExplainCacheRecord {
   final String contextSentence;
   final String response;
   final int createdAtMillis;
+}
+
+class _PhoneticsCacheRecord {
+  const _PhoneticsCacheRecord({
+    required this.normalizedText,
+    required this.usIpa,
+    required this.ukIpa,
+    required this.source,
+    required this.createdAtMillis,
+    required this.updatedAtMillis,
+  });
+
+  final String normalizedText;
+  final String usIpa;
+  final String ukIpa;
+  final String source;
+  final int createdAtMillis;
+  final int updatedAtMillis;
 }

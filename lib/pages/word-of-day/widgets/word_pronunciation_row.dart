@@ -24,7 +24,9 @@ class WordPronunciationRow extends StatefulWidget {
 
 class _WordPronunciationRowState extends State<WordPronunciationRow> {
   PhoneticsResult? _phonetics;
+  PhoneticsLookupOutcome? _outcome;
   String? _playingAccent;
+  bool _isAiLookupLoading = false;
 
   @override
   void initState() {
@@ -43,7 +45,9 @@ class _WordPronunciationRowState extends State<WordPronunciationRow> {
     if (oldWidget.selectedText != widget.selectedText ||
         oldWidget.phoneticsService != widget.phoneticsService) {
       _phonetics = null;
+      _outcome = null;
       _playingAccent = null;
+      _isAiLookupLoading = false;
       _lookupPhonetics();
     }
   }
@@ -62,14 +66,64 @@ class _WordPronunciationRowState extends State<WordPronunciationRow> {
 
   Future<void> _lookupPhonetics() async {
     try {
-      final result = await widget.phoneticsService.lookup(widget.selectedText);
+      final outcome = await widget.phoneticsService.lookupWithOutcome(
+        widget.selectedText,
+      );
       if (!mounted) return;
-      setState(() => _phonetics = result);
+      setState(() {
+        _phonetics = outcome.result;
+        _outcome = outcome;
+      });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _phonetics = const PhoneticsResult(us: '', uk: '');
+        _outcome = PhoneticsLookupOutcome.empty(
+          canTryAi: widget.phoneticsService.supportsAiLookup,
+        );
       });
+    }
+  }
+
+  Future<void> _lookupWithAi() async {
+    if (_isAiLookupLoading) {
+      return;
+    }
+
+    setState(() => _isAiLookupLoading = true);
+    try {
+      final result = await widget.phoneticsService.fetchWithAiAndCache(
+        widget.selectedText,
+      );
+      if (!mounted) return;
+      setState(() {
+        _phonetics = result;
+        _outcome = PhoneticsLookupOutcome(
+          result: result,
+          foundLocally: false,
+          foundInAiCache: true,
+          canTryAi: widget.phoneticsService.supportsAiLookup,
+        );
+      });
+    } on PhoneticsAiNotConfiguredException {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'AI phonetics is not configured. Set it up in Settings.',
+            ),
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('AI phonetics lookup failed.')),
+        );
+      }
+    }
+    if (mounted) {
+      setState(() => _isAiLookupLoading = false);
     }
   }
 
@@ -102,8 +156,32 @@ class _WordPronunciationRowState extends State<WordPronunciationRow> {
   @override
   Widget build(BuildContext context) {
     final phonetics = _phonetics;
-    if (phonetics == null || (phonetics.us.isEmpty && phonetics.uk.isEmpty)) {
+    if (phonetics == null) {
       return const SizedBox.shrink();
+    }
+
+    if (phonetics.us.isEmpty && phonetics.uk.isEmpty) {
+      if (_outcome?.canTryAi != true) {
+        return const SizedBox.shrink();
+      }
+      return Padding(
+        padding: widget.padding,
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            key: const ValueKey('word-pronunciation-ai'),
+            onPressed: _isAiLookupLoading ? null : _lookupWithAi,
+            icon: _isAiLookupLoading
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.auto_awesome),
+            label: const Text('AI'),
+          ),
+        ),
+      );
     }
 
     final usChip = phonetics.us.isNotEmpty
