@@ -1,6 +1,8 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -8,6 +10,7 @@ import '../../../services/ai/ai_settings_service.dart';
 import '../../../services/search/image_search_service.dart';
 import '../../../services/reader/selection/reader_selection_text_sanitizer.dart';
 import '../../../shared/constants/common-design-tokens.dart';
+import '../../../shared/widgets/pronunciation_selection_toolbar.dart';
 import '../../../services/ai/openai_llm_provider.dart';
 import '../../../services/db/app-database.dart';
 import '../../../services/phonetics/phonetics_service.dart';
@@ -181,6 +184,14 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
   List<ImageSearchResult>? _imageSearchResults;
   bool _isImageSearching = false;
 
+  // Explain text inline selection state.
+  final Map<String, PhoneticsResult> _inlineSelectionPhoneticsCache =
+      <String, PhoneticsResult>{};
+  String _inlineSelectionRawText = '';
+  String _inlineSelectionText = '';
+  String? _inlineSelectionLookupKey;
+  bool _isInlineSelectionPhoneticsLoading = false;
+
   static final _sentenceEndPattern = RegExp(r'[.!?。！？\n]');
 
   @override
@@ -329,6 +340,167 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
       widget.selectedText,
       languageCode,
     );
+  }
+
+  Future<void> _playInlineSelectionPronunciation(String text) async {
+    final languageCode = widget.ttsService.resolveBookLanguage(
+      widget.bookLanguage,
+    );
+    final model = widget.ttsService.modelInfoForLanguage(languageCode);
+    if (model == null || !widget.ttsService.modelManager.isReady(model)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'TTS model not downloaded. Please download it in Settings.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+    await widget.ttsService.speakWithLanguage(text, languageCode);
+  }
+
+  void _onInlineSelectionChanged(SelectedContent? content) {
+    final rawText = content?.plainText ?? '';
+    final normalizedText = sanitizeReaderSelectionText(rawText);
+    if (rawText == _inlineSelectionRawText &&
+        normalizedText == _inlineSelectionText) {
+      return;
+    }
+
+    final isWordOrPhrase = _isInlineSelectionWordOrPhrase(
+      rawText,
+      normalizedText,
+    );
+
+    setState(() {
+      _inlineSelectionRawText = rawText;
+      _inlineSelectionText = normalizedText;
+      if (!isWordOrPhrase) {
+        _inlineSelectionLookupKey = null;
+        _isInlineSelectionPhoneticsLoading = false;
+      }
+    });
+
+    if (isWordOrPhrase) {
+      _lookupInlineSelectionPhonetics(normalizedText);
+    }
+  }
+
+  bool _isInlineSelectionWordOrPhrase(String rawText, String normalizedText) {
+    if (normalizedText.isEmpty) return false;
+    return isReaderWordOrPhraseSelection(
+      rawSelectedText: rawText,
+      normalizedSelectedText: normalizedText,
+    );
+  }
+
+  Future<void> _lookupInlineSelectionPhonetics(String text) async {
+    if (_inlineSelectionPhoneticsCache.containsKey(text)) {
+      if (mounted && _isInlineSelectionPhoneticsLoading) {
+        setState(() => _isInlineSelectionPhoneticsLoading = false);
+      }
+      return;
+    }
+
+    _inlineSelectionLookupKey = text;
+    setState(() => _isInlineSelectionPhoneticsLoading = true);
+
+    try {
+      final result = await widget.phoneticsService.lookup(text);
+      _inlineSelectionPhoneticsCache[text] = result;
+    } catch (_) {
+      _inlineSelectionPhoneticsCache[text] = const PhoneticsResult(
+        us: '',
+        uk: '',
+      );
+    }
+
+    if (!mounted || _inlineSelectionLookupKey != text) {
+      return;
+    }
+
+    setState(() => _isInlineSelectionPhoneticsLoading = false);
+  }
+
+  Widget _buildInlineSelectionContextMenu(
+    BuildContext context,
+    SelectableRegionState selectableRegionState,
+  ) {
+    if (!_isInlineSelectionWordOrPhrase(
+      _inlineSelectionRawText,
+      _inlineSelectionText,
+    )) {
+      return AdaptiveTextSelectionToolbar.selectableRegion(
+        selectableRegionState: selectableRegionState,
+      );
+    }
+
+    ContextMenuButtonItem? copyItem;
+    for (final item in selectableRegionState.contextMenuButtonItems) {
+      if (item.type == ContextMenuButtonType.copy) {
+        copyItem = item;
+        break;
+      }
+    }
+
+    return PronunciationSelectionToolbar(
+      anchors: selectableRegionState.contextMenuAnchors,
+      ipaLabel: _inlineSelectionIpaLabel,
+      buttonItems: [
+        ContextMenuButtonItem(
+          label: 'Pronounce',
+          onPressed: () {
+            selectableRegionState.hideToolbar();
+            _playInlineSelectionPronunciation(_inlineSelectionText);
+          },
+        ),
+        ContextMenuButtonItem(
+          type: ContextMenuButtonType.copy,
+          onPressed:
+              copyItem?.onPressed ??
+              () {
+                Clipboard.setData(ClipboardData(text: _inlineSelectionText));
+                selectableRegionState.hideToolbar();
+              },
+        ),
+      ],
+    );
+  }
+
+  String get _inlineSelectionIpaLabel {
+    if (_inlineSelectionText.isEmpty) {
+      return 'IPA unavailable';
+    }
+
+    final phonetics = _inlineSelectionPhoneticsCache[_inlineSelectionText];
+    if (phonetics == null) {
+      return _isInlineSelectionPhoneticsLoading
+          ? 'Loading IPA…'
+          : 'IPA unavailable';
+    }
+
+    final languageCode = widget.ttsService.resolveBookLanguage(
+      widget.bookLanguage,
+    );
+    final preferredIpa = switch (languageCode) {
+      'en_GB' => phonetics.uk,
+      'en_US' => phonetics.us,
+      _ => phonetics.us.isNotEmpty ? phonetics.us : phonetics.uk,
+    };
+
+    if (preferredIpa.isNotEmpty) {
+      return '/$preferredIpa/';
+    }
+
+    final fallbackIpa = phonetics.us.isNotEmpty ? phonetics.us : phonetics.uk;
+    if (fallbackIpa.isNotEmpty) {
+      return '/$fallbackIpa/';
+    }
+
+    return 'IPA unavailable';
   }
 
   static String _extractContainingSentence(String fullText, String target) {
@@ -779,8 +951,8 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
 
   Widget _buildResponseArea() {
     // AI content part: skeleton while loading, structured or markdown once
-    // available.  Visual Reference is always appended below regardless of
-    // whether the AI response succeeded, failed, or is still streaming.
+    // available. Explain text is wrapped in a SelectionArea so long-pressing
+    // a word or phrase can surface IPA / Pronounce / Copy actions.
     Widget aiContent;
     if (_aiResponse.isEmpty && _isStreaming) {
       aiContent = _buildSkeleton();
@@ -789,7 +961,7 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
     } else {
       aiContent = MarkdownBody(
         data: _aiResponse,
-        selectable: true,
+        selectable: false,
         styleSheet: MarkdownStyleSheet(
           p: const TextStyle(
             fontSize: 15,
@@ -807,7 +979,11 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          aiContent,
+          SelectionArea(
+            onSelectionChanged: _onInlineSelectionChanged,
+            contextMenuBuilder: _buildInlineSelectionContextMenu,
+            child: aiContent,
+          ),
           if (_isWordOrPhrase) _buildVisualReferenceSection(),
         ],
       ),
@@ -819,7 +995,7 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
     if (data == null) {
       return MarkdownBody(
         data: _aiResponse,
-        selectable: true,
+        selectable: false,
         styleSheet: MarkdownStyleSheet(
           p: const TextStyle(
             fontSize: 15,

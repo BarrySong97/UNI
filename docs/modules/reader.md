@@ -27,6 +27,7 @@ Provides an immersive book reading experience using Canvas-based rendering. The 
 - TOC bottom sheet with chapter list and current chapter highlight
 - Canvas-native annotations: selection tooltip can create and edit `mark` annotations, add notes through a bottom composer, persist mark + note data to SQLite, and restore/render them after repagination
 - Selection tooltip actions include `Phonetics`, `Explain`, `Copy`, `Mark`, and `Read Aloud`; the `Quote Card` entry is temporarily hidden while the sharing flow is being polished
+- Reader explain sheet supports long-press selection inside both structured and Markdown responses, showing inline `IPA`, `Pronounce`, and `Copy` actions for the selected word or short phrase; the `IPA` label is omitted when phonetics lookup returns empty
 - Quote Card supports two bookmark families: gradient cards (`Aurora`, `Editorial`, `Night Glow`) and image cards (`Cover`, `Gallery`, `Archive`)
 - Image-family Quote Cards can render either the current book cover or bundled artwork presets, and support richer metadata blocks (`Book Title`, `Author`, `Chapter`, `Page`, optional `Collection`)
 - Quote Card is template-led, with adaptive `Background`, `Layout`, `Font`, and `Visibility` controls that update based on the selected family

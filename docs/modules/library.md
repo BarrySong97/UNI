@@ -70,7 +70,7 @@ lib/stores/library/       — LibraryStore + LibraryState
 8. iOS reflowable EPUB visual pagination cache (`reader_visual_pagination_cache`) is shared with Reader as the single source for layout-specific total-page data; Shelf/Library currently still render percent-first UI and do not show live `current/total`.
 9. User taps the left Shelf stat card (`Reading Time`) or right Shelf stat card (`Books Read`) -> both navigate to `/statistics`, but pass different initial tab arguments while keeping the same route.
 10. Shelf loads recent `Explain` history from `explain_cache` and picks the newest word-like entry (`<= 3` tokens, short text) for the `Words` preview card; the card body prefers the containing sentence, falls back to the selected text, truncates to two lines, and highlights the selected word when it appears in the sentence.
-11. User taps `More` in the Shelf `Words` section -> opens the `Words` page, which lists all explain history entries with preview meaning, source book, and time. Tapping a row opens a detail page with full meaning, details, and context sentence.
+11. User taps `More` in the Shelf `Words` section -> opens the `Words` page, which lists all explain history entries with preview meaning, source book, and time. Tapping a row opens a detail page with full meaning, details, context sentence, inline pronunciation chips (US/UK IPA + play), and long-press selection actions (`IPA`, `Pronounce`, `Copy`) for long-form explanation text.
 12. User can also tap the Shelf `Words` preview card itself -> opens the latest word detail directly. The empty-state card remains non-interactive.
 12. Statistics resolves a reusable time block from the selected preset:
    - `This Month`: current calendar month
@@ -152,6 +152,8 @@ Header + "Add Your First Book" button (on Shelf).
 - Cover decode failure: falls back to placeholder cover.
 - Now Reading: uses first book when no progress, always shown on Shelf.
 - Words section: always shown when Shelf has books; empty state says `Select a word in Reader and tap Explain.` Preview cards show the containing sentence (or the selected sentence itself), do not show the explain meaning, and open the latest word detail when tapped.
+- Word detail page shows pronunciation chips only when app-level phonetics/TTS providers are available and at least one IPA exists; tapping a chip uses the corresponding English accent and falls back to a Settings download hint when the TTS model is missing.
+- Word detail page also treats context / meaning / detail blocks as a non-reader long-form reading surface: long-pressing a word or short phrase opens inline `IPA`, `Pronounce`, and `Copy` actions, and the `IPA` label stays hidden when phonetics are unavailable.
 - Words `More` page: if no explain history exists, shows the same empty-state guidance instead of a blank list.
 - Real cover uses `BoxFit.cover`.
 - Book Profile top background uses `profileBgColor` gradient.

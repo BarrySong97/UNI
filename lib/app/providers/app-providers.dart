@@ -85,6 +85,12 @@ class AppProvidersScope extends InheritedWidget {
     return scope!.providers;
   }
 
+  static AppProviders? maybeOf(BuildContext context) {
+    return context
+        .dependOnInheritedWidgetOfExactType<AppProvidersScope>()
+        ?.providers;
+  }
+
   @override
   bool updateShouldNotify(covariant AppProvidersScope oldWidget) {
     return oldWidget.providers != providers;

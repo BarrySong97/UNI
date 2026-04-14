@@ -14,6 +14,7 @@ Includes per-language AI explain behavior controls used by Reader.
   - Structured mode (default): Reader uses built-in explain cards.
   - Custom prompt mode: Reader renders free-form markdown generated from user prompt.
 - Per-language custom prompt template editing with placeholders
+- Test explain preview sheet with non-reader long-press pronunciation actions (`IPA`, `Pronounce`, `Copy`) inside previewed explanation markdown
 - About section links (Feedback, Email, Social Media, Help, FAQ)
 
 ### Out of Scope
@@ -42,6 +43,7 @@ Includes per-language AI explain behavior controls used by Reader.
 
 - TTS voice catalog loading is network-first with cache/bundled fallback.
 - If remote catalog fetch times out or network is unavailable, settings should continue to use cached/bundled voices without blocking UI initialization.
+- The settings test explain preview uses the shared non-reader pronunciation selection helper when app providers are available; if providers are absent, it falls back to plain selectable markdown rendering. When phonetics lookup returns empty, the shared toolbar still shows `Pronounce` and `Copy` but hides the `IPA` label.
 
 ## Components
 
