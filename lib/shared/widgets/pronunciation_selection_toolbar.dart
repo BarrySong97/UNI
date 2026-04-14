@@ -7,11 +7,17 @@ class PronunciationSelectionToolbar extends StatelessWidget {
     super.key,
     required this.anchors,
     this.ipaLabel,
+    this.aiButtonLabel,
+    this.onAiPressed,
+    this.isAiLoading = false,
     required this.buttonItems,
   });
 
   final TextSelectionToolbarAnchors anchors;
   final String? ipaLabel;
+  final String? aiButtonLabel;
+  final VoidCallback? onAiPressed;
+  final bool isAiLoading;
   final List<ContextMenuButtonItem> buttonItems;
 
   @override
@@ -34,6 +40,23 @@ class PronunciationSelectionToolbar extends StatelessWidget {
                 fontWeight: FontWeight.w600,
                 color: CommonDesignTokens.textPrimary,
               ),
+            ),
+          ),
+        if ((ipaLabel == null || ipaLabel!.isEmpty) &&
+            aiButtonLabel != null &&
+            onAiPressed != null)
+          Container(
+            key: const ValueKey('pronunciation-selection-ai'),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            child: TextButton(
+              onPressed: isAiLoading ? null : onAiPressed,
+              child: isAiLoading
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(aiButtonLabel!),
             ),
           ),
         ...AdaptiveTextSelectionToolbar.getAdaptiveButtons(

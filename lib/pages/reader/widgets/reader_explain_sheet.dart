@@ -178,19 +178,22 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
 
   // Phonetics state (word mode only).
   PhoneticsResult? _phonetics;
+  PhoneticsLookupOutcome? _phoneticsOutcome;
   String? _playingAccent;
+  bool _isPhoneticsAiLoading = false;
 
   // Image search state (word/phrase mode only).
   List<ImageSearchResult>? _imageSearchResults;
   bool _isImageSearching = false;
 
   // Explain text inline selection state.
-  final Map<String, PhoneticsResult> _inlineSelectionPhoneticsCache =
-      <String, PhoneticsResult>{};
+  final Map<String, PhoneticsLookupOutcome> _inlineSelectionPhoneticsCache =
+      <String, PhoneticsLookupOutcome>{};
   String _inlineSelectionRawText = '';
   String _inlineSelectionText = '';
   String? _inlineSelectionLookupKey;
   bool _isInlineSelectionPhoneticsLoading = false;
+  bool _isInlineSelectionAiLoading = false;
 
   static final _sentenceEndPattern = RegExp(r'[.!?。！？\n]');
 
@@ -281,9 +284,59 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
 
   Future<void> _lookupPhonetics() async {
     try {
-      final result = await widget.phoneticsService.lookup(widget.selectedText);
-      if (mounted) setState(() => _phonetics = result);
+      final outcome = await widget.phoneticsService.lookupWithOutcome(
+        widget.selectedText,
+      );
+      if (mounted) {
+        setState(() {
+          _phoneticsOutcome = outcome;
+          _phonetics = outcome.result;
+        });
+      }
     } catch (_) {}
+  }
+
+  Future<void> _lookupPhoneticsWithAi() async {
+    if (_isPhoneticsAiLoading) {
+      return;
+    }
+
+    setState(() => _isPhoneticsAiLoading = true);
+    try {
+      final result = await widget.phoneticsService.fetchWithAiAndCache(
+        widget.selectedText,
+      );
+      if (mounted) {
+        setState(() {
+          _phonetics = result;
+          _phoneticsOutcome = PhoneticsLookupOutcome(
+            result: result,
+            foundLocally: false,
+            foundInAiCache: true,
+            canTryAi: widget.phoneticsService.supportsAiLookup,
+          );
+        });
+      }
+    } on PhoneticsAiNotConfiguredException {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'AI phonetics is not configured. Set it up in Settings.',
+            ),
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('AI phonetics lookup failed.')),
+        );
+      }
+    }
+    if (mounted) {
+      setState(() => _isPhoneticsAiLoading = false);
+    }
   }
 
   Future<void> _fetchImageSearchResults() async {
@@ -409,12 +462,11 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
     setState(() => _isInlineSelectionPhoneticsLoading = true);
 
     try {
-      final result = await widget.phoneticsService.lookup(text);
+      final result = await widget.phoneticsService.lookupWithOutcome(text);
       _inlineSelectionPhoneticsCache[text] = result;
     } catch (_) {
-      _inlineSelectionPhoneticsCache[text] = const PhoneticsResult(
-        us: '',
-        uk: '',
+      _inlineSelectionPhoneticsCache[text] = PhoneticsLookupOutcome.empty(
+        canTryAi: widget.phoneticsService.supportsAiLookup,
       );
     }
 
@@ -423,6 +475,45 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
     }
 
     setState(() => _isInlineSelectionPhoneticsLoading = false);
+  }
+
+  Future<void> _lookupInlineSelectionPhoneticsWithAi() async {
+    final text = _inlineSelectionText;
+    if (text.isEmpty || _isInlineSelectionAiLoading) {
+      return;
+    }
+
+    setState(() => _isInlineSelectionAiLoading = true);
+    try {
+      final result = await widget.phoneticsService.fetchWithAiAndCache(text);
+      _inlineSelectionPhoneticsCache[text] = PhoneticsLookupOutcome(
+        result: result,
+        foundLocally: false,
+        foundInAiCache: true,
+        canTryAi: widget.phoneticsService.supportsAiLookup,
+      );
+    } on PhoneticsAiNotConfiguredException {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'AI phonetics is not configured. Set it up in Settings.',
+            ),
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('AI phonetics lookup failed.')),
+        );
+      }
+    }
+
+    if (!mounted || _inlineSelectionText != text) {
+      return;
+    }
+    setState(() => _isInlineSelectionAiLoading = false);
   }
 
   Widget _buildInlineSelectionContextMenu(
@@ -449,6 +540,11 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
     return PronunciationSelectionToolbar(
       anchors: selectableRegionState.contextMenuAnchors,
       ipaLabel: _inlineSelectionIpaLabel,
+      aiButtonLabel: _showInlineSelectionAiButton ? 'AI' : null,
+      onAiPressed: _showInlineSelectionAiButton
+          ? _lookupInlineSelectionPhoneticsWithAi
+          : null,
+      isAiLoading: _isInlineSelectionAiLoading,
       buttonItems: [
         ContextMenuButtonItem(
           label: 'Pronounce',
@@ -470,16 +566,15 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
     );
   }
 
-  String get _inlineSelectionIpaLabel {
+  String? get _inlineSelectionIpaLabel {
     if (_inlineSelectionText.isEmpty) {
-      return 'IPA unavailable';
+      return null;
     }
 
-    final phonetics = _inlineSelectionPhoneticsCache[_inlineSelectionText];
+    final outcome = _inlineSelectionPhoneticsCache[_inlineSelectionText];
+    final phonetics = outcome?.result;
     if (phonetics == null) {
-      return _isInlineSelectionPhoneticsLoading
-          ? 'Loading IPA…'
-          : 'IPA unavailable';
+      return null;
     }
 
     final languageCode = widget.ttsService.resolveBookLanguage(
@@ -500,7 +595,18 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
       return '/$fallbackIpa/';
     }
 
-    return 'IPA unavailable';
+    return null;
+  }
+
+  bool get _showInlineSelectionAiButton {
+    if (_inlineSelectionText.isEmpty || _isInlineSelectionPhoneticsLoading) {
+      return false;
+    }
+    final outcome = _inlineSelectionPhoneticsCache[_inlineSelectionText];
+    if (outcome == null) {
+      return false;
+    }
+    return !outcome.result.hasAny && outcome.canTryAi;
   }
 
   static String _extractContainingSentence(String fullText, String target) {
@@ -762,6 +868,9 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
             (_phonetics!.us.isNotEmpty || _phonetics!.uk.isNotEmpty)) ...[
           const SizedBox(height: 12),
           _buildPhoneticsRow(),
+        ] else if (_phoneticsOutcome?.canTryAi == true) ...[
+          const SizedBox(height: 12),
+          _buildAiPhoneticsButton(),
         ],
         if (_containingSentence.isNotEmpty) ...[
           const SizedBox(height: 16),
@@ -801,6 +910,23 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
         }
         return Row(children: [chips[0], const SizedBox(width: 16), chips[1]]);
       },
+    );
+  }
+
+  Widget _buildAiPhoneticsButton() {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: TextButton.icon(
+        onPressed: _isPhoneticsAiLoading ? null : _lookupPhoneticsWithAi,
+        icon: _isPhoneticsAiLoading
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.auto_awesome, size: 18),
+        label: const Text('AI'),
+      ),
     );
   }
 

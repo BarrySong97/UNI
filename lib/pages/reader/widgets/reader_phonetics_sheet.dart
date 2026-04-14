@@ -42,9 +42,11 @@ class ReaderPhoneticsSheet extends StatefulWidget {
 
 class _ReaderPhoneticsSheetState extends State<ReaderPhoneticsSheet> {
   PhoneticsResult? _result;
+  PhoneticsLookupOutcome? _outcome;
   bool _loading = true;
   String? _error;
   String? _playingAccent;
+  bool _isAiLookupLoading = false;
 
   @override
   void initState() {
@@ -67,11 +69,65 @@ class _ReaderPhoneticsSheetState extends State<ReaderPhoneticsSheet> {
 
   Future<void> _lookup() async {
     try {
-      final result =
-          await widget.phoneticsService.lookup(widget.selectedText);
-      if (mounted) setState(() { _result = result; _loading = false; });
+      final outcome = await widget.phoneticsService.lookupWithOutcome(
+        widget.selectedText,
+      );
+      if (mounted) {
+        setState(() {
+          _outcome = outcome;
+          _result = outcome.result;
+          _loading = false;
+        });
+      }
     } catch (e) {
-      if (mounted) setState(() { _error = e.toString(); _loading = false; });
+      if (mounted)
+        setState(() {
+          _error = e.toString();
+          _loading = false;
+        });
+    }
+  }
+
+  Future<void> _lookupWithAi() async {
+    if (_isAiLookupLoading) {
+      return;
+    }
+
+    setState(() => _isAiLookupLoading = true);
+    try {
+      final result = await widget.phoneticsService.fetchWithAiAndCache(
+        widget.selectedText,
+      );
+      if (mounted) {
+        setState(() {
+          _result = result;
+          _outcome = PhoneticsLookupOutcome(
+            result: result,
+            foundLocally: false,
+            foundInAiCache: true,
+            canTryAi: widget.phoneticsService.supportsAiLookup,
+          );
+        });
+      }
+    } on PhoneticsAiNotConfiguredException {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'AI phonetics is not configured. Set it up in Settings.',
+            ),
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('AI phonetics lookup failed.')),
+        );
+      }
+    }
+    if (mounted) {
+      setState(() => _isAiLookupLoading = false);
     }
   }
 
@@ -96,7 +152,10 @@ class _ReaderPhoneticsSheetState extends State<ReaderPhoneticsSheet> {
       return;
     }
     setState(() => _playingAccent = accent);
-    await widget.ttsService.speakWithLanguage(widget.selectedText, languageCode);
+    await widget.ttsService.speakWithLanguage(
+      widget.selectedText,
+      languageCode,
+    );
   }
 
   @override
@@ -148,10 +207,20 @@ class _ReaderPhoneticsSheetState extends State<ReaderPhoneticsSheet> {
                   ),
                 ),
               )
-            else ...[
-              _buildPhoneticRow('US', _result!.us, 'us'),
-              const SizedBox(height: 12),
-              _buildPhoneticRow('UK', _result!.uk, 'uk'),
+            else if (_result != null &&
+                (_result!.us.isNotEmpty || _result!.uk.isNotEmpty)) ...[
+              if (_result!.us.isNotEmpty)
+                _buildPhoneticRow('US', _result!.us, 'us'),
+              if (_result!.us.isNotEmpty && _result!.uk.isNotEmpty)
+                const SizedBox(height: 12),
+              if (_result!.uk.isNotEmpty)
+                _buildPhoneticRow('UK', _result!.uk, 'uk'),
+            ] else ...[
+              _buildPronounceButton(),
+              if (_outcome?.canTryAi == true) ...[
+                const SizedBox(height: 12),
+                _buildAiButton(),
+              ],
             ],
             const SizedBox(height: 8),
           ],
@@ -161,8 +230,7 @@ class _ReaderPhoneticsSheetState extends State<ReaderPhoneticsSheet> {
   }
 
   Widget _buildPhoneticRow(String label, String ipa, String accent) {
-    final isPlaying =
-        _playingAccent == accent && widget.ttsService.isSpeaking;
+    final isPlaying = _playingAccent == accent && widget.ttsService.isSpeaking;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -207,7 +275,9 @@ class _ReaderPhoneticsSheetState extends State<ReaderPhoneticsSheet> {
           GestureDetector(
             onTap: () => _play(accent),
             child: Icon(
-              isPlaying ? Icons.stop_circle_outlined : Icons.play_circle_outline,
+              isPlaying
+                  ? Icons.stop_circle_outlined
+                  : Icons.play_circle_outline,
               size: 28,
               color: isPlaying
                   ? CommonDesignTokens.textPrimary
@@ -215,6 +285,37 @@ class _ReaderPhoneticsSheetState extends State<ReaderPhoneticsSheet> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildPronounceButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: () => _play(
+          widget.ttsService.defaultEnglishAccent == 'en_GB' ? 'uk' : 'us',
+        ),
+        icon: const Icon(Icons.volume_up),
+        label: const Text('Pronounce'),
+      ),
+    );
+  }
+
+  Widget _buildAiButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: TextButton.icon(
+        key: const ValueKey('reader-phonetics-ai'),
+        onPressed: _isAiLookupLoading ? null : _lookupWithAi,
+        icon: _isAiLookupLoading
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.auto_awesome),
+        label: const Text('AI'),
       ),
     );
   }

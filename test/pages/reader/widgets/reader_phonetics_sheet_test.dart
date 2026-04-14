@@ -1,54 +1,39 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uni/pages/reader/widgets/reader_phonetics_sheet.dart';
 import 'package:uni/services/phonetics/phonetics_service.dart';
 import 'package:uni/services/tts/tts_model_config.dart';
 import 'package:uni/services/tts/tts_model_manager.dart';
 import 'package:uni/services/tts/tts_service.dart';
-import 'package:uni/shared/widgets/english_pronunciation_selection_area.dart';
 
 void main() {
-  testWidgets('wraps child in SelectionArea when enabled', (tester) async {
+  testWidgets('shows AI button and pronounce action when IPA misses', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: EnglishPronunciationSelectionArea(
-            phoneticsService: _FakePhoneticsService(),
+          body: ReaderPhoneticsSheet(
+            selectedText: 'OpenAI',
+            phoneticsService: _MissPhoneticsService(),
             ttsService: _FakeTtsService(),
-            child: const Text('ephemeral'),
           ),
         ),
       ),
     );
+    await tester.pump();
 
-    expect(find.byType(SelectionArea), findsOneWidget);
-    expect(find.text('ephemeral'), findsOneWidget);
-  });
-
-  testWidgets('returns plain child when disabled', (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: EnglishPronunciationSelectionArea(
-            enabled: false,
-            phoneticsService: _FakePhoneticsService(),
-            ttsService: _FakeTtsService(),
-            child: const Text('ephemeral'),
-          ),
-        ),
-      ),
-    );
-
-    expect(find.byType(SelectionArea), findsNothing);
-    expect(find.text('ephemeral'), findsOneWidget);
+    expect(find.text('Pronounce'), findsOneWidget);
+    expect(find.byKey(const ValueKey('reader-phonetics-ai')), findsOneWidget);
   });
 }
 
-class _FakePhoneticsService extends PhoneticsService {
+class _MissPhoneticsService extends PhoneticsService {
   @override
   Future<PhoneticsLookupOutcome> lookupWithOutcome(String text) async {
     return const PhoneticsLookupOutcome(
-      result: PhoneticsResult(us: 'ɪˈfem.ə.rəl', uk: 'ɪˈfem.ə.rəl'),
-      foundLocally: true,
+      result: PhoneticsResult.empty,
+      foundLocally: false,
       foundInAiCache: false,
       canTryAi: true,
     );
@@ -57,9 +42,6 @@ class _FakePhoneticsService extends PhoneticsService {
 
 class _FakeTtsService extends TtsService {
   final _FakeTtsModelManager _fakeModelManager = _FakeTtsModelManager();
-
-  @override
-  String get defaultEnglishAccent => 'en_US';
 
   @override
   TtsModelManager get modelManager => _fakeModelManager;

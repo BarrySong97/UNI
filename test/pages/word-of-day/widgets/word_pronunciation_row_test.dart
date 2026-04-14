@@ -68,6 +68,7 @@ void main() {
       find.byKey(const ValueKey<String>('word-pronunciation-uk')),
       findsNothing,
     );
+    expect(find.byKey(const ValueKey('word-pronunciation-ai')), findsNothing);
   });
 
   testWidgets('applies outer padding only when pronunciation is visible', (
@@ -90,19 +91,60 @@ void main() {
     final padding = tester.widget<Padding>(find.byType(Padding).first);
     expect(padding.padding, const EdgeInsets.only(top: 12, bottom: 14));
   });
+
+  testWidgets('shows AI button when local lookup misses but AI is supported', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: WordPronunciationRow(
+            selectedText: 'OpenAI',
+            phoneticsService: _AiCapablePhoneticsService(),
+            ttsService: _FakeTtsService(),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('word-pronunciation-ai')), findsOneWidget);
+  });
 }
 
 class _FakePhoneticsService extends PhoneticsService {
   @override
-  Future<PhoneticsResult> lookup(String text) async {
-    return const PhoneticsResult(us: 'ˈklær.ə.t̬i', uk: 'ˈklær.ə.ti');
+  Future<PhoneticsLookupOutcome> lookupWithOutcome(String text) async {
+    return const PhoneticsLookupOutcome(
+      result: PhoneticsResult(us: 'ˈklær.ə.t̬i', uk: 'ˈklær.ə.ti'),
+      foundLocally: true,
+      foundInAiCache: false,
+      canTryAi: true,
+    );
   }
 }
 
 class _EmptyPhoneticsService extends PhoneticsService {
   @override
-  Future<PhoneticsResult> lookup(String text) async {
-    return const PhoneticsResult(us: '', uk: '');
+  Future<PhoneticsLookupOutcome> lookupWithOutcome(String text) async {
+    return const PhoneticsLookupOutcome(
+      result: PhoneticsResult(us: '', uk: ''),
+      foundLocally: false,
+      foundInAiCache: false,
+      canTryAi: false,
+    );
+  }
+}
+
+class _AiCapablePhoneticsService extends PhoneticsService {
+  @override
+  Future<PhoneticsLookupOutcome> lookupWithOutcome(String text) async {
+    return const PhoneticsLookupOutcome(
+      result: PhoneticsResult(us: '', uk: ''),
+      foundLocally: false,
+      foundInAiCache: false,
+      canTryAi: true,
+    );
   }
 }
 

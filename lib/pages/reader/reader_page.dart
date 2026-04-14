@@ -29,6 +29,7 @@ import '../../shared/constants/reader-constants.dart';
 import '../../shared/layout/responsive_layout.dart';
 import 'quote_card/models/reader_quote_card_payload.dart';
 import 'quote_card/reader_quote_card_page.dart';
+import 'reader_modal_interaction_guard.dart';
 import '../../stores/annotation/annotation-store.dart';
 import '../../stores/reader/reader_store.dart';
 import '../../stores/reader/reader_store_manager.dart';
@@ -69,6 +70,7 @@ class _ReaderPageState extends State<ReaderPage>
   late final AppDatabase _database;
   late final AnnotationStore _annotationStore;
   late final ReadingTimeTracker _readingTimeTracker;
+  late final ReaderModalInteractionGuard _modalInteractionGuard;
   final SelectionToAnnotationMapper _annotationMapper =
       const SelectionToAnnotationMapper();
   final ReaderAnnotationResolver _annotationResolver =
@@ -145,6 +147,8 @@ class _ReaderPageState extends State<ReaderPage>
     super.initState();
     _store = widget.storeManager.getStore(widget.book.id);
     _store.addListener(_onStoreChanged);
+    _modalInteractionGuard = ReaderModalInteractionGuard()
+      ..addListener(_onModalInteractionGuardChanged);
     WidgetsBinding.instance.addObserver(this);
     _initPageTurnListeners();
 
@@ -394,10 +398,12 @@ class _ReaderPageState extends State<ReaderPage>
     if (quoteText.trim().isEmpty) {
       return;
     }
-    final noteText = await ReaderAnnotationNoteComposer.show(
-      context: context,
-      quoteText: quoteText,
-      isTablet: _store.isDualPage,
+    final noteText = await _modalInteractionGuard.runWhileBlocked(
+      () => ReaderAnnotationNoteComposer.show(
+        context: context,
+        quoteText: quoteText,
+        isTablet: _store.isDualPage,
+      ),
     );
     if (noteText == null || noteText.trim().isEmpty) {
       return;
@@ -412,10 +418,12 @@ class _ReaderPageState extends State<ReaderPage>
   Future<void> _openNoteComposerForAnnotation(
     AnnotationEntity annotation,
   ) async {
-    final noteText = await ReaderAnnotationNoteComposer.show(
-      context: context,
-      quoteText: annotation.quoteText,
-      isTablet: _store.isDualPage,
+    final noteText = await _modalInteractionGuard.runWhileBlocked(
+      () => ReaderAnnotationNoteComposer.show(
+        context: context,
+        quoteText: annotation.quoteText,
+        isTablet: _store.isDualPage,
+      ),
     );
     if (noteText == null || noteText.trim().isEmpty) {
       return;
@@ -598,6 +606,13 @@ class _ReaderPageState extends State<ReaderPage>
     setState(() {});
   }
 
+  void _onModalInteractionGuardChanged() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {});
+  }
+
   void _onAnnotationStoreChanged() {
     if (!mounted) return;
     setState(() {
@@ -640,6 +655,9 @@ class _ReaderPageState extends State<ReaderPage>
     _androidKeyEventSub?.cancel();
     _pageTurnFocusNode.dispose();
     _store.removeListener(_onStoreChanged);
+    _modalInteractionGuard
+      ..removeListener(_onModalInteractionGuardChanged)
+      ..dispose();
     WidgetsBinding.instance.removeObserver(this);
     if (_didInitDependencies) {
       _annotationStore.removeListener(_onAnnotationStoreChanged);
@@ -852,10 +870,7 @@ class _ReaderPageState extends State<ReaderPage>
       if (item != null) {
         HapticFeedback.selectionClick();
         unawaited(
-          _openFocusedAnnotationActionsSheet(
-            item,
-            isRightPage: isRight,
-          ),
+          _openFocusedAnnotationActionsSheet(item, isRightPage: isRight),
         );
       }
       return;
@@ -1906,12 +1921,14 @@ class _ReaderPageState extends State<ReaderPage>
 
   Future<void> _openAnnotationsPanel() async {
     _store.hideControls();
-    final selected = await ReaderAnnotationSheet.show(
-      context: context,
-      items: _buildAnnotationCardItems(),
-      onAddNote: _handleAnnotationSheetAddNote,
-      isTablet: _store.isDualPage,
-      showOnLeft: _store.isDualPage,
+    final selected = await _modalInteractionGuard.runWhileBlocked(
+      () => ReaderAnnotationSheet.show(
+        context: context,
+        items: _buildAnnotationCardItems(),
+        onAddNote: _handleAnnotationSheetAddNote,
+        isTablet: _store.isDualPage,
+        showOnLeft: _store.isDualPage,
+      ),
     );
     if (selected == null || !mounted) {
       return;
@@ -1931,16 +1948,18 @@ class _ReaderPageState extends State<ReaderPage>
     ReaderAnnotationCardItem item, {
     required bool isRightPage,
   }) async {
-    await ReaderFocusedAnnotationSheet.show(
-      context: context,
-      item: item,
-      isTablet: _store.isDualPage,
-      showOnLeft: isRightPage,
-      formatTimestamp: _formatAnnotationTimestamp,
-      onAddNote: (noteText) async {
-        await _handleAppendNote(item.annotation, noteText: noteText);
-        return _buildAnnotationCardItem(item.annotation.id) ?? item;
-      },
+    await _modalInteractionGuard.runWhileBlocked(
+      () => ReaderFocusedAnnotationSheet.show(
+        context: context,
+        item: item,
+        isTablet: _store.isDualPage,
+        showOnLeft: isRightPage,
+        formatTimestamp: _formatAnnotationTimestamp,
+        onAddNote: (noteText) async {
+          await _handleAppendNote(item.annotation, noteText: noteText);
+          return _buildAnnotationCardItem(item.annotation.id) ?? item;
+        },
+      ),
     );
   }
 
@@ -2423,31 +2442,34 @@ class _ReaderPageState extends State<ReaderPage>
 
         // Current page.
         Positioned.fill(
-          child: GestureDetector(
-            onTapUp: _onTapUp,
-            onHorizontalDragStart: _onDragStart,
-            onHorizontalDragUpdate: _onDragUpdate,
-            onHorizontalDragEnd: _onDragEnd,
-            onLongPressStart: _onLongPressStart,
-            onLongPressMoveUpdate: _onLongPressMoveUpdate,
-            onLongPressEnd: _onLongPressEnd,
-            child: Transform.translate(
-              offset: Offset(_dragOffset, 0),
-              child: RepaintBoundary(
-                child: CustomPaint(
-                  painter: ReaderCanvasPainter(
-                    page: displayPage,
-                    preferences: prefs,
-                    safeAreaTop: mediaPadding.top,
-                    safeAreaBottom: mediaPadding.bottom,
-                    annotationPaintBuckets: _annotationPaintBucketsForPage(
-                      displayPage,
+          child: IgnorePointer(
+            ignoring: _modalInteractionGuard.isBlocking,
+            child: GestureDetector(
+              onTapUp: _onTapUp,
+              onHorizontalDragStart: _onDragStart,
+              onHorizontalDragUpdate: _onDragUpdate,
+              onHorizontalDragEnd: _onDragEnd,
+              onLongPressStart: _onLongPressStart,
+              onLongPressMoveUpdate: _onLongPressMoveUpdate,
+              onLongPressEnd: _onLongPressEnd,
+              child: Transform.translate(
+                offset: Offset(_dragOffset, 0),
+                child: RepaintBoundary(
+                  child: CustomPaint(
+                    painter: ReaderCanvasPainter(
+                      page: displayPage,
+                      preferences: prefs,
+                      safeAreaTop: mediaPadding.top,
+                      safeAreaBottom: mediaPadding.bottom,
+                      annotationPaintBuckets: _annotationPaintBucketsForPage(
+                        displayPage,
+                      ),
+                      selectionRects: _selectionRects.isNotEmpty
+                          ? _selectionRects
+                          : null,
                     ),
-                    selectionRects: _selectionRects.isNotEmpty
-                        ? _selectionRects
-                        : null,
+                    size: Size.infinite,
                   ),
-                  size: Size.infinite,
                 ),
               ),
             ),
@@ -2630,24 +2652,27 @@ class _ReaderPageState extends State<ReaderPage>
 
         // Current spread (two pages side by side, or centered if image-only).
         Positioned.fill(
-          child: GestureDetector(
-            // Opaque so gestures are captured on the empty space flanking a
-            // centered image-only page (the Row only has a half-width child).
-            behavior: HitTestBehavior.opaque,
-            onTapUp: _onTapUp,
-            onHorizontalDragStart: _onDragStart,
-            onHorizontalDragUpdate: _onDragUpdate,
-            onHorizontalDragEnd: _onDragEnd,
-            onLongPressStart: _onLongPressStart,
-            onLongPressMoveUpdate: _onLongPressMoveUpdate,
-            onLongPressEnd: _onLongPressEnd,
-            child: Transform.translate(
-              offset: Offset(_dragOffset, 0),
-              child: buildSpread(
-                displayLeftPage,
-                displayRightPage,
-                leftSel: leftSelRects,
-                rightSel: rightSelRects,
+          child: IgnorePointer(
+            ignoring: _modalInteractionGuard.isBlocking,
+            child: GestureDetector(
+              // Opaque so gestures are captured on the empty space flanking a
+              // centered image-only page (the Row only has a half-width child).
+              behavior: HitTestBehavior.opaque,
+              onTapUp: _onTapUp,
+              onHorizontalDragStart: _onDragStart,
+              onHorizontalDragUpdate: _onDragUpdate,
+              onHorizontalDragEnd: _onDragEnd,
+              onLongPressStart: _onLongPressStart,
+              onLongPressMoveUpdate: _onLongPressMoveUpdate,
+              onLongPressEnd: _onLongPressEnd,
+              child: Transform.translate(
+                offset: Offset(_dragOffset, 0),
+                child: buildSpread(
+                  displayLeftPage,
+                  displayRightPage,
+                  leftSel: leftSelRects,
+                  rightSel: rightSelRects,
+                ),
               ),
             ),
           ),

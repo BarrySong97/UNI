@@ -71,4 +71,34 @@ void main() {
     expect(find.text('Pronounce'), findsOneWidget);
     expect(find.text('Copy'), findsOneWidget);
   });
+
+  testWidgets('renders AI button when IPA is unavailable', (tester) async {
+    var aiTapped = false;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: PronunciationSelectionToolbar(
+            anchors: const TextSelectionToolbarAnchors(
+              primaryAnchor: Offset(120, 120),
+            ),
+            aiButtonLabel: 'AI',
+            onAiPressed: () => aiTapped = true,
+            buttonItems: [
+              ContextMenuButtonItem(label: 'Pronounce', onPressed: () {}),
+              ContextMenuButtonItem(label: 'Copy', onPressed: () {}),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      find.byKey(const ValueKey('pronunciation-selection-ai')),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('AI'));
+    await tester.pump();
+    expect(aiTapped, isTrue);
+  });
 }
