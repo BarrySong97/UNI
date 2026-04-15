@@ -40,6 +40,8 @@ class ReaderAnnotationSheet extends StatefulWidget {
     super.key,
     required this.items,
     required this.onAddNote,
+    required this.onShare,
+    required this.onDelete,
   });
 
   final List<ReaderAnnotationCardItem> items;
@@ -48,6 +50,8 @@ class ReaderAnnotationSheet extends StatefulWidget {
     String noteText,
   )
   onAddNote;
+  final Future<void> Function(ReaderAnnotationCardItem item) onShare;
+  final Future<bool> Function(ReaderAnnotationCardItem item) onDelete;
 
   static Future<ReaderAnnotationSheetResult?> show({
     required BuildContext context,
@@ -57,10 +61,17 @@ class ReaderAnnotationSheet extends StatefulWidget {
       String noteText,
     )
     onAddNote,
+    required Future<void> Function(ReaderAnnotationCardItem item) onShare,
+    required Future<bool> Function(ReaderAnnotationCardItem item) onDelete,
     bool isTablet = false,
     bool showOnLeft = false,
   }) {
-    final sheet = ReaderAnnotationSheet(items: items, onAddNote: onAddNote);
+    final sheet = ReaderAnnotationSheet(
+      items: items,
+      onAddNote: onAddNote,
+      onShare: onShare,
+      onDelete: onDelete,
+    );
     final mediaQuery = MediaQuery.of(context);
 
     return showModalBottomSheet<ReaderAnnotationSheetResult>(
@@ -176,20 +187,18 @@ class _ReaderAnnotationSheetState extends State<ReaderAnnotationSheet> {
 
     return ReaderAnnotationNotesSheet(
       item: _selectedItem!,
-      searchController: _searchController,
       isComposing: _isDetailComposerOpen,
       composerVersion: _detailComposerVersion,
       onBack: () => setState(() {
         _selectedItem = null;
         _isDetailComposerOpen = false;
       }),
-      onSearchChanged: (value) => setState(() => _searchQuery = value),
-      onClearSearch: () {
-        _searchController.clear();
-        setState(() => _searchQuery = '');
-      },
       onStartAddNote: () => setState(() {
         _isDetailComposerOpen = true;
+        _detailComposerVersion += 1;
+      }),
+      onCancelAddNote: () => setState(() {
+        _isDetailComposerOpen = false;
         _detailComposerVersion += 1;
       }),
       onAddNote: (noteText) async {
@@ -219,6 +228,28 @@ class _ReaderAnnotationSheetState extends State<ReaderAnnotationSheet> {
           });
         });
         return updated;
+      },
+      onShare: () => widget.onShare(_selectedItem!),
+      onDelete: () async {
+        final selectedItem = _selectedItem;
+        if (selectedItem == null) {
+          return false;
+        }
+        final deleted = await widget.onDelete(selectedItem);
+        if (!context.mounted || !deleted) {
+          return deleted;
+        }
+        setState(() {
+          _items.removeWhere(
+            (item) => item.annotation.id == selectedItem.annotation.id,
+          );
+          _selectedItem = null;
+          _isDetailComposerOpen = false;
+        });
+        if (_items.isEmpty) {
+          Navigator.of(context).pop();
+        }
+        return true;
       },
       onGoToLocation: () => Navigator.of(context).pop(
         ReaderAnnotationSheetResult(
@@ -390,6 +421,7 @@ class _ReaderAnnotationSheetState extends State<ReaderAnnotationSheet> {
                             onTap: () => setState(() {
                               _selectedItem = group.items[i];
                               _isDetailComposerOpen = false;
+                              _detailComposerVersion = 0;
                             }),
                           ),
                         ],

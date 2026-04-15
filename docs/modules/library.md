@@ -4,6 +4,7 @@
 The app has two main book-related pages:
 - **Shelf** (`ShelfPage`, tab 0): The home dashboard with reading stats, Now Reading card, a `Words` section fed by Explain history, and a book grid (no category filters).
 - **Library** (`LibraryPage`, tab 1): A dedicated book browsing page with category tabs (All/Reading/Finished) and a 2-column book grid.
+- **Library** (`LibraryPage`, tab 1): A dedicated book browsing page with a top `Books / Notes` switch. `Books` keeps the category tabs (All/Reading/Finished) and 2-column grid; `Notes` shows a cross-book note notebook aggregated from Reader marks.
 - **Statistics** (`StatisticsPage`, pushed from Shelf stat cards): A detailed analytics page with separate `Reading Time` and `Books Read` views plus reusable time-block filtering.
 
 Both pages share the same data source (`LibraryStore`) and reusable components (`LibraryBookGrid`, `LibraryHeader`, etc.).
@@ -12,6 +13,7 @@ Both pages share the same data source (`LibraryStore`) and reusable components (
 ### In
 - Shelf dashboard layout (Header / Stats / Now Reading / Words / Book Grid)
 - Library page with category filter tabs and 2-column grid
+- Library page with `Books / Notes` top switch and cross-book note list
 - Statistics page layout and filtering (`This Month` / `This Year` / `Pick Month`)
 - Book list loading and display
 - "Now Reading" card (based on most recent reading progress; falls back to first book when no progress exists)
@@ -56,23 +58,24 @@ lib/stores/library/       — LibraryStore + LibraryState
 3. **ShelfPage** computes derived data:
    - `nowReadingBook`: book with most recent `updatedAt` in `progressUpdatedMap`; first book if no progress.
    - `gridBooks`: remaining books excluding nowReadingBook, sorted by updatedAt descending.
-4. **LibraryPage** displays `state.filteredBooks` based on active category:
+4. **LibraryPage** default surface is `Books`, which displays `state.filteredBooks` based on active category:
    - All: all books
    - Reading: progress > 0 and < 1.0
    - Finished: progress >= 1.0
-5. User taps any reader entry (Now Reading Continue / Library grid with progress / Book Detail Continue) → uses unified reader entry:
+5. Switching Library to `Notes` aggregates all `annotation_notes` across all books, joins them with their parent mark quote and book metadata, sorts by note creation time descending, and renders a notebook-style list.
+6. User taps any reader entry (Now Reading Continue / Library grid with progress / Library notes row / Book Detail Continue) → uses unified reader entry:
    - If target book is in reader hot pool (up to 3 books): show overlay-first path.
    - Otherwise: fallback to `/reader` route.
-6. User taps a book in the grid:
+7. User taps a book in the grid:
    - No saved progress record: Book Profile (`/book-detail`)
    - Has saved progress record (even if percent is 0): unified reader entry (overlay-first + route fallback)
-7. When leaving reader, progress is flushed and `LibraryStore.refreshProgress()` reloads `progressMap/progressUpdatedMap` so grid badges and category filtering update without full page reload.
-8. iOS reflowable EPUB visual pagination cache (`reader_visual_pagination_cache`) is shared with Reader as the single source for layout-specific total-page data; Shelf/Library currently still render percent-first UI and do not show live `current/total`.
-9. User taps the left Shelf stat card (`Reading Time`) or right Shelf stat card (`Books Read`) -> both navigate to `/statistics`, but pass different initial tab arguments while keeping the same route.
-10. Shelf loads recent `Explain` history from `explain_cache` and picks the newest word-like entry (`<= 3` tokens, short text) for the `Words` preview card; the card body prefers the containing sentence, falls back to the selected text, truncates to two lines, and highlights the selected word when it appears in the sentence.
-11. User taps `More` in the Shelf `Words` section -> opens the `Words` page, which lists all explain history entries with preview meaning, source book, and time. Tapping a row opens a detail page with full meaning, details, context sentence, inline pronunciation chips (US/UK IPA + play, or `AI` fetch when local/cached phonetics miss), and long-press selection actions (`IPA`, `Pronounce`, `Copy`) for long-form explanation text.
-12. User can also tap the Shelf `Words` preview card itself -> opens the latest word detail directly. The empty-state card remains non-interactive.
-12. Statistics resolves a reusable time block from the selected preset:
+8. When leaving reader, progress is flushed and `LibraryStore.refreshProgress()` reloads `progressMap/progressUpdatedMap` so grid badges and category filtering update without full page reload.
+9. iOS reflowable EPUB visual pagination cache (`reader_visual_pagination_cache`) is shared with Reader as the single source for layout-specific total-page data; Shelf/Library currently still render percent-first UI and do not show live `current/total`.
+10. User taps the left Shelf stat card (`Reading Time`) or right Shelf stat card (`Books Read`) -> both navigate to `/statistics`, but pass different initial tab arguments while keeping the same route.
+11. Shelf loads recent `Explain` history from `explain_cache` and picks the newest word-like entry (`<= 3` tokens, short text) for the `Words` preview card; the card body prefers the containing sentence, falls back to the selected text, truncates to two lines, and highlights the selected word when it appears in the sentence.
+12. User taps `More` in the Shelf `Words` section -> opens the `Words` page, which lists all explain history entries with preview meaning, source book, and time. Tapping a row opens a detail page with full meaning, details, context sentence, inline pronunciation chips (US/UK IPA + play, or `AI` fetch when local/cached phonetics miss), and long-press selection actions (`IPA`, `Pronounce`, `Copy`) for long-form explanation text.
+13. User can also tap the Shelf `Words` preview card itself -> opens the latest word detail directly. The empty-state card remains non-interactive.
+14. Statistics resolves a reusable time block from the selected preset:
    - `This Month`: current calendar month
    - `This Year`: current calendar year
    - `Pick Month`: selected month start/end
@@ -120,7 +123,9 @@ Books Read:
 ### Library (tab 1)
 ```
 LibraryHeader ("IMMERSED" label + "Library" title + "+" import button)
-LibraryBookGrid (category tabs: All/Reading/Finished + 2-column grid)
+Top switch (`Books` / `Notes`) using a soft rounded segmented tab
+Books: LibraryBookGrid (category tabs: All/Reading/Finished + 2-column grid)
+Notes: cross-book note list showing note text, source quote, book title, author, time
 ```
 
 ### Empty state (no books)
@@ -172,6 +177,7 @@ Header + "Add Your First Book" button (on Shelf).
 ## Acceptance Criteria
 - Shelf renders stable dashboard (Header / Stats / Now Reading / Words / Grid).
 - Library renders category tabs and filtered 2-column grid.
+- Library renders the `Books / Notes` top switch and can show the cross-book note list.
 - Now Reading shows most recently read book; first book when no progress.
 - Grid tiles show cover, title, author, and progress badge.
 - Empty state shows "Add Your First Book" button.

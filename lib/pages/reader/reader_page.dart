@@ -1273,7 +1273,11 @@ class _ReaderPageState extends State<ReaderPage>
     return buffer.toString();
   }
 
-  Future<void> _openQuoteCard({required String selectedText}) async {
+  Future<void> _openQuoteCard({
+    required String selectedText,
+    String? chapterTitle,
+    String? pageLabel,
+  }) async {
     final trimmedText = selectedText.trim();
     if (trimmedText.isEmpty) {
       return;
@@ -1289,10 +1293,12 @@ class _ReaderPageState extends State<ReaderPage>
         readerFontFamily: _store.preferences.fontFamily,
         readerThemeName: _store.preferences.theme.name,
         coverDataUrl: widget.book.coverUrl,
-        chapterTitle: _store.currentChapterTitle,
-        pageLabel: _store.totalBookPages > 0
-            ? 'Page ${_store.currentBookPage}'
-            : 'Page ${_store.currentPageIndex + 1}',
+        chapterTitle: chapterTitle ?? _store.currentChapterTitle,
+        pageLabel:
+            pageLabel ??
+            (_store.totalBookPages > 0
+                ? 'Page ${_store.currentBookPage}'
+                : 'Page ${_store.currentPageIndex + 1}'),
         collectionLabel: null,
       ),
     );
@@ -1926,6 +1932,8 @@ class _ReaderPageState extends State<ReaderPage>
         context: context,
         items: _buildAnnotationCardItems(),
         onAddNote: _handleAnnotationSheetAddNote,
+        onShare: _shareAnnotationFromDetail,
+        onDelete: _deleteAnnotationFromDetail,
         isTablet: _store.isDualPage,
         showOnLeft: _store.isDualPage,
       ),
@@ -1959,8 +1967,28 @@ class _ReaderPageState extends State<ReaderPage>
           await _handleAppendNote(item.annotation, noteText: noteText);
           return _buildAnnotationCardItem(item.annotation.id) ?? item;
         },
+        onShare: () => _shareAnnotationFromDetail(item),
+        onDelete: () => _deleteAnnotationFromDetail(item),
+        onGoToLocation: () {
+          unawaited(_jumpToAnnotationPreview(item.annotation));
+        },
       ),
     );
+  }
+
+  Future<void> _shareAnnotationFromDetail(ReaderAnnotationCardItem item) async {
+    await _openQuoteCard(
+      selectedText: item.annotation.quoteText,
+      chapterTitle: item.chapterTitle,
+      pageLabel: null,
+    );
+  }
+
+  Future<bool> _deleteAnnotationFromDetail(
+    ReaderAnnotationCardItem item,
+  ) async {
+    await _handleRemoveMarks(<AnnotationEntity>[item.annotation]);
+    return true;
   }
 
   Future<void> _jumpToAnnotationPreview(AnnotationEntity annotation) async {
