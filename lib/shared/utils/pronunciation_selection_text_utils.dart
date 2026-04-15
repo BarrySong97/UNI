@@ -65,6 +65,13 @@ bool _looksLikeSentenceSelection({
     return false;
   }
 
+  // If the sentence terminator only existed at the boundary of the raw text
+  // and was stripped during normalization, the user likely over-selected —
+  // don't classify as a sentence.
+  if (!_endsWithSentenceTerminator(normalizedSelectedText)) {
+    return false;
+  }
+
   if (normalizedSelectedText.contains(RegExp(r'\s'))) {
     return true;
   }

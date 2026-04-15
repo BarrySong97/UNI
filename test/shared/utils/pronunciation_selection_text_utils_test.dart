@@ -16,12 +16,24 @@ void main() {
   });
 
   group('sanitizePronunciationSelectionForReadAloud', () {
-    test('keeps sentence punctuation for real sentence selections', () {
+    test('strips boundary sentence punctuation for read aloud', () {
+      // Boundary-only sentence terminators are treated as accidental
+      // over-selection, so the normalized (stripped) text is returned.
       expect(
         sanitizePronunciationSelectionForReadAloud(
           'Clarity makes deep work possible.',
         ),
-        'Clarity makes deep work possible.',
+        'Clarity makes deep work possible',
+      );
+    });
+
+    test('keeps sentence punctuation for multi-sentence selections', () {
+      // Internal sentence terminators still trigger sentence mode.
+      expect(
+        sanitizePronunciationSelectionForReadAloud(
+          'He said hello. She waved back.',
+        ),
+        'He said hello. She waved back.',
       );
     });
 
