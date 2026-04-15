@@ -79,6 +79,99 @@ class _FakeChapterDataSource implements ChapterDataSource {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  testWidgets('keyboard padding changes do not move page indicator', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final database = AppDatabase();
+    final progressRepository = _FakeProgressRepository();
+    final providers = _buildProviders(
+      database: database,
+      progressRepository: progressRepository,
+    );
+
+    final book = _bookEntity();
+    final chapter = _chapter(
+      index: 0,
+      title: 'Chapter 1',
+      href: 'Text/ch0.xhtml',
+      text: _longText(260),
+    );
+    final dataSource = _FakeChapterDataSource(
+      book: ParsedBook(
+        metadata: const BookMetadata(title: 'T', author: 'A'),
+        toc: const <TocEntry>[
+          TocEntry(title: 'Chapter 1', href: 'Text/ch0.xhtml'),
+        ],
+        chapters: <ParsedChapter>[chapter],
+      ),
+      chapters: <ParsedChapter>[chapter],
+    );
+
+    Widget buildApp(MediaQueryData mediaQueryData) {
+      return MediaQuery(
+        data: mediaQueryData,
+        child: MaterialApp(
+          home: AppProvidersScope(
+            providers: providers,
+            child: ReaderPage(
+              book: book,
+              dataSource: dataSource,
+              storeManager: providers.readerStoreManager,
+            ),
+          ),
+        ),
+      );
+    }
+
+    const stableViewPadding = EdgeInsets.only(bottom: 34);
+    await tester.pumpWidget(
+      buildApp(
+        const MediaQueryData(
+          size: Size(390, 844),
+          padding: EdgeInsets.only(bottom: 34),
+          viewPadding: stableViewPadding,
+        ),
+      ),
+    );
+
+    final store = providers.readerStoreManager.getStore(book.id);
+    await _waitForReaderReady(store);
+    await tester.pumpAndSettle();
+
+    final pageIndicatorFinder = find.text(
+      '${store.currentPageIndex + 1} / ${store.totalPagesInChapter}',
+    );
+    expect(pageIndicatorFinder, findsOneWidget);
+    final beforeOffset = tester.getBottomLeft(pageIndicatorFinder);
+
+    await tester.pumpWidget(
+      buildApp(
+        const MediaQueryData(
+          size: Size(390, 844),
+          padding: EdgeInsets.zero,
+          viewPadding: stableViewPadding,
+          viewInsets: EdgeInsets.only(bottom: 320),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    final afterOffset = tester.getBottomLeft(pageIndicatorFinder);
+    expect(afterOffset.dy, beforeOffset.dy);
+
+    await store.flushProgress();
+    providers.readerStoreManager.dispose();
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pump();
+  });
+
   testWidgets('adding a note from a focused mark does not trigger page turn', (
     tester,
   ) async {
@@ -126,6 +219,9 @@ void main() {
       ),
     );
 
+    final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
+    expect(scaffold.resizeToAvoidBottomInset, isFalse);
+
     final store = providers.readerStoreManager.getStore(book.id);
     await _waitForReaderReady(store);
 
@@ -158,6 +254,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('note-composer-input')), findsOneWidget);
+    expect(find.byKey(const ValueKey('selection-note-sheet')), findsNothing);
     expect(store.currentPageIndex, pageIndexBefore);
 
     await tester.enterText(
