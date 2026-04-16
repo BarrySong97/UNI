@@ -71,4 +71,19 @@ void main() {
       );
     });
   });
+
+  group('isReaderSingleWordSelection', () {
+    test('accepts a single normalized word', () {
+      expect(isReaderSingleWordSelection('clarity'), isTrue);
+      expect(isReaderSingleWordSelection('state-of-the-art'), isTrue);
+    });
+
+    test('rejects multi-word selections', () {
+      expect(isReaderSingleWordSelection('deep work'), isFalse);
+    });
+
+    test('rejects empty selections after sanitizing', () {
+      expect(isReaderSingleWordSelection('...'), isFalse);
+    });
+  });
 }

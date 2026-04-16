@@ -6,6 +6,7 @@ import 'widgets/word_pronunciation_row.dart';
 import '../../services/db/app-database.dart';
 import '../../shared/constants/common-design-tokens.dart';
 import '../../shared/constants/shelf-design-tokens.dart';
+import '../../shared/utils/pronunciation_selection_text_utils.dart';
 import '../../shared/widgets/english_pronunciation_selection_area.dart';
 
 class WordsPage extends StatefulWidget {
@@ -162,6 +163,9 @@ class WordDetailPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final structured = item.structuredData;
     final detailExplain = structured?.detailExplain ?? const <String>[];
+    final partOfSpeech = isPronunciationSingleWordSelection(item.selectedText)
+        ? structured?.partOfSpeech.trim() ?? ''
+        : '';
     final contextSentence = item.contextSentence.trim();
     final providers = AppProvidersScope.maybeOf(context);
     final longFormContent = Column(
@@ -318,6 +322,27 @@ class WordDetailPage extends StatelessWidget {
                   color: CommonDesignTokens.textPrimary,
                 ),
               ),
+              if (partOfSpeech.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: CommonDesignTokens.pageBackground,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    partOfSpeech,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: CommonDesignTokens.textSecondary,
+                    ),
+                  ),
+                ),
+              ],
               if (providers != null)
                 WordPronunciationRow(
                   selectedText: item.selectedText,

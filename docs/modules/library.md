@@ -71,13 +71,13 @@ lib/stores/library/       — LibraryStore + LibraryState
 9. User taps a book in the grid:
    - No saved progress record: Book Profile (`/book-detail`)
    - Has saved progress record (even if percent is 0): unified reader entry (overlay-first + route fallback)
-8. When leaving reader, progress is flushed and `LibraryStore.refreshProgress()` reloads `progressMap/progressUpdatedMap` so grid badges and category filtering update without full page reload.
-9. iOS reflowable EPUB visual pagination cache (`reader_visual_pagination_cache`) is shared with Reader as the single source for layout-specific total-page data; Shelf/Library currently still render percent-first UI and do not show live `current/total`.
-10. User taps the left Shelf stat card (`Reading Time`) or right Shelf stat card (`Books Read`) -> both navigate to `/statistics`, but pass different initial tab arguments while keeping the same route.
-11. Shelf loads recent `Explain` history from `explain_cache` and picks the newest word-like entry (`<= 3` tokens, short text) for the `Words` preview card; the card body prefers the containing sentence, falls back to the selected text, truncates to two lines, and highlights the selected word when it appears in the sentence.
-12. User taps `More` in the Shelf `Words` section -> opens the `Words` page, which lists all explain history entries with preview meaning, source book, and time. Tapping a row opens a detail page with full meaning, details, context sentence, inline pronunciation chips (US/UK IPA + play, or `AI` fetch when local/cached phonetics miss), and long-press selection actions (`IPA`, `Pronounce`, `Copy`) for long-form explanation text.
-13. User can also tap the Shelf `Words` preview card itself -> opens the latest word detail directly. The empty-state card remains non-interactive.
-14. Statistics resolves a reusable time block from the selected preset:
+10. When leaving reader, progress is flushed and `LibraryStore.refreshProgress()` reloads `progressMap/progressUpdatedMap` so grid badges and category filtering update without full page reload.
+11. iOS reflowable EPUB visual pagination cache (`reader_visual_pagination_cache`) is shared with Reader as the single source for layout-specific total-page data; Shelf/Library currently still render percent-first UI and do not show live `current/total`.
+12. User taps the left Shelf stat card (`Reading Time`) or right Shelf stat card (`Books Read`) -> both navigate to `/statistics`, but pass different initial tab arguments while keeping the same route.
+13. Shelf loads recent `Explain` history from `explain_cache` and picks the newest word-like entry (`<= 3` tokens, short text) for the `Words` preview card; the card body prefers the containing sentence, falls back to the selected text, truncates to two lines, and highlights the selected word when it appears in the sentence.
+14. User taps `More` in the Shelf `Words` section -> opens the `Words` page, which lists all explain history entries with preview meaning, source book, and time. Tapping a row opens a detail page with full meaning, details, context sentence, optional AI-provided part-of-speech chip for single-word entries, inline pronunciation chips (US/UK IPA + play, or `AI` fetch when local/cached phonetics miss), and long-press selection actions (`IPA`, `Pronounce`, `Copy`) for long-form explanation text.
+15. User can also tap the Shelf `Words` preview card itself -> opens the latest word detail directly. The empty-state card remains non-interactive.
+16. Statistics resolves a reusable time block from the selected preset:
    - `This Month`: current calendar month
    - `This Year`: current calendar year
    - `Pick Month`: selected month start/end
@@ -162,7 +162,7 @@ Header + "Add Your First Book" button (on Shelf).
 - Words section: always shown when Shelf has books; empty state says `Select a word in Reader and tap Explain.` Preview cards show the containing sentence (or the selected sentence itself), do not show the explain meaning, and open the latest word detail when tapped.
 - Word detail page shows pronunciation chips when app-level phonetics/TTS providers are available and at least one local or cached AI IPA exists; otherwise it shows an `AI` fetch affordance that can query and cache US/UK IPA before revealing the chips. Tapping a chip uses the corresponding English accent and falls back to a Settings download hint when the TTS model is missing.
 - Word detail page also treats context / meaning / detail blocks as a non-reader long-form reading surface: long-pressing a word or short phrase opens inline `IPA`, `Pronounce`, and `Copy` actions, and when local phonetics and cached AI phonetics both miss, the leading `IPA` slot is replaced by an `AI` button instead of staying empty.
-- Words `More` page: if no explain history exists, shows the same empty-state guidance instead of a blank list.
+- Words `More` page: if no explain history exists, shows the same empty-state guidance instead of a blank list. Single-word detail pages render the cached explain `partOfSpeech` label when available.
 - Real cover uses `BoxFit.cover`.
 - Book Profile top background uses `profileBgColor` gradient.
 - Book Profile settings menu can delete book with cascading cleanup.
