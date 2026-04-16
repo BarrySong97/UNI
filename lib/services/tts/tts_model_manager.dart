@@ -41,40 +41,29 @@ class TtsModelManager extends ChangeNotifier {
     _modelsRoot = p.join(docsDir.path, 'tts-models');
     await Directory(_modelsRoot).create(recursive: true);
 
-    // Scan existing downloaded models on disk.
-    await _scanDownloadedModels();
+    _refreshDownloadedModelIds();
     notifyListeners();
   }
 
-  /// Scan tts-models/ for vits-piper-* directories containing .onnx files.
-  Future<void> _scanDownloadedModels() async {
+  void _refreshDownloadedModelIds() {
     _downloadedModelIds.clear();
-    final dir = Directory(_modelsRoot);
-    if (!dir.existsSync()) return;
-
-    await for (final entity in dir.list()) {
-      if (entity is Directory) {
-        final dirName = p.basename(entity.path);
-        if (!dirName.startsWith('vits-piper-')) continue;
-
-        // Extract model ID from dirName: "vits-piper-{key}" -> "{key}"
-        final modelId = dirName.substring('vits-piper-'.length);
-        final onnxFile = File(p.join(entity.path, '$modelId.onnx'));
-        if (onnxFile.existsSync()) {
-          _downloadedModelIds.add(modelId);
-          _states[modelId] =
-              const TtsModelState(status: TtsModelStatus.ready);
-        }
+    for (final model in TtsBuiltinModels.all) {
+      if (_hasRequiredFiles(model)) {
+        _downloadedModelIds.add(model.id);
+        _states[model.id] = const TtsModelState(status: TtsModelStatus.ready);
       }
     }
   }
 
   TtsModelState stateOf(TtsModelInfo model) {
+    if (_hasRequiredFiles(model)) {
+      return const TtsModelState(status: TtsModelStatus.ready);
+    }
     return _states[model.id] ?? const TtsModelState();
   }
 
   bool isReady(TtsModelInfo model) {
-    return stateOf(model).status == TtsModelStatus.ready;
+    return _hasRequiredFiles(model);
   }
 
   /// Check if a model ID is downloaded (without needing a full TtsModelInfo).
@@ -97,7 +86,27 @@ class TtsModelManager extends ChangeNotifier {
     return p.join(_modelsRoot, model.dirName, model.dataDirRelative);
   }
 
+  String? getVoicesPath(TtsModelInfo model) {
+    final fileName = model.voicesFileName;
+    if (fileName == null || fileName.isEmpty) {
+      return null;
+    }
+    return p.join(_modelsRoot, model.dirName, fileName);
+  }
+
+  List<String> getLexiconPaths(TtsModelInfo model) {
+    return model.lexiconFileNames
+        .map((fileName) => p.join(_modelsRoot, model.dirName, fileName))
+        .toList(growable: false);
+  }
+
   Future<void> downloadModel(TtsModelInfo model) async {
+    if (_hasRequiredFiles(model)) {
+      _downloadedModelIds.add(model.id);
+      _updateState(model, const TtsModelState(status: TtsModelStatus.ready));
+      return;
+    }
+
     if (stateOf(model).status == TtsModelStatus.downloading ||
         stateOf(model).status == TtsModelStatus.extracting) {
       return;
@@ -181,7 +190,7 @@ class TtsModelManager extends ChangeNotifier {
       await tempFile.delete();
     }
 
-    _downloadedModelIds.add(model.id);
+    _refreshDownloadedModelIds();
     _updateState(model, const TtsModelState(status: TtsModelStatus.ready));
   }
 
@@ -195,9 +204,34 @@ class TtsModelManager extends ChangeNotifier {
     if (dir.existsSync()) {
       await dir.delete(recursive: true);
     }
-    _downloadedModelIds.remove(model.id);
+    _states.clear();
+    _refreshDownloadedModelIds();
     _updateState(
         model, const TtsModelState(status: TtsModelStatus.notDownloaded));
+  }
+
+  bool _hasRequiredFiles(TtsModelInfo model) {
+    final modelFile = File(getModelPath(model));
+    final tokensFile = File(getTokensPath(model));
+    final dataDir = Directory(getDataDir(model));
+    if (!modelFile.existsSync() ||
+        !tokensFile.existsSync() ||
+        !dataDir.existsSync()) {
+      return false;
+    }
+
+    final voicesPath = getVoicesPath(model);
+    if (voicesPath != null && !File(voicesPath).existsSync()) {
+      return false;
+    }
+
+    for (final lexiconPath in getLexiconPaths(model)) {
+      if (!File(lexiconPath).existsSync()) {
+        return false;
+      }
+    }
+
+    return true;
   }
 }
 

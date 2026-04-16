@@ -1,4 +1,5 @@
 import 'tts_voice_catalog.dart';
+import 'tts_voice_types.dart';
 
 class TtsModelInfo {
   const TtsModelInfo({
@@ -10,6 +11,9 @@ class TtsModelInfo {
     required this.modelFileName,
     required this.speakerCount,
     required this.estimatedSizeMB,
+    this.defaultSpeakerId = 0,
+    this.voicesFileName,
+    this.lexiconFileNames = const <String>[],
     this.gender = VoiceGender.unknown,
   });
 
@@ -18,10 +22,9 @@ class TtsModelInfo {
 
   /// Language locale code, e.g. "en_US", "fr_FR".
   final String languageCode;
-
   final String downloadUrl;
 
-  /// Directory name after extraction (e.g. "vits-piper-en_US-libritts_r-medium").
+  /// Directory name after extraction.
   final String dirName;
 
   /// ONNX model file relative to [dirName].
@@ -29,6 +32,9 @@ class TtsModelInfo {
 
   final int speakerCount;
   final int estimatedSizeMB;
+  final int defaultSpeakerId;
+  final String? voicesFileName;
+  final List<String> lexiconFileNames;
   final VoiceGender gender;
 
   String get tokensRelative => 'tokens.txt';
@@ -45,6 +51,9 @@ class TtsModelInfo {
       modelFileName: voice.modelFileName,
       speakerCount: voice.numSpeakers,
       estimatedSizeMB: voice.estimatedSizeMB,
+      defaultSpeakerId: voice.defaultSpeakerId,
+      voicesFileName: voice.voicesFileName,
+      lexiconFileNames: voice.lexiconFileNames,
       gender: voice.gender,
     );
   }
@@ -53,27 +62,35 @@ class TtsModelInfo {
 /// Built-in fallback models when the catalog is not yet loaded.
 abstract final class TtsBuiltinModels {
   static const usModel = TtsModelInfo(
-    id: 'en_US-libritts_r-medium',
-    displayName: 'LibriTTS-R Medium',
+    id: 'en_US-kokoro-bella',
+    displayName: 'Bella',
     languageCode: 'en_US',
     downloadUrl:
-        'https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-libritts_r-medium.tar.bz2',
-    dirName: 'vits-piper-en_US-libritts_r-medium',
-    modelFileName: 'en_US-libritts_r-medium.onnx',
-    speakerCount: 904,
-    estimatedSizeMB: 75,
+        'https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_0.tar.bz2',
+    dirName: 'kokoro-multi-lang-v1_0',
+    modelFileName: 'model.onnx',
+    speakerCount: 1,
+    estimatedSizeMB: 350,
+    defaultSpeakerId: 2,
+    voicesFileName: 'voices.bin',
+    lexiconFileNames: <String>['lexicon-us-en.txt', 'lexicon-zh.txt'],
+    gender: VoiceGender.female,
   );
 
   static const ukModel = TtsModelInfo(
-    id: 'en_GB-alba-medium',
-    displayName: 'Alba Medium',
+    id: 'en_GB-kokoro-emma',
+    displayName: 'Emma',
     languageCode: 'en_GB',
     downloadUrl:
-        'https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_GB-alba-medium.tar.bz2',
-    dirName: 'vits-piper-en_GB-alba-medium',
-    modelFileName: 'en_GB-alba-medium.onnx',
+        'https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_0.tar.bz2',
+    dirName: 'kokoro-multi-lang-v1_0',
+    modelFileName: 'model.onnx',
     speakerCount: 1,
-    estimatedSizeMB: 64,
+    estimatedSizeMB: 350,
+    defaultSpeakerId: 21,
+    voicesFileName: 'voices.bin',
+    lexiconFileNames: <String>['lexicon-us-en.txt', 'lexicon-zh.txt'],
+    gender: VoiceGender.female,
   );
 
   static const List<TtsModelInfo> all = [usModel, ukModel];

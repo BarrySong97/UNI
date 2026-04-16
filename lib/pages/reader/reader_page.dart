@@ -185,6 +185,7 @@ class _ReaderPageState extends State<ReaderPage>
     if (!mounted) return;
 
     final mq = MediaQuery.of(context);
+    final viewPadding = mq.viewPadding;
     _readingTimeTracker.onAppForeground();
     _readingTimeTracker.onInteraction();
     _pageTurnFocusNode.requestFocus();
@@ -196,16 +197,16 @@ class _ReaderPageState extends State<ReaderPage>
 
     // Record initial viewport so build() won't trigger a spurious update.
     _lastViewportSize = viewportSize;
-    _lastSafeAreaTop = mq.padding.top;
-    _lastSafeAreaBottom = mq.padding.bottom;
+    _lastSafeAreaTop = viewPadding.top;
+    _lastSafeAreaBottom = viewPadding.bottom;
     _lastIsDualPage = isDual;
 
     await _store.openBook(
       book: widget.book,
       dataSource: widget.dataSource,
       viewportSize: viewportSize,
-      safeAreaTop: mq.padding.top,
-      safeAreaBottom: mq.padding.bottom,
+      safeAreaTop: viewPadding.top,
+      safeAreaBottom: viewPadding.bottom,
       devicePixelRatio: mq.devicePixelRatio,
       isDualPage: isDual,
     );
@@ -405,10 +406,11 @@ class _ReaderPageState extends State<ReaderPage>
       return;
     }
     final noteText = await _modalInteractionGuard.runWhileBlocked(
-      () => ReaderAnnotationNoteComposer.show(
+      () => ReaderSelectionNoteSheet.show(
         context: context,
         quoteText: quoteText,
         isTablet: _store.isDualPage,
+        selectionOnRightPage: _selectionOnRightPage,
       ),
     );
     if (noteText == null || noteText.trim().isEmpty) {
@@ -2266,6 +2268,7 @@ class _ReaderPageState extends State<ReaderPage>
   Widget build(BuildContext context) {
     final prefs = _store.preferences;
     final mq = MediaQuery.of(context);
+    final viewPadding = mq.viewPadding;
 
     // Detect viewport changes (split-screen, rotation) and trigger
     // re-pagination with block-anchor-based position preservation.
@@ -2275,19 +2278,19 @@ class _ReaderPageState extends State<ReaderPage>
         : mq.size;
     if (_lastViewportSize != null &&
         (viewportSize != _lastViewportSize ||
-            mq.padding.top != _lastSafeAreaTop ||
-            mq.padding.bottom != _lastSafeAreaBottom ||
+            viewPadding.top != _lastSafeAreaTop ||
+            viewPadding.bottom != _lastSafeAreaBottom ||
             isDual != _lastIsDualPage)) {
       _lastViewportSize = viewportSize;
-      _lastSafeAreaTop = mq.padding.top;
-      _lastSafeAreaBottom = mq.padding.bottom;
+      _lastSafeAreaTop = viewPadding.top;
+      _lastSafeAreaBottom = viewPadding.bottom;
       _lastIsDualPage = isDual;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         _store.updateViewport(
           viewportSize: viewportSize,
-          safeAreaTop: mq.padding.top,
-          safeAreaBottom: mq.padding.bottom,
+          safeAreaTop: viewPadding.top,
+          safeAreaBottom: viewPadding.bottom,
           isDualPage: isDual,
         );
       });
@@ -2299,12 +2302,12 @@ class _ReaderPageState extends State<ReaderPage>
             screenWidth: mq.size.width,
             horizontalPadding: prefs.pageHorizontalPaddingPx,
             verticalPadding: prefs.pageVerticalPaddingPx,
-            safeAreaTop: mq.padding.top,
+            safeAreaTop: viewPadding.top,
           )
         : SinglePageCoordinateHelper(
             horizontalPadding: prefs.pageHorizontalPaddingPx,
             verticalPadding: prefs.pageVerticalPaddingPx,
-            safeAreaTop: mq.padding.top,
+            safeAreaTop: viewPadding.top,
           );
 
     final hasActiveSwipeTransition = _isAnimating || _dragOffset != 0.0;
@@ -2321,6 +2324,7 @@ class _ReaderPageState extends State<ReaderPage>
             : SystemUiOverlayStyle.dark,
         child: Scaffold(
           backgroundColor: prefs.theme.backgroundColor,
+          resizeToAvoidBottomInset: false,
           body: Listener(
             behavior: HitTestBehavior.translucent,
             onPointerDown: (_) => _recordInteraction(),
@@ -2335,7 +2339,7 @@ class _ReaderPageState extends State<ReaderPage>
                 else
                   _buildReader(prefs),
                 if (_shouldShowPreviewReturnButton)
-                  _buildPreviewReturnButton(prefs, mq.padding.top),
+                  _buildPreviewReturnButton(prefs, viewPadding.top),
                 // Controls overlay — rendered above loading/content so it stays
                 // visible during chapter transitions triggered from the panel.
                 if (_store.showControls && _store.book != null)
@@ -2500,7 +2504,7 @@ class _ReaderPageState extends State<ReaderPage>
   }
 
   Widget _buildSinglePageReader(ReaderPreferences prefs, PageLayout page) {
-    final mediaPadding = MediaQuery.of(context).padding;
+    final mediaPadding = MediaQuery.of(context).viewPadding;
     final screenWidth = MediaQuery.of(context).size.width;
 
     // Use snapshotted adjacent pages to prevent mid-swipe content changes.
@@ -2652,7 +2656,7 @@ class _ReaderPageState extends State<ReaderPage>
   }
 
   Widget _buildDualPageReader(ReaderPreferences prefs, PageLayout leftPage) {
-    final mediaPadding = MediaQuery.of(context).padding;
+    final mediaPadding = MediaQuery.of(context).viewPadding;
     final screenWidth = MediaQuery.of(context).size.width;
     final rightPage = _store.secondPageLayout;
     final displayLeftPage = _dragOffset == 0.0
@@ -2961,8 +2965,8 @@ class _ReaderPageState extends State<ReaderPage>
     return Positioned(
       left: isLeft ? 0 : null,
       right: isLeft ? null : 0,
-      top: mq.padding.top,
-      bottom: mq.padding.bottom,
+      top: mq.viewPadding.top,
+      bottom: mq.viewPadding.bottom,
       child: Container(width: 3, color: color.withValues(alpha: 0.5)),
     );
   }

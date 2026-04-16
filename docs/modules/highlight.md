@@ -23,7 +23,7 @@
 
 ## 核心流程
 1. 用户在 Canvas Reader 中长按选中文本，生成 `CrossPageSelection`。
-2. 点击 Tooltip 的 `Mark` 会立即创建 mark；点击 `Note` 会打开 Weread 风格底部 composer；点击已有 mark 或 `Edit` 会打开紧凑的 mark style bar。
+2. 点击 Tooltip 的 `Mark` 会立即创建 mark；点击选区上的 `Note` 会打开 Weread 风格的大号 note sheet；点击已有 mark 或 `Edit` 会打开紧凑的 mark style bar。
 3. `SelectionToAnnotationMapper` 将选区按 block 分段，生成 `AnnotationAnchorV1`：
    - `chapterIndex / chapterHref`
    - `blockIndex`
@@ -80,7 +80,8 @@
 ## 交互与异常
 - 无有效选区时不得创建 mark。
 - 点击 `Mark` 时立即保存；上方紧凑样式栏只负责修改当前 mark 的颜色与样式，不再需要单独确认。
-- 点击 `Note` 时打开底部 composer；空文本不得发布。
+- 点击选区 `Note` 时打开大号 note sheet：手机走底部 sheet，双页模式像 Explain 一样从文字对侧滑入半屏面板，并提供长文本输入区；空文本不得发布。
+- 选区 note sheet 依靠自身响应键盘 inset，Reader 根页面不得因为键盘弹出而上移或重排正文。
 - note composer / note sheet 打开期间及关闭后的短暂收束阶段，不得把同一次点击透传给 Reader 底层翻页手势。
 - 不允许创建与已有 mark 完全重复或重叠的 mark；已标记文本内部也不能继续创建新的嵌套 mark。
 - 用户直接点击正文里已有的 mark 时，会直接弹出 mark tooltip 与已展开的 mark editor；tooltip 提供 `Phonetics`、`Explain`、`Note`、`Unmark`、`Read Aloud`，无需额外的 `Edit` 入口。
@@ -99,7 +100,7 @@
 ## 验收标准
 - Tooltip 中存在 `Mark` / `Edit` / `Note` / `Unmark` 动作。
 - 用户点击 `Mark` 后会立即看到持久化标记；点击 `Note` 可以创建或追加 note；在样式栏切换颜色或样式时，当前页会立即更新。
-- 打开或提交 note composer 后，Reader 不会误触发上一页 / 下一页翻页。
+- 打开或提交选区 note sheet 后，Reader 不会误触发上一页 / 下一页翻页，也不会因为键盘弹出而改变当前正文布局。
 - 重复、部分重叠、完全包含、嵌套 mark 都会被拦截且不会产生重复数据。
 - 重启应用后 annotation 仍可读取并重新渲染。
 - controls 中可打开 marks 列表，点击列表项可进入 editorial 详情；点击 `GO TO THE MARK` 后可以跳转并返回原位置。
