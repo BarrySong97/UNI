@@ -1,11 +1,10 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../entities/explain-history-entity.dart';
 import '../../../services/ai/ai_settings_service.dart';
 import '../../../services/search/image_search_service.dart';
 import '../../../services/reader/selection/reader_selection_text_sanitizer.dart';
@@ -172,9 +171,10 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
   String? _error;
 
   late final bool _isWordOrPhrase;
+  late final bool _isSingleWord;
   late final String _containingSentence;
   late final bool _customPromptModeEnabled;
-  _StructuredExplainData? _structuredData;
+  ExplainStructuredData? _structuredData;
 
   // Phonetics state (word mode only).
   PhoneticsResult? _phonetics;
@@ -216,6 +216,8 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
       rawSelectedText: widget.rawSelectedText,
       normalizedSelectedText: selectedText,
     );
+    _isSingleWord =
+        _isWordOrPhrase && isReaderSingleWordSelection(selectedText);
 
     _containingSentence = _isWordOrPhrase
         ? _extractContainingSentence(widget.paragraphContext, selectedText)
@@ -247,6 +249,7 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
       context: surroundingContext,
       detailLine: detailLine,
       languageLine: langLine,
+      includePartOfSpeech: _isSingleWord,
     );
     final customPromptSystem =
         '$defaultPrompt\n\n$detailLine'
@@ -654,10 +657,17 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
     required String context,
     required String detailLine,
     required String languageLine,
+    required bool includePartOfSpeech,
   }) {
     final languageInstruction = languageLine.isNotEmpty
         ? '\n- $languageLine'
         : '';
+    final partOfSpeechInstruction = includePartOfSpeech
+        ? '\n- Because the selection is a single word, set partOfSpeech to the '
+              'most likely part of speech in this exact context '
+              '(for example: noun, verb, adjective).'
+        : '\n- Because the selection is not a single word, return an empty '
+              'string for partOfSpeech.';
     return 'You are a reading assistant for "$bookTitle".\n'
         'The user selected text: "$selectedText"\n'
         'Context:\n---\n$context\n---\n\n'
@@ -665,6 +675,7 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
         'Return ONLY a JSON object (no markdown, no code fence, no extra text) '
         'with this exact schema:\n'
         '{\n'
+        '  "partOfSpeech": "string",\n'
         '  "meaningExplain": "string",\n'
         '  "detailExplain": ["string", "string"]\n'
         '}\n\n'
@@ -673,6 +684,7 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
         '- Focus on this exact context, not generic dictionary entries.\n'
         '- Use plain language for intermediate English learners.\n'
         '- Keep detailExplain to 2-3 short bullets.\n'
+        '$partOfSpeechInstruction\n'
         '- $detailLine'
         '$languageInstruction';
   }
@@ -706,7 +718,7 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
           _aiResponse = cached;
           _structuredData = _customPromptModeEnabled
               ? null
-              : _StructuredExplainData.tryParse(cached);
+              : ExplainStructuredData.tryParse(cached);
           _isStreaming = false;
         });
         return;
@@ -741,7 +753,7 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
       }
       final parsed = _customPromptModeEnabled
           ? null
-          : _StructuredExplainData.tryParse(_aiResponse);
+          : ExplainStructuredData.tryParse(_aiResponse);
       // Save to cache after successful completion.
       if (_aiResponse.isNotEmpty) {
         widget.database.upsertExplainCache(
@@ -832,6 +844,9 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
   }
 
   Widget _buildWordHeader() {
+    final partOfSpeech = _isSingleWord
+        ? _structuredData?.partOfSpeech.trim() ?? ''
+        : '';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -863,6 +878,10 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
               ),
           ],
         ),
+        if (partOfSpeech.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          _buildPartOfSpeechChip(partOfSpeech),
+        ],
         // Phonetics row: IPA + play button (hidden when no IPA available).
         if (_phonetics != null &&
             (_phonetics!.us.isNotEmpty || _phonetics!.uk.isNotEmpty)) ...[
@@ -877,6 +896,25 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
           _buildSentenceWithBoldWord(_containingSentence, widget.selectedText),
         ],
       ],
+    );
+  }
+
+  Widget _buildPartOfSpeechChip(String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: CommonDesignTokens.pageBackground,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: CommonDesignTokens.textSecondary,
+          decoration: TextDecoration.none,
+        ),
+      ),
     );
   }
 
@@ -1510,76 +1548,5 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
         ),
       ),
     );
-  }
-}
-
-class _StructuredExplainData {
-  const _StructuredExplainData({
-    required this.meaningExplain,
-    required this.detailExplain,
-  });
-
-  final String meaningExplain;
-  final List<String> detailExplain;
-
-  static _StructuredExplainData? tryParse(String raw) {
-    final jsonText = _extractJson(raw);
-    if (jsonText == null) return null;
-    try {
-      final decoded = jsonDecode(jsonText);
-      if (decoded is! Map<String, dynamic>) return null;
-      final meaningExplain = _readString(decoded['meaningExplain']).isNotEmpty
-          ? _readString(decoded['meaningExplain'])
-          : _readString(decoded['inThisSentence']);
-      if (meaningExplain.isEmpty) return null;
-
-      var detailExplain = _readStringList(decoded['detailExplain']);
-      if (detailExplain.isEmpty) {
-        final legacyWhy = _readStringList(decoded['whyThisMeaning']);
-        final legacyNotHere = _readString(decoded['notHere']);
-        final legacyAlternatives = _readStringList(
-          decoded['nearbyAlternatives'],
-        );
-        detailExplain = [
-          ...legacyWhy,
-          if (legacyNotHere.isNotEmpty) 'Not here: $legacyNotHere',
-          ...legacyAlternatives.map((item) => 'Alternative: $item'),
-        ];
-      }
-
-      return _StructuredExplainData(
-        meaningExplain: meaningExplain,
-        detailExplain: detailExplain,
-      );
-    } catch (_) {
-      return null;
-    }
-  }
-
-  static String? _extractJson(String raw) {
-    final trimmed = raw.trim();
-    if (trimmed.isEmpty) return null;
-    if (trimmed.startsWith('{') && trimmed.endsWith('}')) return trimmed;
-
-    final fenced = RegExp(
-      r'```(?:json)?\s*([\s\S]*?)\s*```',
-      multiLine: true,
-    ).firstMatch(trimmed);
-    if (fenced == null) return null;
-    return fenced.group(1)?.trim();
-  }
-
-  static String _readString(Object? value) {
-    if (value is String) return value.trim();
-    return '';
-  }
-
-  static List<String> _readStringList(Object? value) {
-    if (value is! List) return const [];
-    return value
-        .whereType<String>()
-        .map((item) => item.trim())
-        .where((item) => item.isNotEmpty)
-        .toList(growable: false);
   }
 }

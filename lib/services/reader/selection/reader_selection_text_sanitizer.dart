@@ -14,3 +14,6 @@ bool isReaderWordOrPhraseSelection({
   rawSelectedText: rawSelectedText,
   normalizedSelectedText: normalizedSelectedText,
 );
+
+bool isReaderSingleWordSelection(String text) =>
+    isPronunciationSingleWordSelection(text);

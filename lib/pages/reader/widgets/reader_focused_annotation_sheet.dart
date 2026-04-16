@@ -1,20 +1,25 @@
 import 'package:flutter/material.dart';
 
 import '../../../pages/reader/models/reader_annotation_card_item.dart';
-import '../../../shared/constants/common-design-tokens.dart';
 import '../../../shared/constants/shelf-design-tokens.dart';
-import 'reader_annotation_note_composer.dart';
+import 'reader_mark_detail_view.dart';
 
 class ReaderFocusedAnnotationSheet extends StatefulWidget {
   const ReaderFocusedAnnotationSheet({
     super.key,
     required this.item,
     required this.onAddNote,
+    required this.onShare,
+    required this.onDelete,
+    required this.onGoToLocation,
     required this.formatTimestamp,
   });
 
   final ReaderAnnotationCardItem item;
   final Future<ReaderAnnotationCardItem> Function(String noteText) onAddNote;
+  final Future<void> Function() onShare;
+  final Future<bool> Function() onDelete;
+  final VoidCallback onGoToLocation;
   final String Function(DateTime value) formatTimestamp;
 
   static Future<void> show({
@@ -22,6 +27,9 @@ class ReaderFocusedAnnotationSheet extends StatefulWidget {
     required ReaderAnnotationCardItem item,
     required Future<ReaderAnnotationCardItem> Function(String noteText)
     onAddNote,
+    required Future<void> Function() onShare,
+    required Future<bool> Function() onDelete,
+    required VoidCallback onGoToLocation,
     required String Function(DateTime value) formatTimestamp,
     bool isTablet = false,
     bool showOnLeft = false,
@@ -29,6 +37,9 @@ class ReaderFocusedAnnotationSheet extends StatefulWidget {
     final sheet = ReaderFocusedAnnotationSheet(
       item: item,
       onAddNote: onAddNote,
+      onShare: onShare,
+      onDelete: onDelete,
+      onGoToLocation: onGoToLocation,
       formatTimestamp: formatTimestamp,
     );
 
@@ -36,10 +47,10 @@ class ReaderFocusedAnnotationSheet extends StatefulWidget {
       return showModalBottomSheet<void>(
         context: context,
         isScrollControlled: true,
-        useSafeArea: true,
-        backgroundColor: Colors.white,
+        useSafeArea: false,
+        backgroundColor: ShelfDesignTokens.statsCardBg,
         shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
         ),
         builder: (_) => sheet,
       );
@@ -49,7 +60,7 @@ class ReaderFocusedAnnotationSheet extends StatefulWidget {
     return showGeneralDialog<void>(
       context: context,
       barrierDismissible: true,
-      barrierLabel: 'Dismiss mark actions',
+      barrierLabel: 'Dismiss mark detail',
       barrierColor: Colors.black26,
       transitionDuration: const Duration(milliseconds: 300),
       pageBuilder: (dialogContext, _, __) {
@@ -67,8 +78,8 @@ class ReaderFocusedAnnotationSheet extends StatefulWidget {
               bottom: panelMargin,
             ),
             child: Material(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
+              color: ShelfDesignTokens.statsCardBg,
+              borderRadius: BorderRadius.circular(28),
               elevation: 12,
               clipBehavior: Clip.antiAlias,
               child: SizedBox(
@@ -116,7 +127,6 @@ class _ReaderFocusedAnnotationSheetState
   Future<void> _handleAddNote(String noteText) async {
     setState(() {
       _isSubmittingNote = true;
-      _isComposing = false;
     });
     try {
       final updated = await widget.onAddNote(noteText);
@@ -135,7 +145,6 @@ class _ReaderFocusedAnnotationSheetState
       }
       setState(() {
         _isSubmittingNote = false;
-        _isComposing = true;
       });
       ScaffoldMessenger.of(
         context,
@@ -143,201 +152,50 @@ class _ReaderFocusedAnnotationSheetState
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 18, 12, 8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Mark Notes',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: CommonDesignTokens.textPrimary,
-                    ),
-                  ),
-                ),
-                IconButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.close),
-                  color: CommonDesignTokens.textPrimary,
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
-              children: [
-                _QuoteBlock(quoteText: _item.annotation.quoteText),
-                const SizedBox(height: 16),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: _ActionChip(
-                    label: _isComposing ? 'Close Note' : 'Add Note',
-                    onTap: () => setState(() => _isComposing = !_isComposing),
-                  ),
-                ),
-                if (_isComposing) ...[
-                  const SizedBox(height: 16),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: CommonDesignTokens.borderColor),
-                    ),
-                    child: ReaderAnnotationNoteEditor(
-                      inputKey: const ValueKey('focused-mark-note-input'),
-                      quoteText: _item.annotation.quoteText,
-                      isSubmitting: _isSubmittingNote,
-                      onSubmit: _handleAddNote,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 16),
-                Text(
-                  'Notes',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: CommonDesignTokens.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                if (_item.notes.isEmpty)
-                  const Text(
-                    'No notes yet.',
-                    style: TextStyle(
-                      color: CommonDesignTokens.textSecondary,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  )
-                else
-                  ..._item.notes.map(
-                    (note) => Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: ShelfDesignTokens.statsCardBg,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: CommonDesignTokens.borderColor,
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            note.text,
-                            style: const TextStyle(
-                              color: CommonDesignTokens.textPrimary,
-                              fontSize: 15,
-                              height: 1.45,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            widget.formatTimestamp(note.createdAt),
-                            style: const TextStyle(
-                              color: CommonDesignTokens.headerLabelColor,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
+  Future<bool> _handleDelete() async {
+    final confirmed = await showMarkDeleteConfirmation(context);
+    if (!confirmed) {
+      return false;
+    }
+    final deleted = await widget.onDelete();
+    if (!mounted || !deleted) {
+      return deleted;
+    }
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+    return true;
   }
-}
 
-class _QuoteBlock extends StatelessWidget {
-  const _QuoteBlock({required this.quoteText});
-
-  final String quoteText;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      key: const ValueKey('focused-mark-quote-card'),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: CommonDesignTokens.borderColor),
-      ),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: RichText(
-          text: TextSpan(
-            style: const TextStyle(
-              fontSize: 14,
-              color: CommonDesignTokens.textSecondary,
-              fontStyle: FontStyle.italic,
-              height: 1.5,
-            ),
-            children: <InlineSpan>[
-              const TextSpan(text: '"'),
-              TextSpan(
-                text: quoteText,
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: CommonDesignTokens.textPrimary,
-                  backgroundColor: CommonDesignTokens.pageBackground,
-                ),
-              ),
-              const TextSpan(text: '"'),
-            ],
-          ),
-        ),
-      ),
-    );
+  void _handleGoToMark() {
+    if (mounted && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+    widget.onGoToLocation();
   }
-}
-
-class _ActionChip extends StatelessWidget {
-  const _ActionChip({
-    required this.label,
-    required this.onTap,
-  });
-
-  final String label;
-  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: Colors.black87,
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ),
+    return ReaderMarkDetailView(
+      chapterTitle: _item.chapterTitle,
+      quoteText: _item.annotation.quoteText,
+      notes: _item.notes,
+      isComposing: _isComposing,
+      isSubmitting: _isSubmittingNote,
+      composerVersion: _isComposing ? 1 : 0,
+      onBack: () {
+        if (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
+      },
+      onStartAddNote: () => setState(() => _isComposing = true),
+      onCancelAddNote: () => setState(() => _isComposing = false),
+      onSubmitNote: _handleAddNote,
+      onShare: widget.onShare,
+      onDelete: _handleDelete,
+      onGoToMark: _handleGoToMark,
+      formatTimestamp: widget.formatTimestamp,
+      noteInputKey: const ValueKey('focused-mark-note-input'),
     );
   }
 }

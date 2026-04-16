@@ -35,10 +35,12 @@ class ExplainStructuredData {
   const ExplainStructuredData({
     required this.meaningExplain,
     required this.detailExplain,
+    required this.partOfSpeech,
   });
 
   final String meaningExplain;
   final List<String> detailExplain;
+  final String partOfSpeech;
 
   static ExplainStructuredData? tryParse(String raw) {
     final jsonText = _extractJson(raw);
@@ -65,9 +67,14 @@ class ExplainStructuredData {
         ];
       }
 
+      final partOfSpeech = _readString(decoded['partOfSpeech']).isNotEmpty
+          ? _readString(decoded['partOfSpeech'])
+          : _readString(decoded['pos']);
+
       return ExplainStructuredData(
         meaningExplain: meaningExplain,
         detailExplain: detailExplain,
+        partOfSpeech: partOfSpeech,
       );
     } catch (_) {
       return null;

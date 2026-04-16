@@ -10,6 +10,7 @@
 - 将选区映射为稳定锚点并持久化到 SQLite `annotations` 表
 - 打开书籍后按章节恢复 annotation，并在 Reader 中重新渲染标记区域
 - 从 marks 列表点击后跳转到对应正文位置，并支持返回原阅读位置
+- 在 Library 的 `Notes` 视图中按时间查看所有书的 note 列表
 - 删除图书时级联删除该书的 annotations
 - 维护 annotation 与 annotation notes 的 repository / store / DTO / DB schema
 - 记住每本书最后一次使用的 mark 颜色与样式默认值
@@ -40,8 +41,9 @@
    - same-block fallback
    - same-chapter fallback
 9. 成功恢复的 segment 被投影到当前 `PageLayout`：`Highlight` 以底色 overlay 绘制，`Underline` 在文本上方绘制下划线。
-10. 用户点击 controls 中的 marks icon 时，Reader 打开 marks 列表；点击某条 mark 后先进入 `Mark Details`。详情顶部显示 `Chapter` 标题与 close 导航按钮，底部使用浮动操作条承载 `Search`、`Add Note`、`Go to mark`。进入详情时不得自动弹出键盘，只有点击 `Add Note` 后才打开内联 note 输入；点击 `Go to mark` 执行 preview jump，并显示 `Back to previous location`。
-11. 用户在正文中遇到已标记文字时，**短按**继续打开原顶部悬浮 tooltip；**长按**该文字打开 note sheet：手机走底部 sheet，双页模式下像 Explain 一样从文字对侧滑入半屏面板（左页文字从右侧弹出，右页文字从左侧弹出），并展示该 mark 的全部 notes。
+10. 用户点击 controls 中的 marks icon 时，Reader 打开 marks 列表；点击某条 mark 后进入 editorial 风格的 `Mark Details`。详情顶部居中显示 `MARK DETAIL` 与章节标题，不展示页码；正文区域使用大号 serif quote、`GO TO THE MARK` 行内跳转入口、`YOUR THOUGHT` note 区，以及底部浮动操作条 `Add` / `Share` / `Delete`。进入详情时不得自动弹出键盘，只有点击 `Add` 后才打开内联 note 输入；点击 `GO TO THE MARK` 执行 preview jump，并显示 `Back to previous location`。
+11. 用户在正文中遇到已标记文字时，**短按**继续打开原顶部悬浮 tooltip；**长按**该文字打开 focused mark detail：手机走底部 sheet，双页模式下像 Explain 一样从文字对侧滑入半屏面板（左页文字从右侧弹出，右页文字从左侧弹出），并复用与列表详情一致的 editorial mark detail 布局与 `Add` / `Share` / `Delete` 动作。
+12. 用户在 Library 顶部切换到 `Notes` 时，应用按 mark 聚合所有书的 `annotation_notes`，每张卡片展示书籍信息、mark quote、以及一条最新 note 预览，并提供 `Show all` 进入完整 note 时间线详情页。点击 `Go to Position` 会打开对应书并直接跳到该 mark 所在页，随后聚焦该 mark。
 
 ## 关键状态与数据
 - `AnnotationEntity.id / bookId / kind / style / quoteText / anchorJson / color / note / createdAt / updatedAt`
@@ -71,6 +73,7 @@
   - `text`
   - `created_at`
 - `AnnotationStore.state.items / isLoading / selectedColor / selectedStyle / notesByAnnotationId`
+- Library cross-book note notebook（聚合自 `annotation_notes` + `annotations` + `books`，按 mark 分组）
 - `ReaderPreferences.defaultMarkColor / defaultMarkStyle`
 - Rust parser block node `blockIndex`
 
@@ -84,8 +87,9 @@
 - 用户直接点击正文里已有的 mark 时，会直接弹出 mark tooltip 与已展开的 mark editor；tooltip 提供 `Phonetics`、`Explain`、`Note`、`Unmark`、`Read Aloud`，无需额外的 `Edit` 入口。
 - 用户长按正文里已有的单个 mark 时，打开 note sheet，而不是替代 tooltip；sheet 只承载该 mark 的 notes 时间线与内联 `Add Note`。
 - 当一次选区命中多个已有 marks 时，只允许 `Unmark`，不支持批量修改颜色/样式或批量加 note。
-- `Mark Details` 中点击 `Add Note` 不会关闭详情，也不会触发跳转；保存后需留在当前详情页并立即刷新 note 时间线。
-- 进入 `Mark Details` 时搜索控件位于底部浮动操作条内，不再占用顶部标题区。
+- `Mark Details` 中点击 `Add` 会展开内联 note composer；再次点击 `Cancel` 可收起并放弃当前未发布输入。保存后需留在当前详情页并立即刷新 note 时间线。
+- `Mark Details` 不展示页码，也不提供搜索入口；跳转能力只通过 `GO TO THE MARK` 行内入口触发。
+- `Share` 复用现有 quote card 分享流程；`Delete` 需先确认，再删除 mark 及其 notes。
 - 已保存 mark 在重新打开 Reader、修改字号、边距、行距后仍应尽量恢复。
 - 从 marks 列表点进正文时，首次 preview jump 不应立即覆盖持久化阅读进度；只有用户继续翻页/继续阅读后，才把新位置视为当前进度。
 - block 精确恢复失败时，允许退化到 same-block / same-chapter 文本匹配。
@@ -99,7 +103,7 @@
 - 打开或提交选区 note sheet 后，Reader 不会误触发上一页 / 下一页翻页，也不会因为键盘弹出而改变当前正文布局。
 - 重复、部分重叠、完全包含、嵌套 mark 都会被拦截且不会产生重复数据。
 - 重启应用后 annotation 仍可读取并重新渲染。
-- controls 中可打开 marks 列表，点击列表项可进入详情；点击 `Go to mark` 后可以跳转并返回原位置。
+- controls 中可打开 marks 列表，点击列表项可进入 editorial 详情；点击 `GO TO THE MARK` 后可以跳转并返回原位置。
 - 调整 ReaderPreferences 后 annotation 仍可正确恢复。
 - `flutter analyze` 通过。
 - `flutter test` 通过。

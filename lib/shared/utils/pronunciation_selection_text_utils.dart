@@ -56,6 +56,25 @@ bool isPronunciationWordOrPhraseSelection({
   );
 }
 
+bool isPronunciationSingleWordSelection(String text) {
+  final sanitized = sanitizePronunciationSelectionText(text);
+  if (sanitized.isEmpty) {
+    return false;
+  }
+
+  if (sanitized.contains(RegExp(r'\s'))) {
+    return false;
+  }
+
+  for (final rune in sanitized.runes) {
+    if (_isSentenceTerminatorRune(rune)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 bool _looksLikeSentenceSelection({
   required String rawSelectedText,
   required String normalizedSelectedText,
