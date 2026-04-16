@@ -62,11 +62,13 @@ lib/stores/library/       — LibraryStore + LibraryState
    - All: all books
    - Reading: progress > 0 and < 1.0
    - Finished: progress >= 1.0
-5. Switching Library to `Notes` aggregates all `annotation_notes` across all books, joins them with their parent mark quote and book metadata, sorts by note creation time descending, and renders a notebook-style list.
-6. User taps any reader entry (Now Reading Continue / Library grid with progress / Library notes row / Book Detail Continue) → uses unified reader entry:
+5. Switching Library to `Notes` aggregates all `annotation_notes` across all books, groups them by parent mark, joins each group with its source quote and book metadata, sorts groups by latest note time descending, and renders a notebook-style card list.
+6. Each Library `Notes` card shows book info, a quoted mark excerpt, and one latest note preview by default. The card always shows `Show all`, which pushes a dedicated detail page with the full note timeline for that mark.
+7. Tapping `Go to Position` on a Library `Notes` card opens Reader and jumps directly to that mark's resolved page, then focuses the mark so the highlighted text is visible immediately.
+8. User taps any reader entry (Now Reading Continue / Library grid with progress / Library note card `Go to Position` / Book Detail Continue) → uses unified reader entry:
    - If target book is in reader hot pool (up to 3 books): show overlay-first path.
    - Otherwise: fallback to `/reader` route.
-7. User taps a book in the grid:
+9. User taps a book in the grid:
    - No saved progress record: Book Profile (`/book-detail`)
    - Has saved progress record (even if percent is 0): unified reader entry (overlay-first + route fallback)
 8. When leaving reader, progress is flushed and `LibraryStore.refreshProgress()` reloads `progressMap/progressUpdatedMap` so grid badges and category filtering update without full page reload.
@@ -125,7 +127,7 @@ Books Read:
 LibraryHeader ("IMMERSED" label + "Library" title + "+" import button)
 Top switch (`Books` / `Notes`) using a soft rounded segmented tab
 Books: LibraryBookGrid (category tabs: All/Reading/Finished + 2-column grid)
-Notes: cross-book note list showing note text, source quote, book title, author, time
+Notes: cross-book grouped note cards in a 2-column grid, each showing book info, source quote, one latest note preview, `Show all`, and `Go to Position`
 ```
 
 ### Empty state (no books)
@@ -178,6 +180,10 @@ Header + "Add Your First Book" button (on Shelf).
 - Shelf renders stable dashboard (Header / Stats / Now Reading / Words / Grid).
 - Library renders category tabs and filtered 2-column grid.
 - Library renders the `Books / Notes` top switch and can show the cross-book note list.
+- Library `Notes` groups notes by mark instead of rendering one flat row per note.
+- Library `Notes` uses a 2-column card grid instead of a single-column list.
+- Library `Notes` default to one latest note per card, with `Show all` opening a dedicated full-list page for that mark.
+- Library `Notes` `Go to Position` jumps directly to the mark page in Reader and focuses the mark.
 - Now Reading shows most recently read book; first book when no progress.
 - Grid tiles show cover, title, author, and progress badge.
 - Empty state shows "Add Your First Book" button.

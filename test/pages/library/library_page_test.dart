@@ -30,7 +30,9 @@ import 'package:uni/stores/library/library-store.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('library page switches between books and notes', (tester) async {
+  testWidgets('library page groups notes by mark and opens full list page', (
+    tester,
+  ) async {
     final database = AppDatabase();
     final providers = _buildProviders(database: database);
     final now = DateTime.now();
@@ -73,7 +75,19 @@ void main() {
     await providers.annotationRepository.createNote(
       annotationId: 'a1',
       bookId: 'b1',
-      text: 'This is my note.',
+      text: 'First note.',
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 1));
+    await providers.annotationRepository.createNote(
+      annotationId: 'a1',
+      bookId: 'b1',
+      text: 'Second note.',
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 1));
+    await providers.annotationRepository.createNote(
+      annotationId: 'a1',
+      bookId: 'b1',
+      text: 'Third note.',
     );
 
     await tester.pumpWidget(
@@ -86,7 +100,8 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.byKey(const ValueKey('library-content-tabs')), findsOneWidget);
     expect(find.text('Books'), findsOneWidget);
@@ -95,11 +110,33 @@ void main() {
 
     await tester.tap(find.text('Notes'));
     await tester.pump();
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 100));
 
-    expect(find.text('This is my note.'), findsOneWidget);
+    expect(find.byKey(const ValueKey('library-note-card-a1')), findsOneWidget);
+    expect(find.text('First note.'), findsNothing);
+    expect(find.text('Second note.'), findsNothing);
+    expect(find.text('Third note.'), findsOneWidget);
     expect(find.textContaining('A line worth keeping'), findsOneWidget);
-    expect(find.text('Author One'), findsOneWidget);
+    expect(find.text('Go to Position'), findsOneWidget);
+    expect(find.text('Show all'), findsOneWidget);
+    expect(find.text('Me'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('library-note-view-all-a1')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('All Notes'), findsOneWidget);
+    expect(find.text('First note.'), findsOneWidget);
+    expect(find.text('Second note.'), findsWidgets);
+    expect(find.text('Third note.'), findsWidgets);
+    expect(
+      find.byKey(const ValueKey('library-note-detail-card-a1')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('library-note-detail-go-to-a1')),
+      findsOneWidget,
+    );
   });
 }
 

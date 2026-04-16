@@ -21,6 +21,7 @@ import '../../services/reader/annotation/selection_to_annotation_mapper.dart';
 import '../../services/reader/data/chapter_data_source.dart';
 import '../../services/reader/models/page_layout.dart';
 import '../../services/reader/models/reader_preferences.dart';
+import '../../services/reader/reader_navigation_target.dart';
 import '../../services/reader/reading_time_tracker.dart';
 import '../../services/reader/selection/cross_page_selection.dart';
 import '../../services/reader/selection/page_hit_test.dart';
@@ -54,11 +55,13 @@ class ReaderPage extends StatefulWidget {
     required this.book,
     required this.dataSource,
     required this.storeManager,
+    this.navigationTarget,
   });
 
   final BookEntity book;
   final ChapterDataSource dataSource;
   final ReaderStoreManager storeManager;
+  final ReaderNavigationTarget? navigationTarget;
 
   @override
   State<ReaderPage> createState() => _ReaderPageState();
@@ -78,6 +81,7 @@ class _ReaderPageState extends State<ReaderPage>
   StreamSubscription<dynamic>? _androidKeyEventSub;
   final FocusNode _pageTurnFocusNode = FocusNode();
   bool _didInitDependencies = false;
+  bool _didApplyNavigationTarget = false;
 
   // -- Page swipe animation state --
   late final AnimationController _pageAnimController;
@@ -211,7 +215,9 @@ class _ReaderPageState extends State<ReaderPage>
     setState(() {
       _annotationPaintBucketsByPageKey =
           _buildAnnotationPaintBucketsByPageKey();
+      _annotationTapTargetsByPageKey = _buildAnnotationTapTargetsByPageKey();
     });
+    await _applyInitialNavigationTarget();
   }
 
   @override
@@ -647,6 +653,91 @@ class _ReaderPageState extends State<ReaderPage>
               );
       }
     });
+  }
+
+  Future<void> _applyInitialNavigationTarget() async {
+    final target = widget.navigationTarget;
+    if (_didApplyNavigationTarget || target == null) {
+      return;
+    }
+    _didApplyNavigationTarget = true;
+
+    AnnotationEntity? targetAnnotation;
+    for (final annotation in _annotationStore.state.items) {
+      if (annotation.id == target.annotationId) {
+        targetAnnotation = annotation;
+        break;
+      }
+    }
+    if (targetAnnotation == null) {
+      return;
+    }
+
+    final anchor = AnnotationAnchorV1.tryParse(targetAnnotation.anchorJson);
+    if (anchor == null) {
+      return;
+    }
+
+    final pagination = await _store.ensureChapterPagination(
+      anchor.jumpTarget.chapterIndex,
+    );
+    if (!mounted || pagination == null) {
+      return;
+    }
+
+    final resolved = _annotationResolver.resolveChapterAnnotations(
+      pagination: pagination,
+      annotations: <AnnotationEntity>[targetAnnotation],
+    );
+    final targetPage = resolved.isNotEmpty
+        ? resolved.first.pageIndexInChapter
+        : 0;
+
+    await _store.goToLocation(
+      chapterIndex: pagination.chapterIndex,
+      pageIndexInChapter: targetPage,
+      persistProgress: false,
+    );
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _annotationPaintBucketsByPageKey =
+          _buildAnnotationPaintBucketsByPageKey();
+      _annotationTapTargetsByPageKey = _buildAnnotationTapTargetsByPageKey();
+      final focused = _findVisibleTapTarget(target.annotationId);
+      if (focused == null) {
+        _clearFocusedAnnotationOverlay();
+        return;
+      }
+      _focusAnnotationOverlay(
+        focused.tapTarget,
+        isRightPage: focused.isRightPage,
+      );
+    });
+  }
+
+  ({_AnnotationTapTarget tapTarget, bool isRightPage})? _findVisibleTapTarget(
+    String annotationId,
+  ) {
+    final currentPage = _store.currentPageLayout;
+    final currentTargets = _annotationTapTargetsForPage(currentPage);
+    for (final tapTarget in currentTargets) {
+      if (tapTarget.annotations.any((item) => item.id == annotationId)) {
+        return (tapTarget: tapTarget, isRightPage: false);
+      }
+    }
+
+    final secondPage = _store.secondPageLayout;
+    final secondTargets = _annotationTapTargetsForPage(secondPage);
+    for (final tapTarget in secondTargets) {
+      if (tapTarget.annotations.any((item) => item.id == annotationId)) {
+        return (tapTarget: tapTarget, isRightPage: true);
+      }
+    }
+
+    return null;
   }
 
   @override

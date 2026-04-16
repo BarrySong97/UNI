@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uni/app/i18n/app-locale.dart';
@@ -30,6 +32,7 @@ import 'package:uni/services/reader/data/chapter_data_source.dart';
 import 'package:uni/services/reader/epub_preparse_service.dart';
 import 'package:uni/services/reader/models/parsed_chapter.dart';
 import 'package:uni/services/reader/models/render_node.dart';
+import 'package:uni/services/reader/reader_navigation_target.dart';
 import 'package:uni/services/reader/selection/page_hit_test.dart';
 import 'package:uni/services/tts/tts_service.dart';
 import 'package:uni/stores/annotation/annotation-store.dart';
@@ -174,6 +177,120 @@ void main() {
       annotationStore.state.notesByAnnotationId.values.expand((item) => item),
       isNotEmpty,
     );
+
+    await store.flushProgress();
+    await tester.pumpWidget(const SizedBox.shrink());
+    providers.readerStoreManager.dispose();
+    await tester.pump();
+  });
+
+  testWidgets('initial navigation target jumps to the mark page', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final database = AppDatabase();
+    final progressRepository = _FakeProgressRepository();
+    final providers = _buildProviders(
+      database: database,
+      progressRepository: progressRepository,
+    );
+
+    final book = _bookEntity();
+    final rawText = _longText(260);
+    final chapter = _chapter(
+      index: 0,
+      title: 'Chapter 1',
+      href: 'Text/ch0.xhtml',
+      text: rawText,
+    );
+    final dataSource = _FakeChapterDataSource(
+      book: ParsedBook(
+        metadata: const BookMetadata(title: 'T', author: 'A'),
+        toc: const <TocEntry>[
+          TocEntry(title: 'Chapter 1', href: 'Text/ch0.xhtml'),
+        ],
+        chapters: <ParsedChapter>[chapter],
+      ),
+      chapters: <ParsedChapter>[chapter],
+    );
+
+    progressRepository.lastSaved = ReadingProgressEntity(
+      bookId: book.id,
+      locatorJson: jsonEncode(<String, Object?>{
+        'chapterIndex': 0,
+        'pageIndex': 8,
+      }),
+      percent: 0.5,
+      updatedAt: DateTime(2024, 1, 1),
+    );
+
+    final quoteText = rawText.substring(0, 24);
+    final annotation = AnnotationEntity(
+      id: 'ann-target',
+      bookId: book.id,
+      kind: AnnotationKind.mark,
+      style: AnnotationStyle.highlight,
+      quoteText: quoteText,
+      anchorJson: AnnotationAnchorV1(
+        parserVersion: 3,
+        segments: <AnnotationAnchorSegment>[
+          AnnotationAnchorSegment(
+            chapterIndex: 0,
+            chapterHref: 'Text/ch0.xhtml',
+            blockIndex: 1,
+            startOffset: 0,
+            endOffset: 24,
+            quoteText: quoteText,
+            prefixText: '',
+            suffixText: rawText.substring(24),
+            blockTextHash: hashNormalizedText(rawText),
+          ),
+        ],
+        jumpTarget: const AnnotationJumpTarget(
+          chapterIndex: 0,
+          chapterHref: 'Text/ch0.xhtml',
+          blockIndex: 1,
+          offset: 0,
+        ),
+      ).encode(),
+      color: '#FFE082',
+      createdAt: DateTime(2024, 1, 1),
+      updatedAt: DateTime(2024, 1, 1),
+    );
+    await providers.annotationRepository.createAnnotation(annotation);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AppProvidersScope(
+          providers: providers,
+          child: ReaderPage(
+            book: book,
+            dataSource: dataSource,
+            storeManager: providers.readerStoreManager,
+            navigationTarget: const ReaderNavigationTarget(
+              source: 'test',
+              annotationId: 'ann-target',
+              noteId: 'note-target',
+              chapterIndex: 0,
+              blockIndex: 1,
+              quoteText: 'This is a long paragraph',
+              noteText: 'note',
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final store = providers.readerStoreManager.getStore(book.id);
+    await _waitForReaderReady(store);
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pumpAndSettle();
+
+    expect(store.currentPageIndex, 0);
 
     await store.flushProgress();
     await tester.pumpWidget(const SizedBox.shrink());

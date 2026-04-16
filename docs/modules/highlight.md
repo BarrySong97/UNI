@@ -43,7 +43,7 @@
 9. 成功恢复的 segment 被投影到当前 `PageLayout`：`Highlight` 以底色 overlay 绘制，`Underline` 在文本上方绘制下划线。
 10. 用户点击 controls 中的 marks icon 时，Reader 打开 marks 列表；点击某条 mark 后进入 editorial 风格的 `Mark Details`。详情顶部居中显示 `MARK DETAIL` 与章节标题，不展示页码；正文区域使用大号 serif quote、`GO TO THE MARK` 行内跳转入口、`YOUR THOUGHT` note 区，以及底部浮动操作条 `Add` / `Share` / `Delete`。进入详情时不得自动弹出键盘，只有点击 `Add` 后才打开内联 note 输入；点击 `GO TO THE MARK` 执行 preview jump，并显示 `Back to previous location`。
 11. 用户在正文中遇到已标记文字时，**短按**继续打开原顶部悬浮 tooltip；**长按**该文字打开 focused mark detail：手机走底部 sheet，双页模式下像 Explain 一样从文字对侧滑入半屏面板（左页文字从右侧弹出，右页文字从左侧弹出），并复用与列表详情一致的 editorial mark detail 布局与 `Add` / `Share` / `Delete` 动作。
-12. 用户在 Library 顶部切换到 `Notes` 时，应用按 note 创建时间倒序聚合所有书的 `annotation_notes`，并展示 note 文本、对应 mark quote、书名与作者；点击条目沿用现有阅读入口打开对应书。
+12. 用户在 Library 顶部切换到 `Notes` 时，应用按 mark 聚合所有书的 `annotation_notes`，每张卡片展示书籍信息、mark quote、以及一条最新 note 预览，并提供 `Show all` 进入完整 note 时间线详情页。点击 `Go to Position` 会打开对应书并直接跳到该 mark 所在页，随后聚焦该 mark。
 
 ## 关键状态与数据
 - `AnnotationEntity.id / bookId / kind / style / quoteText / anchorJson / color / note / createdAt / updatedAt`
@@ -73,7 +73,7 @@
   - `text`
   - `created_at`
 - `AnnotationStore.state.items / isLoading / selectedColor / selectedStyle / notesByAnnotationId`
-- Library cross-book note notebook（聚合自 `annotation_notes` + `annotations` + `books`）
+- Library cross-book note notebook（聚合自 `annotation_notes` + `annotations` + `books`，按 mark 分组）
 - `ReaderPreferences.defaultMarkColor / defaultMarkStyle`
 - Rust parser block node `blockIndex`
 
