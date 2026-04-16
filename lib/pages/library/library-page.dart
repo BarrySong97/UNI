@@ -14,6 +14,7 @@ import '../../services/reader/reader_navigation_target.dart';
 import '../../shared/constants/common-design-tokens.dart';
 import '../../shared/constants/shelf-design-tokens.dart';
 import '../../shared/layout/responsive_layout.dart';
+import '../../shared/utils/cover-image-cache.dart';
 
 class LibraryPage extends StatefulWidget {
   const LibraryPage({super.key});
@@ -171,9 +172,11 @@ class _LibraryPageState extends State<LibraryPage> {
         return LayoutBuilder(
           builder: (context, constraints) {
             const spacing = 12.0;
-            final cardWidth = constraints.maxWidth <= spacing
+            final columns = constraints.maxWidth >= kTabletBreakpoint ? 2 : 1;
+            final totalSpacing = spacing * (columns - 1);
+            final cardWidth = constraints.maxWidth <= totalSpacing
                 ? constraints.maxWidth
-                : (constraints.maxWidth - spacing) / 2;
+                : (constraints.maxWidth - totalSpacing) / columns;
             return Wrap(
               spacing: spacing,
               runSpacing: spacing,
@@ -652,25 +655,49 @@ class _LibraryNoteCard extends StatelessWidget {
 class _LibraryBookBadge extends StatelessWidget {
   const _LibraryBookBadge({required this.book});
 
+  static const double _coverHeight = 74;
+  static const double _coverWidth =
+      _coverHeight * CommonDesignTokens.coverAspectRatio;
+
   final BookEntity book;
 
   @override
   Widget build(BuildContext context) {
+    final coverBytes = CoverImageCache.decode(book.coverUrl);
     final initials = book.title.trim().isEmpty
         ? 'B'
         : book.title.trim().substring(0, 1).toUpperCase();
     return Container(
-      width: 42,
-      height: 56,
+      key: ValueKey('library-note-book-cover-${book.id}'),
+      width: _coverWidth,
+      height: _coverHeight,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(10),
         gradient: const LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: <Color>[Color(0xFFD8F7EA), Color(0xFFF5FBFF)],
         ),
       ),
-      alignment: Alignment.center,
+      child: coverBytes != null
+          ? Image.memory(
+              coverBytes,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) =>
+                  _LibraryBookBadgeFallback(initials: initials),
+            )
+          : _LibraryBookBadgeFallback(initials: initials),
+    );
+  }
+}
+
+class _LibraryBookBadgeFallback extends StatelessWidget {
+  const _LibraryBookBadgeFallback({required this.initials});
+
+  final String initials;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
       child: Text(
         initials,
         style: const TextStyle(

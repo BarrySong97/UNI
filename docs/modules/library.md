@@ -127,7 +127,7 @@ Books Read:
 LibraryHeader ("IMMERSED" label + "Library" title + "+" import button)
 Top switch (`Books` / `Notes`) using a soft rounded segmented tab
 Books: LibraryBookGrid (category tabs: All/Reading/Finished + 2-column grid)
-Notes: cross-book grouped note cards in a 2-column grid, each showing book info, source quote, one latest note preview, `Show all`, and `Go to Position`
+Notes: cross-book grouped note cards showing book info, source quote, one latest note preview, `Show all`, and `Go to Position`; phones use a single column and tablets widen to 2 columns
 ```
 
 ### Empty state (no books)
@@ -157,6 +157,7 @@ Header + "Add Your First Book" button (on Shelf).
 - Empty: no books shows "Add Your First Book" button, hides stats and features.
 - Import success: new book pops in (scale + fade), existing items smoothly slide to new positions (no snackbar).
 - Cover decode failure: falls back to placeholder cover.
+- Library `Notes` cards reuse the real book cover when available and fall back to the compact placeholder badge when decoding fails.
 - Now Reading: uses first book when no progress, always shown on Shelf.
 - Words section: always shown when Shelf has books; empty state says `Select a word in Reader and tap Explain.` Preview cards show the containing sentence (or the selected sentence itself), do not show the explain meaning, and open the latest word detail when tapped.
 - Word detail page shows pronunciation chips when app-level phonetics/TTS providers are available and at least one local or cached AI IPA exists; otherwise it shows an `AI` fetch affordance that can query and cache US/UK IPA before revealing the chips. Tapping a chip uses the corresponding English accent and falls back to a Settings download hint when the TTS model is missing.
@@ -181,7 +182,7 @@ Header + "Add Your First Book" button (on Shelf).
 - Library renders category tabs and filtered 2-column grid.
 - Library renders the `Books / Notes` top switch and can show the cross-book note list.
 - Library `Notes` groups notes by mark instead of rendering one flat row per note.
-- Library `Notes` uses a 2-column card grid instead of a single-column list.
+- Library `Notes` uses a single-column list on phones and a 2-column grid on tablets.
 - Library `Notes` default to one latest note per card, with `Show all` opening a dedicated full-list page for that mark.
 - Library `Notes` `Go to Position` jumps directly to the mark page in Reader and focuses the mark.
 - Now Reading shows most recently read book; first book when no progress.

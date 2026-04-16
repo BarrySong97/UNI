@@ -42,6 +42,8 @@ void main() {
         id: 'b1',
         title: 'Book One',
         author: 'Author One',
+        coverUrl:
+            'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4////fwAJ+wP9KobjigAAAABJRU5ErkJggg==',
         sourceType: 'local_epub',
         createdAt: now,
         updatedAt: now,
@@ -113,6 +115,10 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.byKey(const ValueKey('library-note-card-a1')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('library-note-book-cover-b1')),
+      findsOneWidget,
+    );
     expect(find.text('First note.'), findsNothing);
     expect(find.text('Second note.'), findsNothing);
     expect(find.text('Third note.'), findsOneWidget);
