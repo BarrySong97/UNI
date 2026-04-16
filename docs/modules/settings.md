@@ -2,14 +2,16 @@
 
 ## Purpose
 
-Settings page providing user account info, AI configuration, and app information links.
-Includes per-language AI explain behavior controls used by Reader.
+Settings page providing AI configuration, TTS configuration, quick TTS testing,
+and app information links. Includes per-language AI explain behavior controls
+used by Reader.
 
 ## Boundary
 
 ### In Scope
 - Account display (avatar, name, membership info)
 - AI settings rows (Explanation Detail, Explanation Language, API Key)
+- TTS settings entry and dedicated TTS quick-test page for word/phrase checks
 - Per-language AI explain mode toggle:
   - Structured mode (default): Reader uses built-in explain cards.
   - Custom prompt mode: Reader renders free-form markdown generated from user prompt.
@@ -25,8 +27,9 @@ Includes per-language AI explain behavior controls used by Reader.
 ## Core Flow
 
 1. User navigates to Settings tab via bottom floating tab bar
-2. Page renders three sections: ACCOUNT, AI, ABOUT
-3. Each setting row is tappable (navigation-ready, no functionality yet)
+2. Page renders three sections: AI, TTS, ABOUT
+3. TTS section exposes both full configuration and a lightweight quick-test page
+4. Each settings row opens its detail screen or sheet
 
 ## Key State & Data
 
@@ -41,8 +44,11 @@ Includes per-language AI explain behavior controls used by Reader.
 
 ## Interaction & Exceptions
 
-- TTS voice catalog loading is network-first with cache/bundled fallback.
-- If remote catalog fetch times out or network is unavailable, settings should continue to use cached/bundled voices without blocking UI initialization.
+- TTS voice catalog is now a built-in offline Kokoro catalog for English (`en_US` / `en_GB`) instead of the previous Piper voice list. Settings no longer depends on fetching a remote voice catalog before showing voice choices.
+- All English voice options share the same Kokoro archive on disk. Downloading one Kokoro English voice makes the other Kokoro English voices immediately available because they point at the same extracted model bundle with different default speaker IDs.
+- Settings voice preview uses the same shared TTS playback path as Reader: each utterance gets its own temp wav path and the engine deletes owned temp files on stop/completion.
+- Settings includes a dedicated TTS quick-test page so short words and phrases can be retried without opening Reader. The page reuses the shared `TtsService`, configured voices, and playback state.
+- The TTS quick-test page has its own temporary speed control. It defaults to the slowest test speed and only affects ad-hoc test playback, not the saved global playback setting.
 - The settings test explain preview uses the shared non-reader pronunciation selection helper when app providers are available; if providers are absent, it falls back to plain selectable markdown rendering. When local phonetics and cached AI phonetics both miss, the shared toolbar still shows `Pronounce` and `Copy` and replaces the leading `IPA` slot with an `AI` button that can query the configured OpenAI-compatible endpoint on demand.
 
 ## Components
@@ -50,6 +56,7 @@ Includes per-language AI explain behavior controls used by Reader.
 | Component | File | Description |
 |-----------|------|-------------|
 | `SettingsPage` | `lib/pages/settings/settings-page.dart` | Page layout composing all sections |
+| `TtsTestPage` | `lib/components/settings/tts_test_page.dart` | Dedicated page for rapid TTS word/phrase testing |
 | `SettingsAccountCard` | `lib/components/settings/settings-account-card.dart` | Account avatar + name card |
 | `SettingsSectionLabel` | `lib/components/settings/settings-row.dart` | Uppercase section header label |
 | `SettingsRow` | `lib/components/settings/settings-row.dart` | Icon + label + value + chevron row |
@@ -62,12 +69,13 @@ Includes per-language AI explain behavior controls used by Reader.
 
 ## Acceptance Criteria
 
-- [ ] Settings tab shows header with "IMMERSED" + "Settings" + avatar
-- [ ] ACCOUNT section displays card with avatar circle, name, subtitle, edit icon
-- [ ] AI section shows 3 rows with icons, labels, values, and chevrons
+- [ ] Settings tab shows header with "IMMERSED" + "Settings"
+- [ ] AI section shows configured AI explain entry
+- [ ] TTS section shows both full TTS settings and a dedicated `TTS Test` entry
+- [ ] TTS test page supports entering a word/phrase, picking a configured voice, adjusting a temporary test speed, and triggering speak/stop
 - [ ] AI language config supports switching between structured mode and custom prompt mode
 - [ ] Custom prompt is only editable/effective when custom prompt mode is enabled
-- [ ] ABOUT section shows 5 rows with icons, labels, and chevrons
+- [ ] ABOUT section shows settings help/contact rows with chevrons
 - [ ] Visual style matches shelf/library page patterns (colors, spacing, typography)
 - [ ] `flutter analyze` passes with no errors
 - [ ] `flutter test` passes with no regressions

@@ -88,7 +88,6 @@ flutter:
     - assets/us_silver.json
     - assets/gb_gold.json
     - assets/gb_silver.json
-    - assets/voices.json
     - assets/quote_card/artwork_still_life.png
     - assets/quote_card/artwork_abstract.png
     - assets/quote_card/artwork_botanical.png
