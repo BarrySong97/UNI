@@ -16,9 +16,9 @@ class VoiceSelection {
   final int speakerId;
 
   Map<String, dynamic> toJson() => {
-        'voiceKey': voiceKey,
-        'speakerId': speakerId,
-      };
+    'voiceKey': voiceKey,
+    'speakerId': speakerId,
+  };
 
   factory VoiceSelection.fromJson(Map<String, dynamic> json) {
     return VoiceSelection(
@@ -58,8 +58,7 @@ class TtsService extends ChangeNotifier {
   double get speed => _speed;
   double get volume => _volume;
   String get defaultEnglishAccent => _defaultEnglishAccent;
-  Map<String, VoiceSelection> get voiceMap =>
-      Map.unmodifiable(_voiceMap);
+  Map<String, VoiceSelection> get voiceMap => Map.unmodifiable(_voiceMap);
   bool get isSpeaking => _engine.isSpeaking;
 
   TtsModelManager get modelManager => _modelManager;
@@ -100,8 +99,7 @@ class TtsService extends ChangeNotifier {
     await _engine.initialize();
 
     _catalog = TtsVoiceCatalog();
-    // Load catalog in background - don't block initialization.
-    _catalog.initialize();
+    await _catalog.initialize();
 
     _engine.onSpeakingChanged = () {
       notifyListeners();
@@ -121,14 +119,7 @@ class TtsService extends ChangeNotifier {
       await _migrateLegacySettings(prefs);
     }
 
-    // Ensure en_GB is always present (for users who saved before it was default).
-    if (!_voiceMap.containsKey('en_GB')) {
-      _voiceMap['en_GB'] = VoiceSelection(
-        voiceKey: TtsBuiltinModels.ukModel.id,
-        speakerId: 0,
-      );
-      await _saveVoiceMap(prefs);
-    }
+    await _normalizeVoiceMap(prefs);
 
     notifyListeners();
   }
@@ -148,19 +139,14 @@ class TtsService extends ChangeNotifier {
   }
 
   Future<void> _migrateLegacySettings(SharedPreferences prefs) async {
-    final legacyUsSpeakerId = prefs.getInt(_keyLegacyUsSpeakerId) ?? 0;
-    final legacyUkSpeakerId = prefs.getInt(_keyLegacyUkSpeakerId) ?? 0;
-
-    // Always set up en_US as default.
     _voiceMap['en_US'] = VoiceSelection(
       voiceKey: TtsBuiltinModels.usModel.id,
-      speakerId: legacyUsSpeakerId,
+      speakerId: TtsBuiltinModels.usModel.defaultSpeakerId,
     );
 
-    // Always include en_GB as well.
     _voiceMap['en_GB'] = VoiceSelection(
       voiceKey: TtsBuiltinModels.ukModel.id,
-      speakerId: legacyUkSpeakerId,
+      speakerId: TtsBuiltinModels.ukModel.defaultSpeakerId,
     );
 
     // Save migrated settings.
@@ -172,15 +158,66 @@ class TtsService extends ChangeNotifier {
     await prefs.remove(_keyLegacyReadAloudAccent);
   }
 
+  Future<void> _normalizeVoiceMap(SharedPreferences prefs) async {
+    var changed = false;
+
+    final normalized = <String, VoiceSelection>{};
+    for (final entry in _voiceMap.entries) {
+      final languageCode = entry.key;
+      final current = entry.value;
+      final fallback = _defaultSelectionForLanguage(languageCode);
+      final catalogVoice = _catalog.findVoice(current.voiceKey);
+
+      late final VoiceSelection selection;
+      if (catalogVoice == null && fallback != null) {
+        selection = fallback;
+      } else if (catalogVoice != null &&
+          current.speakerId == 0 &&
+          catalogVoice.defaultSpeakerId != 0) {
+        selection = VoiceSelection(
+          voiceKey: current.voiceKey,
+          speakerId: catalogVoice.defaultSpeakerId,
+        );
+      } else {
+        selection = current;
+      }
+
+      normalized[languageCode] = selection;
+      if (selection.voiceKey != current.voiceKey ||
+          selection.speakerId != current.speakerId) {
+        changed = true;
+      }
+    }
+
+    if (!normalized.containsKey('en_US')) {
+      normalized['en_US'] = _defaultSelectionForLanguage('en_US')!;
+      changed = true;
+    }
+
+    if (!normalized.containsKey('en_GB')) {
+      normalized['en_GB'] = _defaultSelectionForLanguage('en_GB')!;
+      changed = true;
+    }
+
+    _voiceMap
+      ..clear()
+      ..addAll(normalized);
+
+    if (changed) {
+      await _saveVoiceMap(prefs);
+    }
+  }
+
   /// Set voice for a language.
   Future<void> setVoiceForLanguage(
     String languageCode,
     String voiceKey, {
-    int speakerId = 0,
+    int? speakerId,
   }) async {
+    final resolvedSpeakerId = speakerId ?? _defaultSpeakerIdForVoice(voiceKey);
     _voiceMap[languageCode] = VoiceSelection(
       voiceKey: voiceKey,
-      speakerId: speakerId,
+      speakerId: resolvedSpeakerId,
     );
 
     final prefs = await SharedPreferences.getInstance();
@@ -195,6 +232,35 @@ class TtsService extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await _saveVoiceMap(prefs);
     notifyListeners();
+  }
+
+  int _defaultSpeakerIdForVoice(String voiceKey) {
+    final voice = _catalog.findVoice(voiceKey);
+    if (voice != null) {
+      return voice.defaultSpeakerId;
+    }
+    for (final model in TtsBuiltinModels.all) {
+      if (model.id == voiceKey) {
+        return model.defaultSpeakerId;
+      }
+    }
+    return 0;
+  }
+
+  VoiceSelection? _defaultSelectionForLanguage(String languageCode) {
+    if (languageCode == 'en_US') {
+      return VoiceSelection(
+        voiceKey: TtsBuiltinModels.usModel.id,
+        speakerId: TtsBuiltinModels.usModel.defaultSpeakerId,
+      );
+    }
+    if (languageCode == 'en_GB') {
+      return VoiceSelection(
+        voiceKey: TtsBuiltinModels.ukModel.id,
+        speakerId: TtsBuiltinModels.ukModel.defaultSpeakerId,
+      );
+    }
+    return null;
   }
 
   /// Set the default English accent (e.g. 'en_US' or 'en_GB').
@@ -229,6 +295,20 @@ class TtsService extends ChangeNotifier {
 
   /// Speak text using the voice configured for the given language.
   Future<void> speakWithLanguage(String text, String languageCode) async {
+    await speakWithLanguageOptions(
+      text,
+      languageCode,
+      speed: _speed,
+      volume: _volume,
+    );
+  }
+
+  Future<void> speakWithLanguageOptions(
+    String text,
+    String languageCode, {
+    required double speed,
+    required double volume,
+  }) async {
     await stop();
 
     final modelInfo = modelInfoForLanguage(languageCode);
@@ -242,8 +322,8 @@ class TtsService extends ChangeNotifier {
       text: text,
       model: modelInfo,
       speakerId: selection.speakerId,
-      speed: _speed,
-      volume: _volume,
+      speed: speed,
+      volume: volume,
     );
   }
 
