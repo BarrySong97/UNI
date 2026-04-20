@@ -8,6 +8,18 @@ import '../search/image_search_service.dart';
 /// Detail level controls how verbose the AI explanation is.
 enum ExplanationDetail { brief, balanced, detailed }
 
+class VocabularyLevelOption {
+  const VocabularyLevelOption({
+    required this.id,
+    required this.label,
+    required this.description,
+  });
+
+  final String id;
+  final String label;
+  final String description;
+}
+
 /// Per-language AI configuration.
 class AiLanguageConfig {
   const AiLanguageConfig({
@@ -16,6 +28,7 @@ class AiLanguageConfig {
     this.explanationLanguage = '',
     this.customPrompt = '',
     this.customPromptModeEnabled = false,
+    this.vocabularyLevel = '',
   });
 
   final String model;
@@ -31,12 +44,16 @@ class AiLanguageConfig {
   /// When false, reader explain uses built-in structured UI format.
   final bool customPromptModeEnabled;
 
+  /// Source-language vocabulary difficulty guidance for built-in prompts.
+  final String vocabularyLevel;
+
   Map<String, dynamic> toJson() => {
     'model': model,
     'detail': detail.name,
     'explanationLanguage': explanationLanguage,
     'customPrompt': customPrompt,
     'customPromptModeEnabled': customPromptModeEnabled,
+    'vocabularyLevel': vocabularyLevel,
   };
 
   factory AiLanguageConfig.fromJson(Map<String, dynamic> json) {
@@ -50,6 +67,7 @@ class AiLanguageConfig {
       customPrompt: json['customPrompt'] as String? ?? '',
       customPromptModeEnabled:
           json['customPromptModeEnabled'] as bool? ?? false,
+      vocabularyLevel: json['vocabularyLevel'] as String? ?? '',
     );
   }
 
@@ -59,6 +77,7 @@ class AiLanguageConfig {
     String? explanationLanguage,
     String? customPrompt,
     bool? customPromptModeEnabled,
+    String? vocabularyLevel,
   }) {
     return AiLanguageConfig(
       model: model ?? this.model,
@@ -67,6 +86,7 @@ class AiLanguageConfig {
       customPrompt: customPrompt ?? this.customPrompt,
       customPromptModeEnabled:
           customPromptModeEnabled ?? this.customPromptModeEnabled,
+      vocabularyLevel: vocabularyLevel ?? this.vocabularyLevel,
     );
   }
 }
@@ -86,6 +106,7 @@ class AiSettingsService extends ChangeNotifier {
   static const String defaultBaseUrl = 'https://api.openai.com/v1';
   static const String defaultModel = 'gpt-4o-mini';
   static const String defaultLanguage = 'en_US';
+  static const String defaultEnglishVocabularyLevel = 'cet6';
 
   static const String defaultPrompt =
       'You are a reading assistant for the book "{bookTitle}".\n\n'
@@ -113,14 +134,98 @@ class AiSettingsService extends ChangeNotifier {
 
   /// Get config for a specific language code (returns default if not set).
   AiLanguageConfig configForLanguage(String languageCode) {
-    return _configMap[languageCode] ?? const AiLanguageConfig();
+    final normalized = normalizeLanguageCode(languageCode);
+    final config = _configMap[normalized] ?? const AiLanguageConfig();
+    return _withLanguageDefaults(normalized, config);
+  }
+
+  static String normalizeLanguageCode(String? languageCode) {
+    if (languageCode == null) return '';
+    return languageCode.trim().replaceAll('-', '_');
+  }
+
+  static bool isEnglishLanguageCode(String? languageCode) {
+    final normalized = normalizeLanguageCode(languageCode);
+    if (normalized.isEmpty) {
+      return false;
+    }
+    return normalized.split('_').first.toLowerCase() == 'en';
+  }
+
+  static String defaultVocabularyLevelFor(String languageCode) {
+    return isEnglishLanguageCode(languageCode)
+        ? defaultEnglishVocabularyLevel
+        : '';
+  }
+
+  static List<VocabularyLevelOption> vocabularyOptionsFor(String languageCode) {
+    if (!isEnglishLanguageCode(languageCode)) {
+      return const <VocabularyLevelOption>[];
+    }
+    return const <VocabularyLevelOption>[
+      VocabularyLevelOption(
+        id: 'cet4',
+        label: 'CET4',
+        description:
+            'Use simple, everyday English with quick clarifications for harder terms.',
+      ),
+      VocabularyLevelOption(
+        id: 'cet6',
+        label: 'CET6',
+        description:
+            'Use moderately advanced English while keeping academic jargon explained.',
+      ),
+      VocabularyLevelOption(
+        id: 'ielts',
+        label: 'IELTS',
+        description:
+            'Use upper-intermediate academic English with concise support for rare terms.',
+      ),
+      VocabularyLevelOption(
+        id: 'toefl',
+        label: 'TOEFL',
+        description:
+            'Use advanced academic English, but briefly gloss specialized vocabulary when needed.',
+      ),
+      VocabularyLevelOption(
+        id: 'gre',
+        label: 'GRE',
+        description:
+            'Use precise, high-level English and preserve nuance with minimal simplification.',
+      ),
+    ];
+  }
+
+  static String vocabularyInstruction({
+    required String languageCode,
+    required String levelId,
+  }) {
+    if (!isEnglishLanguageCode(languageCode) || levelId.isEmpty) {
+      return '';
+    }
+
+    switch (levelId) {
+      case 'cet4':
+        return 'The selected text is English. Assume the reader has CET-4 level English comprehension. Keep any English terminology simple and high-frequency; if you must use English above CET-4 level, briefly clarify it inline. Even if you respond in another language, keep the English vocabulary load appropriate for a CET-4 learner.';
+      case 'cet6':
+        return 'The selected text is English. Assume the reader has CET-6 level English comprehension. You may use moderately advanced English terminology, but briefly clarify rarer English words inline when they go beyond CET-6 level. Even if you respond in another language, keep the English vocabulary load appropriate for a CET-6 learner.';
+      case 'ielts':
+        return 'The selected text is English. Assume the reader has IELTS-level English comprehension. You may use upper-intermediate academic English, but briefly clarify less common English terms inline. Even if you respond in another language, keep the English vocabulary load appropriate for an IELTS learner.';
+      case 'toefl':
+        return 'The selected text is English. Assume the reader has TOEFL-level English comprehension. You may use advanced academic English, but briefly clarify specialized English vocabulary inline when needed. Even if you respond in another language, keep the English vocabulary load appropriate for a TOEFL learner.';
+      case 'gre':
+        return 'The selected text is English. Assume the reader has GRE-level English comprehension. Preserve precision and nuance, but briefly clarify unusually rare English terms inline when they are likely above GRE level. Even if you respond in another language, keep the English vocabulary load appropriate for a GRE learner.';
+      default:
+        return '';
+    }
   }
 
   /// Resolve a book's language tag to a configured AI language code.
   String resolveBookLanguage(String? bookLanguage) {
     if (bookLanguage == null || bookLanguage.isEmpty) return defaultLanguage;
 
-    final normalized = bookLanguage.replaceAll('-', '_');
+    final normalized = normalizeLanguageCode(bookLanguage);
+    if (normalized.isEmpty) return defaultLanguage;
 
     // Exact match.
     if (_configMap.containsKey(normalized)) return normalized;
@@ -193,7 +298,8 @@ class AiSettingsService extends ChangeNotifier {
       final map = jsonDecode(json) as Map<String, dynamic>;
       _configMap.clear();
       for (final entry in map.entries) {
-        _configMap[entry.key] = AiLanguageConfig.fromJson(
+        final normalizedKey = normalizeLanguageCode(entry.key);
+        _configMap[normalizedKey] = AiLanguageConfig.fromJson(
           entry.value as Map<String, dynamic>,
         );
       }
@@ -263,7 +369,8 @@ class AiSettingsService extends ChangeNotifier {
     String languageCode,
     AiLanguageConfig config,
   ) async {
-    _configMap[languageCode] = config;
+    final normalized = normalizeLanguageCode(languageCode);
+    _configMap[normalized] = config;
     final prefs = await SharedPreferences.getInstance();
     await _saveConfigMap(prefs);
     notifyListeners();
@@ -271,9 +378,22 @@ class AiSettingsService extends ChangeNotifier {
 
   /// Remove per-language AI config (falls back to default).
   Future<void> removeConfigForLanguage(String languageCode) async {
-    _configMap.remove(languageCode);
+    _configMap.remove(normalizeLanguageCode(languageCode));
     final prefs = await SharedPreferences.getInstance();
     await _saveConfigMap(prefs);
     notifyListeners();
+  }
+
+  static AiLanguageConfig _withLanguageDefaults(
+    String languageCode,
+    AiLanguageConfig config,
+  ) {
+    final vocabularyLevel = config.vocabularyLevel.isNotEmpty
+        ? config.vocabularyLevel
+        : defaultVocabularyLevelFor(languageCode);
+    if (vocabularyLevel == config.vocabularyLevel) {
+      return config;
+    }
+    return config.copyWith(vocabularyLevel: vocabularyLevel);
   }
 }

@@ -5,6 +5,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../entities/explain-history-entity.dart';
+import '../../../services/ai/explain_prompt_builder.dart';
 import '../../../services/ai/ai_settings_service.dart';
 import '../../../services/search/image_search_service.dart';
 import '../../../services/reader/selection/reader_selection_text_sanitizer.dart';
@@ -229,34 +230,17 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
 
     final config = widget.languageConfig;
     _customPromptModeEnabled = config.customPromptModeEnabled;
-    final detailLine = AiSettingsService.detailInstruction(config.detail);
-    final langLine = AiSettingsService.languageInstruction(
-      config.explanationLanguage,
+    final resolvedLanguageCode = widget.aiSettings.resolveBookLanguage(
+      widget.bookLanguage,
     );
-
-    final promptTemplate =
-        _customPromptModeEnabled && config.customPrompt.isNotEmpty
-        ? config.customPrompt
-        : AiSettingsService.defaultPrompt;
-    final defaultPrompt = promptTemplate
-        .replaceAll('{bookTitle}', widget.bookTitle)
-        .replaceAll('{selectedText}', text)
-        .replaceAll('{context}', surroundingContext);
-
-    final structuredPrompt = _buildStructuredPrompt(
+    final systemPrompt = buildExplainSystemPrompt(
       bookTitle: widget.bookTitle,
       selectedText: text,
       context: surroundingContext,
-      detailLine: detailLine,
-      languageLine: langLine,
+      languageCode: resolvedLanguageCode,
+      config: config,
       includePartOfSpeech: _isSingleWord,
     );
-    final customPromptSystem =
-        '$defaultPrompt\n\n$detailLine'
-        '${langLine.isNotEmpty ? '\n$langLine' : ''}';
-    final systemPrompt = _customPromptModeEnabled
-        ? customPromptSystem
-        : structuredPrompt;
 
     _aiService = ExplainAiService(
       settings: widget.aiSettings,
@@ -649,44 +633,6 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
     }
 
     return result;
-  }
-
-  String _buildStructuredPrompt({
-    required String bookTitle,
-    required String selectedText,
-    required String context,
-    required String detailLine,
-    required String languageLine,
-    required bool includePartOfSpeech,
-  }) {
-    final languageInstruction = languageLine.isNotEmpty
-        ? '\n- $languageLine'
-        : '';
-    final partOfSpeechInstruction = includePartOfSpeech
-        ? '\n- Because the selection is a single word, set partOfSpeech to the '
-              'most likely part of speech in this exact context '
-              '(for example: noun, verb, adjective).'
-        : '\n- Because the selection is not a single word, return an empty '
-              'string for partOfSpeech.';
-    return 'You are a reading assistant for "$bookTitle".\n'
-        'The user selected text: "$selectedText"\n'
-        'Context:\n---\n$context\n---\n\n'
-        'Goal: help the reader quickly understand the selected text in context.\n'
-        'Return ONLY a JSON object (no markdown, no code fence, no extra text) '
-        'with this exact schema:\n'
-        '{\n'
-        '  "partOfSpeech": "string",\n'
-        '  "meaningExplain": "string",\n'
-        '  "detailExplain": ["string", "string"]\n'
-        '}\n\n'
-        'Constraints:\n'
-        '- Keep each string concise and practical.\n'
-        '- Focus on this exact context, not generic dictionary entries.\n'
-        '- Use plain language for intermediate English learners.\n'
-        '- Keep detailExplain to 2-3 short bullets.\n'
-        '$partOfSpeechInstruction\n'
-        '- $detailLine'
-        '$languageInstruction';
   }
 
   @override

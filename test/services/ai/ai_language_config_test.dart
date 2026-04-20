@@ -1,14 +1,22 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uni/services/ai/ai_settings_service.dart';
 
 void main() {
-  test('AiLanguageConfig persists customPromptModeEnabled in json', () {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+  });
+
+  test('AiLanguageConfig persists vocabularyLevel in json', () {
     const config = AiLanguageConfig(
       model: 'gpt-4o-mini',
       detail: ExplanationDetail.brief,
       explanationLanguage: 'English',
       customPrompt: 'Explain {selectedText}',
       customPromptModeEnabled: true,
+      vocabularyLevel: 'gre',
     );
 
     final json = config.toJson();
@@ -17,10 +25,11 @@ void main() {
     expect(restored.customPromptModeEnabled, isTrue);
     expect(restored.customPrompt, 'Explain {selectedText}');
     expect(restored.explanationLanguage, 'English');
+    expect(restored.vocabularyLevel, 'gre');
   });
 
   test(
-    'AiLanguageConfig defaults customPromptModeEnabled to false for legacy json',
+    'AiLanguageConfig legacy json without vocabularyLevel stays compatible',
     () {
       final restored = AiLanguageConfig.fromJson(<String, dynamic>{
         'model': 'gpt-4o-mini',
@@ -30,6 +39,67 @@ void main() {
 
       expect(restored.customPromptModeEnabled, isFalse);
       expect(restored.customPrompt, 'Legacy prompt');
+      expect(restored.vocabularyLevel, isEmpty);
     },
   );
+
+  test(
+    'configForLanguage returns English-aware default vocabulary level',
+    () async {
+      final service = AiSettingsService();
+
+      await service.initialize();
+
+      expect(service.configForLanguage('en_US').vocabularyLevel, 'cet6');
+      expect(service.configForLanguage('en').vocabularyLevel, 'cet6');
+      expect(service.configForLanguage('es_ES').vocabularyLevel, isEmpty);
+    },
+  );
+
+  test('isEnglishLanguageCode recognizes common English variants', () {
+    expect(AiSettingsService.isEnglishLanguageCode('en'), isTrue);
+    expect(AiSettingsService.isEnglishLanguageCode('en-US'), isTrue);
+    expect(AiSettingsService.isEnglishLanguageCode('en_US'), isTrue);
+    expect(AiSettingsService.isEnglishLanguageCode('en-GB'), isTrue);
+    expect(AiSettingsService.isEnglishLanguageCode('es_ES'), isFalse);
+  });
+
+  test('vocabularyOptionsFor returns English presets only', () {
+    final englishOptions = AiSettingsService.vocabularyOptionsFor('en_US');
+
+    expect(englishOptions.map((option) => option.id), <String>[
+      'cet4',
+      'cet6',
+      'ielts',
+      'toefl',
+      'gre',
+    ]);
+    expect(AiSettingsService.vocabularyOptionsFor('es_ES'), isEmpty);
+  });
+
+  test('vocabularyInstruction returns content only for English presets', () {
+    for (final levelId in const <String>[
+      'cet4',
+      'cet6',
+      'ielts',
+      'toefl',
+      'gre',
+    ]) {
+      expect(
+        AiSettingsService.vocabularyInstruction(
+          languageCode: 'en_US',
+          levelId: levelId,
+        ),
+        isNotEmpty,
+      );
+    }
+
+    expect(
+      AiSettingsService.vocabularyInstruction(
+        languageCode: 'es_ES',
+        levelId: 'gre',
+      ),
+      isEmpty,
+    );
+  });
 }

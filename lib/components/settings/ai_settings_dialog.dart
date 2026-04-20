@@ -3,6 +3,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../../app/providers/app-providers.dart';
 import '../../services/ai/ai_settings_service.dart';
+import '../../services/ai/explain_prompt_builder.dart';
 import '../../services/ai/openai_llm_provider.dart';
 import '../../services/search/image_search_service.dart';
 import '../../services/tts/tts_service.dart';
@@ -351,7 +352,7 @@ class _AiSettingsPageState extends State<AiSettingsPage> {
     );
 
     final subtitle = hasCustomConfig
-        ? _configSummary(config)
+        ? _configSummary(config, languageCode: languageCode)
         : 'Default — tap to configure';
 
     return GestureDetector(
@@ -420,10 +421,20 @@ class _AiSettingsPageState extends State<AiSettingsPage> {
     );
   }
 
-  String _configSummary(AiLanguageConfig config) {
+  String _configSummary(
+    AiLanguageConfig config, {
+    required String languageCode,
+  }) {
     final parts = <String>[config.model];
     parts.add(config.customPromptModeEnabled ? 'Custom Prompt' : 'Structured');
     parts.add(_detailLabel(config.detail));
+    final vocabularyLabel = _vocabularyLabel(
+      languageCode: languageCode,
+      levelId: config.vocabularyLevel,
+    );
+    if (vocabularyLabel != null) {
+      parts.add(vocabularyLabel);
+    }
     if (config.explanationLanguage.isNotEmpty) {
       parts.add(config.explanationLanguage);
     }
@@ -439,6 +450,18 @@ class _AiSettingsPageState extends State<AiSettingsPage> {
       case ExplanationDetail.detailed:
         return 'Detailed';
     }
+  }
+
+  static String? _vocabularyLabel({
+    required String languageCode,
+    required String levelId,
+  }) {
+    for (final option in AiSettingsService.vocabularyOptionsFor(languageCode)) {
+      if (option.id == levelId) {
+        return option.label;
+      }
+    }
+    return null;
   }
 
   // ---------------------------------------------------------------------------
@@ -614,6 +637,7 @@ class _AiLanguageConfigSheetState extends State<_AiLanguageConfigSheet> {
   late final TextEditingController _promptController;
   late ExplanationDetail _detail;
   late bool _customPromptModeEnabled;
+  late String _vocabularyLevel;
 
   @override
   void initState() {
@@ -622,6 +646,9 @@ class _AiLanguageConfigSheetState extends State<_AiLanguageConfigSheet> {
     _promptController = TextEditingController(text: widget.config.customPrompt);
     _detail = widget.config.detail;
     _customPromptModeEnabled = widget.config.customPromptModeEnabled;
+    _vocabularyLevel = widget.config.vocabularyLevel.isNotEmpty
+        ? widget.config.vocabularyLevel
+        : AiSettingsService.defaultVocabularyLevelFor(widget.languageCode);
   }
 
   @override
@@ -702,6 +729,34 @@ class _AiLanguageConfigSheetState extends State<_AiLanguageConfigSheet> {
                     ],
                   ),
                   const SizedBox(height: 24),
+
+                  if (_showVocabularyLevelSection) ...[
+                    const _SectionLabel(label: 'VOCABULARY LEVEL'),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: CommonDesignTokens.tabGap,
+                      runSpacing: CommonDesignTokens.tabGap,
+                      children: [
+                        for (final option in _vocabularyOptions)
+                          _buildVocabularyLevelTab(option),
+                      ],
+                    ),
+                    if (_selectedVocabularyOption != null) ...[
+                      const SizedBox(height: 8),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 2),
+                        child: Text(
+                          _selectedVocabularyOption!.description,
+                          style: const TextStyle(
+                            fontSize: FormDesignTokens.helperSize,
+                            color: CommonDesignTokens.textSecondary,
+                            height: FormDesignTokens.helperLineHeight,
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 24),
+                  ],
 
                   const _SectionLabel(label: 'EXPLAIN MODE'),
                   const SizedBox(height: 8),
@@ -904,6 +959,56 @@ class _AiLanguageConfigSheetState extends State<_AiLanguageConfigSheet> {
     }
   }
 
+  bool get _showVocabularyLevelSection {
+    return AiSettingsService.isEnglishLanguageCode(widget.languageCode) &&
+        _vocabularyOptions.isNotEmpty;
+  }
+
+  List<VocabularyLevelOption> get _vocabularyOptions {
+    return AiSettingsService.vocabularyOptionsFor(widget.languageCode);
+  }
+
+  VocabularyLevelOption? get _selectedVocabularyOption {
+    for (final option in _vocabularyOptions) {
+      if (option.id == _vocabularyLevel) {
+        return option;
+      }
+    }
+    return _vocabularyOptions.isEmpty ? null : _vocabularyOptions.first;
+  }
+
+  Widget _buildVocabularyLevelTab(VocabularyLevelOption option) {
+    final selected = _vocabularyLevel == option.id;
+    return GestureDetector(
+      onTap: () => setState(() => _vocabularyLevel = option.id),
+      child: Container(
+        height: CommonDesignTokens.tabHeight,
+        padding: const EdgeInsets.symmetric(
+          horizontal: CommonDesignTokens.tabHorizontalPadding,
+        ),
+        decoration: BoxDecoration(
+          color: selected
+              ? CommonDesignTokens.tabActiveBg
+              : CommonDesignTokens.tabInactiveBg,
+          borderRadius: BorderRadius.circular(
+            CommonDesignTokens.tabBorderRadius,
+          ),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          option.label,
+          style: TextStyle(
+            fontSize: FormDesignTokens.fieldLabelSize,
+            fontWeight: FontWeight.w500,
+            color: selected
+                ? CommonDesignTokens.tabActiveText
+                : CommonDesignTokens.tabInactiveText,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildInlineFieldRow({
     required IconData icon,
     required String label,
@@ -979,8 +1084,12 @@ class _AiLanguageConfigSheetState extends State<_AiLanguageConfigSheet> {
           ? AiSettingsService.defaultModel
           : _modelController.text.trim(),
       detail: _detail,
+      explanationLanguage: widget.config.explanationLanguage,
       customPrompt: _promptController.text.trim(),
       customPromptModeEnabled: _customPromptModeEnabled,
+      vocabularyLevel: _showVocabularyLevelSection
+          ? _vocabularyLevel
+          : widget.config.vocabularyLevel,
     );
     widget.onSave(config);
   }
@@ -1005,9 +1114,17 @@ class _AiLanguageConfigSheetState extends State<_AiLanguageConfigSheet> {
       ),
       builder: (_) => _TestExplainSheet(
         aiSettings: widget.aiSettings,
-        model: model,
-        detail: _detail,
-        customPrompt: _promptController.text.trim(),
+        languageCode: widget.languageCode,
+        config: AiLanguageConfig(
+          model: model,
+          detail: _detail,
+          explanationLanguage: widget.config.explanationLanguage,
+          customPrompt: _promptController.text.trim(),
+          customPromptModeEnabled: _customPromptModeEnabled,
+          vocabularyLevel: _showVocabularyLevelSection
+              ? _vocabularyLevel
+              : widget.config.vocabularyLevel,
+        ),
       ),
     );
   }
@@ -1020,15 +1137,13 @@ class _AiLanguageConfigSheetState extends State<_AiLanguageConfigSheet> {
 class _TestExplainSheet extends StatefulWidget {
   const _TestExplainSheet({
     required this.aiSettings,
-    required this.model,
-    required this.detail,
-    required this.customPrompt,
+    required this.languageCode,
+    required this.config,
   });
 
   final AiSettingsService aiSettings;
-  final String model;
-  final ExplanationDetail detail;
-  final String customPrompt;
+  final String languageCode;
+  final AiLanguageConfig config;
 
   static const _testBookTitle = 'The Great Gatsby';
   static const _testSelectedText = 'ephemeral';
@@ -1057,21 +1172,19 @@ class _TestExplainSheetState extends State<_TestExplainSheet>
       duration: const Duration(milliseconds: 1200),
     )..repeat();
 
-    final promptTemplate = widget.customPrompt.isNotEmpty
-        ? widget.customPrompt
-        : AiSettingsService.defaultPrompt;
-    final basePrompt = promptTemplate
-        .replaceAll('{bookTitle}', _TestExplainSheet._testBookTitle)
-        .replaceAll('{selectedText}', _TestExplainSheet._testSelectedText)
-        .replaceAll('{context}', _TestExplainSheet._testSentence);
-
-    final detailLine = AiSettingsService.detailInstruction(widget.detail);
-    final systemPrompt = '$basePrompt\n\n$detailLine';
+    final systemPrompt = buildExplainSystemPrompt(
+      bookTitle: _TestExplainSheet._testBookTitle,
+      selectedText: _TestExplainSheet._testSelectedText,
+      context: _TestExplainSheet._testSentence,
+      languageCode: widget.languageCode,
+      config: widget.config,
+      includePartOfSpeech: true,
+    );
 
     _aiService = ExplainAiService(
       settings: widget.aiSettings,
       systemPrompt: systemPrompt,
-      model: widget.model,
+      model: widget.config.model,
     );
 
     _fetchFromAi();

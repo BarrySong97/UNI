@@ -10,7 +10,7 @@ used by Reader.
 
 ### In Scope
 - Account display (avatar, name, membership info)
-- AI settings rows (Explanation Detail, Explanation Language, API Key)
+- AI settings rows (Explanation Detail, Explanation Language, Vocabulary Level, API Key)
 - TTS settings entry and dedicated TTS quick-test page for word/phrase checks
 - Per-language AI explain mode toggle:
   - Structured mode (default): Reader uses built-in explain cards.
@@ -41,10 +41,15 @@ used by Reader.
   - `explanationLanguage`
   - `customPrompt`
   - `customPromptModeEnabled`
+  - `vocabularyLevel`
 
 ## Interaction & Exceptions
 
 - TTS voice catalog is now a built-in offline Kokoro catalog for English (`en_US` / `en_GB`) instead of the previous Piper voice list. Settings no longer depends on fetching a remote voice catalog before showing voice choices.
+- `AiLanguageConfig` is the code object behind per-language Explanation Settings. `explanationLanguage` only controls the response output language, while `vocabularyLevel` belongs to the source/book language config.
+- Vocabulary Level currently ships only for English. English exposes `CET4`, `CET6` (default), `IELTS`, `TOEFL`, and `GRE`. Non-English languages keep the data-model extension point but do not show a Vocabulary Level UI yet.
+- Vocabulary Level affects only built-in structured explain prompts. Custom prompt mode ignores it and continues to use the user-authored prompt plus existing detail/language instructions.
+- Changing Vocabulary Level does not invalidate existing explain cache entries. If the user refreshes an explanation, Reader regenerates it with the current Vocabulary Level and overwrites the same cache key.
 - All English voice options share the same Kokoro archive on disk. Downloading one Kokoro English voice makes the other Kokoro English voices immediately available because they point at the same extracted model bundle with different default speaker IDs.
 - Settings voice preview uses the same shared TTS playback path as Reader: each utterance gets its own temp wav path and the engine deletes owned temp files on stop/completion.
 - Settings includes a dedicated TTS quick-test page so short words and phrases can be retried without opening Reader. The page reuses the shared `TtsService`, configured voices, and playback state.
@@ -74,6 +79,7 @@ used by Reader.
 - [ ] TTS section shows both full TTS settings and a dedicated `TTS Test` entry
 - [ ] TTS test page supports entering a word/phrase, picking a configured voice, adjusting a temporary test speed, and triggering speak/stop
 - [ ] AI language config supports switching between structured mode and custom prompt mode
+- [ ] English Explanation Settings exposes Vocabulary Level with `CET4`, `CET6`, `IELTS`, `TOEFL`, and `GRE`, defaulting to `CET6`
 - [ ] Custom prompt is only editable/effective when custom prompt mode is enabled
 - [ ] ABOUT section shows settings help/contact rows with chevrons
 - [ ] Visual style matches shelf/library page patterns (colors, spacing, typography)
