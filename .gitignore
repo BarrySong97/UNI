@@ -58,5 +58,8 @@ tool/reader_render_diff/.npm/
 # Git worktrees
 .worktrees/
 
+# Screenshots produced by scripts/screenshots.sh
+/screenshots/
+
 # WordNet tarball cache for tool/build_pos_dict.dart
 .cache/
