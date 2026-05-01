@@ -253,14 +253,6 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
       _fetchImageSearchResults();
     }
     _loadOrFetch();
-
-    // Auto read-aloud selected text when sheet opens (if enabled).
-    if (widget.aiSettings.autoReadAloud) {
-      widget.ttsService.speakForBookLanguage(
-        widget.selectedText,
-        widget.bookLanguage,
-      );
-    }
   }
 
   void _onTtsChanged() {

@@ -165,37 +165,6 @@ class _AiSettingsPageState extends State<AiSettingsPage> {
                   ListenableBuilder(
                     listenable: widget.aiSettings,
                     builder: (context, _) {
-                      return SwitchListTile.adaptive(
-                        title: const Text(
-                          'Auto Read Aloud',
-                          style: TextStyle(
-                            fontSize: FormDesignTokens.fieldLabelSize,
-                            fontWeight: FontWeight.w600,
-                            color: CommonDesignTokens.textPrimary,
-                          ),
-                        ),
-                        subtitle: const Text(
-                          'Automatically read selected text aloud when explain sheet opens.',
-                          style: TextStyle(
-                            fontSize: FormDesignTokens.helperSize,
-                            color: CommonDesignTokens.textSecondary,
-                            height: FormDesignTokens.helperLineHeight,
-                          ),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                        ),
-                        value: widget.aiSettings.autoReadAloud,
-                        onChanged: (value) {
-                          widget.aiSettings.setAutoReadAloud(value);
-                        },
-                      );
-                    },
-                  ),
-                  _buildDivider(),
-                  ListenableBuilder(
-                    listenable: widget.aiSettings,
-                    builder: (context, _) {
                       return Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: SizedBox(
