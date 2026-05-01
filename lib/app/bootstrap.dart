@@ -18,6 +18,7 @@ import '../services/db/daos/progress-dao.dart';
 import '../services/ai/ai_settings_service.dart';
 import '../services/phonetics/ai_phonetics_service.dart';
 import '../services/phonetics/phonetics_service.dart';
+import '../services/pos/pos_service.dart';
 import '../services/tts/tts_service.dart';
 import '../services/library/book-profile-entry-service.dart';
 import '../services/parser/book-import-service.dart';
@@ -86,6 +87,11 @@ class AppBootstrap {
     );
     await phoneticsService.initialize();
 
+    final posService = PosService();
+    if (!kIsWeb) {
+      await posService.initialize();
+    }
+
     // Initialize Rust FFI via flutter_rust_bridge.
     await RustLib.init();
     final epubPreparseService = EpubPreparseService();
@@ -103,6 +109,7 @@ class AppBootstrap {
       aiSettingsService: aiSettings,
       ttsService: ttsService,
       phoneticsService: phoneticsService,
+      posService: posService,
       database: database,
     );
 

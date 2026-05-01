@@ -1448,6 +1448,7 @@ class _ReaderPageState extends State<ReaderPage>
       languageConfig: languageConfig,
       bookTitle: widget.book.title,
       phoneticsService: providers.phoneticsService,
+      posService: providers.posService,
       ttsService: providers.ttsService,
       database: providers.database,
       bookId: widget.book.id,

@@ -5,6 +5,7 @@ import 'package:uni/pages/reader/widgets/reader_explain_sheet.dart';
 import 'package:uni/services/ai/ai_settings_service.dart';
 import 'package:uni/services/db/app-database.dart';
 import 'package:uni/services/phonetics/phonetics_service.dart';
+import 'package:uni/services/pos/pos_service.dart';
 import 'package:uni/services/tts/tts_service.dart';
 
 void main() {
@@ -39,6 +40,7 @@ void main() {
             languageConfig: const AiLanguageConfig(),
             bookTitle: 'Test Book',
             phoneticsService: _MissPhoneticsService(),
+            posService: PosService(queryOverride: (_) async => null),
             ttsService: ttsService,
             database: database,
             bookId: 'book-1',

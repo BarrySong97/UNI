@@ -14,6 +14,7 @@ import '../../../shared/widgets/pronunciation_selection_toolbar.dart';
 import '../../../services/ai/openai_llm_provider.dart';
 import '../../../services/db/app-database.dart';
 import '../../../services/phonetics/phonetics_service.dart';
+import '../../../services/pos/pos_service.dart';
 import '../../../services/tts/tts_service.dart';
 
 class ReaderExplainSheet extends StatefulWidget {
@@ -27,6 +28,7 @@ class ReaderExplainSheet extends StatefulWidget {
     required this.languageConfig,
     required this.bookTitle,
     required this.phoneticsService,
+    required this.posService,
     required this.ttsService,
     required this.database,
     required this.bookId,
@@ -47,6 +49,7 @@ class ReaderExplainSheet extends StatefulWidget {
   final AiLanguageConfig languageConfig;
   final String bookTitle;
   final PhoneticsService phoneticsService;
+  final PosService posService;
   final TtsService ttsService;
   final AppDatabase database;
   final String bookId;
@@ -63,6 +66,7 @@ class ReaderExplainSheet extends StatefulWidget {
     required AiLanguageConfig languageConfig,
     required String bookTitle,
     required PhoneticsService phoneticsService,
+    required PosService posService,
     required TtsService ttsService,
     required AppDatabase database,
     required String bookId,
@@ -80,6 +84,7 @@ class ReaderExplainSheet extends StatefulWidget {
       languageConfig: languageConfig,
       bookTitle: bookTitle,
       phoneticsService: phoneticsService,
+      posService: posService,
       ttsService: ttsService,
       database: database,
       bookId: bookId,
@@ -183,6 +188,10 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
   String? _playingAccent;
   bool _isPhoneticsAiLoading = false;
 
+  // Local POS lookup result (single-word mode only). Used to fill the
+  // partOfSpeech chip immediately while the AI response is still streaming.
+  PosResult? _localPos;
+
   // Image search state (word/phrase mode only).
   List<ImageSearchResult>? _imageSearchResults;
   bool _isImageSearching = false;
@@ -252,6 +261,9 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
       _lookupPhonetics();
       _fetchImageSearchResults();
     }
+    if (_isSingleWord) {
+      _lookupLocalPos();
+    }
     _loadOrFetch();
   }
 
@@ -271,6 +283,16 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
           _phoneticsOutcome = outcome;
           _phonetics = outcome.result;
         });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _lookupLocalPos() async {
+    try {
+      final result = await widget.posService.lookup(widget.selectedText);
+      if (result == null || result.isEmpty) return;
+      if (mounted) {
+        setState(() => _localPos = result);
       }
     } catch (_) {}
   }
@@ -782,9 +804,14 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
   }
 
   Widget _buildWordHeader() {
-    final partOfSpeech = _isSingleWord
+    final aiPartOfSpeech = _isSingleWord
         ? _structuredData?.partOfSpeech.trim() ?? ''
         : '';
+    // Fall back to the offline WordNet lookup so the chip appears immediately
+    // while the AI response is still streaming (or if AI fails entirely).
+    final partOfSpeech = aiPartOfSpeech.isNotEmpty
+        ? aiPartOfSpeech
+        : (_isSingleWord ? _localPos?.label ?? '' : '');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

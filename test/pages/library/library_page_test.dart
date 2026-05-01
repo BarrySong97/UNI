@@ -21,6 +21,7 @@ import 'package:uni/services/db/daos/progress-dao.dart';
 import 'package:uni/services/library/book-profile-entry-service.dart';
 import 'package:uni/services/parser/book-import-service.dart';
 import 'package:uni/services/phonetics/phonetics_service.dart';
+import 'package:uni/services/pos/pos_service.dart';
 import 'package:uni/services/reader/epub_preparse_service.dart';
 import 'package:uni/services/tts/tts_service.dart';
 import 'package:uni/stores/annotation/annotation-store.dart';
@@ -176,6 +177,7 @@ AppProviders _buildProviders({required AppDatabase database}) {
     aiSettingsService: AiSettingsService(),
     ttsService: TtsService(),
     phoneticsService: PhoneticsService(),
+    posService: PosService(queryOverride: (_) async => null),
     database: database,
   );
 

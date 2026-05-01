@@ -57,3 +57,6 @@ tool/reader_render_diff/.npm/
 
 # Git worktrees
 .worktrees/
+
+# WordNet tarball cache for tool/build_pos_dict.dart
+.cache/

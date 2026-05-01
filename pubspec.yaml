@@ -68,6 +68,8 @@ dev_dependencies:
   flutter_launcher_icons: ^0.14.3
   integration_test:
     sdk: flutter
+  # Used only by tool/build_pos_dict.dart to produce the WordNet POS asset.
+  sqlite3: ^2.4.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -91,6 +93,7 @@ flutter:
     - assets/quote_card/artwork_still_life.png
     - assets/quote_card/artwork_abstract.png
     - assets/quote_card/artwork_botanical.png
+    - assets/dict/pos_dict.sqlite
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
