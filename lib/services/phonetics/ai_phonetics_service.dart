@@ -35,7 +35,7 @@ class AiPhoneticsService {
     final rawResponse = await _requester(
       baseUrl: _settings.baseUrl,
       apiKey: _settings.apiKey,
-      model: _settings.resolveConfig(null).model,
+      model: _settings.model,
       systemPrompt: _systemPrompt,
       userPrompt: text,
     );

@@ -44,6 +44,8 @@ class AiSettingsPage extends StatefulWidget {
 class _AiSettingsPageState extends State<AiSettingsPage> {
   late final TextEditingController _baseUrlController;
   late final TextEditingController _apiKeyController;
+  late final TextEditingController _modelController;
+  late AiProviderKind _provider;
   bool _obscureApiKey = true;
 
   @override
@@ -51,6 +53,8 @@ class _AiSettingsPageState extends State<AiSettingsPage> {
     super.initState();
     _baseUrlController = TextEditingController(text: widget.aiSettings.baseUrl);
     _apiKeyController = TextEditingController(text: widget.aiSettings.apiKey);
+    _modelController = TextEditingController(text: widget.aiSettings.model);
+    _provider = widget.aiSettings.provider;
     widget.aiSettings.addListener(_onSettingsChange);
     widget.ttsService.addListener(_onTtsChange);
   }
@@ -61,6 +65,7 @@ class _AiSettingsPageState extends State<AiSettingsPage> {
     widget.ttsService.removeListener(_onTtsChange);
     _baseUrlController.dispose();
     _apiKeyController.dispose();
+    _modelController.dispose();
     super.dispose();
   }
 
@@ -153,6 +158,15 @@ class _AiSettingsPageState extends State<AiSettingsPage> {
                       ),
                     ),
                   ),
+                  _buildDivider(),
+                  _buildFieldRow(
+                    icon: Icons.smart_toy_outlined,
+                    label: 'Model',
+                    controller: _modelController,
+                    hintText: AiSettingsService.defaultModel,
+                  ),
+                  _buildDivider(),
+                  _buildProviderRow(),
                 ],
               ),
               const SizedBox(height: 28),
@@ -394,7 +408,7 @@ class _AiSettingsPageState extends State<AiSettingsPage> {
     AiLanguageConfig config, {
     required String languageCode,
   }) {
-    final parts = <String>[config.model];
+    final parts = <String>[];
     parts.add(config.customPromptModeEnabled ? 'Custom Prompt' : 'Structured');
     parts.add(_detailLabel(config.detail));
     final vocabularyLabel = _vocabularyLabel(
@@ -571,8 +585,72 @@ class _AiSettingsPageState extends State<AiSettingsPage> {
     await widget.aiSettings.updateGlobal(
       baseUrl: _baseUrlController.text.trim(),
       apiKey: _apiKeyController.text.trim(),
+      model: _modelController.text.trim(),
+      provider: _provider,
     );
     if (mounted) Navigator.of(context).pop();
+  }
+
+  Widget _buildProviderRow() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: SizedBox(
+        height: FormDesignTokens.fieldRowHeight,
+        child: Row(
+          children: [
+            Container(
+              width: SettingsDesignTokens.settingsRowIconContainerSize,
+              height: SettingsDesignTokens.settingsRowIconContainerSize,
+              decoration: BoxDecoration(
+                color: SettingsDesignTokens.settingsRowIconContainerBg,
+                borderRadius: BorderRadius.circular(
+                  SettingsDesignTokens.settingsRowIconContainerRadius,
+                ),
+              ),
+              alignment: Alignment.center,
+              child: const Icon(
+                Icons.api_outlined,
+                size: 20,
+                color: CommonDesignTokens.headerLabelColor,
+              ),
+            ),
+            const SizedBox(width: FormDesignTokens.fieldIconGap),
+            const Text(
+              'Provider',
+              style: TextStyle(
+                fontSize: FormDesignTokens.fieldLabelSize,
+                fontWeight: FontWeight.w500,
+                color: CommonDesignTokens.textSecondary,
+              ),
+            ),
+            const Spacer(),
+            DropdownButton<AiProviderKind>(
+              value: _provider,
+              underline: const SizedBox.shrink(),
+              style: const TextStyle(
+                fontSize: FormDesignTokens.fieldValueSize,
+                color: CommonDesignTokens.textPrimary,
+              ),
+              items: const [
+                DropdownMenuItem(
+                  value: AiProviderKind.openAiCompatible,
+                  child: Text('OpenAI compatible'),
+                ),
+                DropdownMenuItem(
+                  value: AiProviderKind.anthropicCompatible,
+                  child: Text('Anthropic compatible'),
+                ),
+              ],
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() => _provider = value);
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -602,7 +680,6 @@ class _AiLanguageConfigSheet extends StatefulWidget {
 }
 
 class _AiLanguageConfigSheetState extends State<_AiLanguageConfigSheet> {
-  late final TextEditingController _modelController;
   late final TextEditingController _promptController;
   late ExplanationDetail _detail;
   late bool _customPromptModeEnabled;
@@ -611,7 +688,6 @@ class _AiLanguageConfigSheetState extends State<_AiLanguageConfigSheet> {
   @override
   void initState() {
     super.initState();
-    _modelController = TextEditingController(text: widget.config.model);
     _promptController = TextEditingController(text: widget.config.customPrompt);
     _detail = widget.config.detail;
     _customPromptModeEnabled = widget.config.customPromptModeEnabled;
@@ -622,7 +698,6 @@ class _AiLanguageConfigSheetState extends State<_AiLanguageConfigSheet> {
 
   @override
   void dispose() {
-    _modelController.dispose();
     _promptController.dispose();
     super.dispose();
   }
@@ -670,21 +745,6 @@ class _AiLanguageConfigSheetState extends State<_AiLanguageConfigSheet> {
                   vertical: 4,
                 ),
                 children: [
-                  // MODEL section
-                  const _SectionLabel(label: 'MODEL'),
-                  const SizedBox(height: 8),
-                  _buildCard(
-                    children: [
-                      _buildInlineFieldRow(
-                        icon: Icons.smart_toy_outlined,
-                        label: 'Model',
-                        controller: _modelController,
-                        hintText: AiSettingsService.defaultModel,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-
                   // DETAIL section
                   const _SectionLabel(label: 'DETAIL'),
                   const SizedBox(height: 8),
@@ -978,80 +1038,8 @@ class _AiLanguageConfigSheetState extends State<_AiLanguageConfigSheet> {
     );
   }
 
-  Widget _buildInlineFieldRow({
-    required IconData icon,
-    required String label,
-    required TextEditingController controller,
-    String? hintText,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 0),
-      child: SizedBox(
-        height: FormDesignTokens.fieldRowHeight,
-        child: Row(
-          children: [
-            Container(
-              width: SettingsDesignTokens.settingsRowIconContainerSize,
-              height: SettingsDesignTokens.settingsRowIconContainerSize,
-              decoration: BoxDecoration(
-                color: SettingsDesignTokens.settingsRowIconContainerBg,
-                borderRadius: BorderRadius.circular(
-                  SettingsDesignTokens.settingsRowIconContainerRadius,
-                ),
-              ),
-              alignment: Alignment.center,
-              child: Icon(
-                icon,
-                size: 20,
-                color: CommonDesignTokens.headerLabelColor,
-              ),
-            ),
-            const SizedBox(width: FormDesignTokens.fieldIconGap),
-            SizedBox(
-              width: FormDesignTokens.fieldLabelWidth,
-              child: Text(
-                label,
-                style: const TextStyle(
-                  fontSize: FormDesignTokens.fieldLabelSize,
-                  fontWeight: FontWeight.w500,
-                  color: CommonDesignTokens.textSecondary,
-                ),
-              ),
-            ),
-            const SizedBox(width: FormDesignTokens.fieldLabelGap),
-            Expanded(
-              child: TextField(
-                controller: controller,
-                textAlign: TextAlign.right,
-                style: const TextStyle(
-                  fontSize: FormDesignTokens.fieldValueSize,
-                  color: CommonDesignTokens.textPrimary,
-                ),
-                decoration: InputDecoration(
-                  hintText: hintText,
-                  hintStyle: TextStyle(
-                    fontSize: FormDesignTokens.fieldValueSize,
-                    color: CommonDesignTokens.textSecondary.withValues(
-                      alpha: FormDesignTokens.fieldHintOpacity,
-                    ),
-                  ),
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.zero,
-                  isDense: true,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   void _saveConfig() {
     final config = AiLanguageConfig(
-      model: _modelController.text.trim().isEmpty
-          ? AiSettingsService.defaultModel
-          : _modelController.text.trim(),
       detail: _detail,
       explanationLanguage: widget.config.explanationLanguage,
       customPrompt: _promptController.text.trim(),
@@ -1070,9 +1058,6 @@ class _AiLanguageConfigSheetState extends State<_AiLanguageConfigSheet> {
       );
       return;
     }
-    final model = _modelController.text.trim().isEmpty
-        ? AiSettingsService.defaultModel
-        : _modelController.text.trim();
 
     showModalBottomSheet<void>(
       context: context,
@@ -1085,7 +1070,6 @@ class _AiLanguageConfigSheetState extends State<_AiLanguageConfigSheet> {
         aiSettings: widget.aiSettings,
         languageCode: widget.languageCode,
         config: AiLanguageConfig(
-          model: model,
           detail: _detail,
           explanationLanguage: widget.config.explanationLanguage,
           customPrompt: _promptController.text.trim(),
@@ -1153,7 +1137,7 @@ class _TestExplainSheetState extends State<_TestExplainSheet>
     _aiService = ExplainAiService(
       settings: widget.aiSettings,
       systemPrompt: systemPrompt,
-      model: widget.config.model,
+      model: widget.aiSettings.model,
     );
 
     _fetchFromAi();

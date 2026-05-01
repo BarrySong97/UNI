@@ -11,7 +11,6 @@ void main() {
 
   test('AiLanguageConfig persists vocabularyLevel in json', () {
     const config = AiLanguageConfig(
-      model: 'gpt-4o-mini',
       detail: ExplanationDetail.brief,
       explanationLanguage: 'English',
       customPrompt: 'Explain {selectedText}',
@@ -42,6 +41,36 @@ void main() {
       expect(restored.vocabularyLevel, isEmpty);
     },
   );
+
+  test('AiSettingsService persists global model and provider', () async {
+    final service = AiSettingsService();
+    await service.initialize();
+
+    expect(service.model, AiSettingsService.defaultModel);
+    expect(service.provider, AiSettingsService.defaultProvider);
+
+    await service.updateGlobal(
+      baseUrl: 'https://example.com/v1',
+      apiKey: 'test-key',
+      model: 'claude-3-5-sonnet',
+      provider: AiProviderKind.anthropicCompatible,
+    );
+
+    final reloaded = AiSettingsService();
+    await reloaded.initialize();
+    expect(reloaded.model, 'claude-3-5-sonnet');
+    expect(reloaded.provider, AiProviderKind.anthropicCompatible);
+  });
+
+  test('AiSettingsService lifts legacy per-language model into global', () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'ai_config_map': '{"en_US":{"model":"gpt-4-turbo","detail":"balanced"}}',
+    });
+    final service = AiSettingsService();
+    await service.initialize();
+
+    expect(service.model, 'gpt-4-turbo');
+  });
 
   test(
     'configForLanguage returns English-aware default vocabulary level',

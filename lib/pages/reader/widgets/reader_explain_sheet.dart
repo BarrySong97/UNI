@@ -245,7 +245,7 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
     _aiService = ExplainAiService(
       settings: widget.aiSettings,
       systemPrompt: systemPrompt,
-      model: config.model,
+      model: widget.aiSettings.model,
     );
 
     if (_isWordOrPhrase) {

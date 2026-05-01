@@ -8,6 +8,15 @@ import '../search/image_search_service.dart';
 /// Detail level controls how verbose the AI explanation is.
 enum ExplanationDetail { brief, balanced, detailed }
 
+/// Wire format expected by the configured AI endpoint.
+enum AiProviderKind {
+  /// OpenAI Chat Completions / `/v1/chat/completions` style API.
+  openAiCompatible,
+
+  /// Anthropic Messages API style.
+  anthropicCompatible,
+}
+
 class VocabularyLevelOption {
   const VocabularyLevelOption({
     required this.id,
@@ -23,7 +32,6 @@ class VocabularyLevelOption {
 /// Per-language AI configuration.
 class AiLanguageConfig {
   const AiLanguageConfig({
-    this.model = AiSettingsService.defaultModel,
     this.detail = ExplanationDetail.balanced,
     this.explanationLanguage = '',
     this.customPrompt = '',
@@ -31,7 +39,6 @@ class AiLanguageConfig {
     this.vocabularyLevel = '',
   });
 
-  final String model;
   final ExplanationDetail detail;
 
   /// Language for AI responses (e.g. "Chinese", "English"). Empty = auto.
@@ -48,7 +55,6 @@ class AiLanguageConfig {
   final String vocabularyLevel;
 
   Map<String, dynamic> toJson() => {
-    'model': model,
     'detail': detail.name,
     'explanationLanguage': explanationLanguage,
     'customPrompt': customPrompt,
@@ -58,7 +64,6 @@ class AiLanguageConfig {
 
   factory AiLanguageConfig.fromJson(Map<String, dynamic> json) {
     return AiLanguageConfig(
-      model: json['model'] as String? ?? AiSettingsService.defaultModel,
       detail: ExplanationDetail.values.firstWhere(
         (e) => e.name == json['detail'],
         orElse: () => ExplanationDetail.balanced,
@@ -72,7 +77,6 @@ class AiLanguageConfig {
   }
 
   AiLanguageConfig copyWith({
-    String? model,
     ExplanationDetail? detail,
     String? explanationLanguage,
     String? customPrompt,
@@ -80,7 +84,6 @@ class AiLanguageConfig {
     String? vocabularyLevel,
   }) {
     return AiLanguageConfig(
-      model: model ?? this.model,
       detail: detail ?? this.detail,
       explanationLanguage: explanationLanguage ?? this.explanationLanguage,
       customPrompt: customPrompt ?? this.customPrompt,
@@ -95,6 +98,8 @@ class AiSettingsService extends ChangeNotifier {
   // Global keys.
   static const String _keyBaseUrl = 'ai_base_url';
   static const String _keyApiKey = 'ai_api_key';
+  static const String _keyModel = 'ai_model_global';
+  static const String _keyProvider = 'ai_provider';
   static const String _keyConfigMap = 'ai_config_map';
   static const String _keyImageSearchEngine = 'ai_image_search_engine';
 
@@ -104,6 +109,7 @@ class AiSettingsService extends ChangeNotifier {
 
   static const String defaultBaseUrl = 'https://api.openai.com/v1';
   static const String defaultModel = 'gpt-4o-mini';
+  static const AiProviderKind defaultProvider = AiProviderKind.openAiCompatible;
   static const String defaultLanguage = 'en_US';
   static const String defaultEnglishVocabularyLevel = 'cet6';
 
@@ -118,6 +124,8 @@ class AiSettingsService extends ChangeNotifier {
   // Global settings.
   String _baseUrl = defaultBaseUrl;
   String _apiKey = '';
+  String _model = defaultModel;
+  AiProviderKind _provider = defaultProvider;
   ImageSearchEngine _imageSearchEngine = ImageSearchEngine.bing;
 
   /// Per-language AI config: languageCode -> AiLanguageConfig.
@@ -125,6 +133,8 @@ class AiSettingsService extends ChangeNotifier {
 
   String get baseUrl => _baseUrl;
   String get apiKey => _apiKey;
+  String get model => _model;
+  AiProviderKind get provider => _provider;
   bool get isConfigured => _apiKey.isNotEmpty;
   ImageSearchEngine get imageSearchEngine => _imageSearchEngine;
   Map<String, AiLanguageConfig> get configMap => Map.unmodifiable(_configMap);
@@ -270,6 +280,14 @@ class AiSettingsService extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     _baseUrl = prefs.getString(_keyBaseUrl) ?? defaultBaseUrl;
     _apiKey = prefs.getString(_keyApiKey) ?? '';
+    _model = prefs.getString(_keyModel) ?? defaultModel;
+    final providerName = prefs.getString(_keyProvider);
+    if (providerName != null) {
+      _provider = AiProviderKind.values.firstWhere(
+        (p) => p.name == providerName,
+        orElse: () => defaultProvider,
+      );
+    }
     final engineName = prefs.getString(_keyImageSearchEngine);
     if (engineName != null) {
       _imageSearchEngine = ImageSearchEngine.values.firstWhere(
@@ -280,7 +298,11 @@ class AiSettingsService extends ChangeNotifier {
 
     final configMapJson = prefs.getString(_keyConfigMap);
     if (configMapJson != null) {
-      _loadConfigMap(configMapJson);
+      final liftedModel = _loadConfigMap(configMapJson);
+      if (prefs.getString(_keyModel) == null && liftedModel != null) {
+        _model = liftedModel;
+        await prefs.setString(_keyModel, liftedModel);
+      }
     } else {
       await _migrateLegacySettings(prefs);
     }
@@ -288,32 +310,45 @@ class AiSettingsService extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _loadConfigMap(String json) {
+  /// Returns the first non-default `model` value found in legacy per-language
+  /// JSON entries, or null. Used to lift the old per-language model into the
+  /// new global model setting.
+  String? _loadConfigMap(String json) {
+    String? liftedModel;
     try {
       final map = jsonDecode(json) as Map<String, dynamic>;
       _configMap.clear();
       for (final entry in map.entries) {
         final normalizedKey = normalizeLanguageCode(entry.key);
-        _configMap[normalizedKey] = AiLanguageConfig.fromJson(
-          entry.value as Map<String, dynamic>,
-        );
+        final raw = entry.value as Map<String, dynamic>;
+        final legacyModel = raw['model'] as String?;
+        if (liftedModel == null &&
+            legacyModel != null &&
+            legacyModel.isNotEmpty) {
+          liftedModel = legacyModel;
+        }
+        _configMap[normalizedKey] = AiLanguageConfig.fromJson(raw);
       }
     } catch (e) {
       debugPrint('[AiSettingsService] Error loading config map: $e');
     }
+    return liftedModel;
   }
 
   Future<void> _migrateLegacySettings(SharedPreferences prefs) async {
     final legacyModel = prefs.getString(_keyLegacyModel);
     final legacyPrompt = prefs.getString(_keyLegacyPrompt);
 
-    if (legacyModel != null || legacyPrompt != null) {
+    if (legacyModel != null) {
+      _model = legacyModel;
+      await prefs.setString(_keyModel, legacyModel);
+      await prefs.remove(_keyLegacyModel);
+    }
+    if (legacyPrompt != null) {
       _configMap[defaultLanguage] = AiLanguageConfig(
-        model: legacyModel ?? defaultModel,
-        customPrompt: legacyPrompt ?? '',
+        customPrompt: legacyPrompt,
       );
       await _saveConfigMap(prefs);
-      await prefs.remove(_keyLegacyModel);
       await prefs.remove(_keyLegacyPrompt);
     }
   }
@@ -334,15 +369,22 @@ class AiSettingsService extends ChangeNotifier {
   Future<void> updateGlobal({
     required String baseUrl,
     required String apiKey,
+    String? model,
+    AiProviderKind? provider,
   }) async {
     _baseUrl = baseUrl;
     _apiKey = apiKey;
+    if (model != null) _model = model.isEmpty ? defaultModel : model;
+    if (provider != null) _provider = provider;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyBaseUrl, baseUrl);
     await prefs.setString(_keyApiKey, apiKey);
+    if (model != null) await prefs.setString(_keyModel, _model);
+    if (provider != null) {
+      await prefs.setString(_keyProvider, provider.name);
+    }
     notifyListeners();
   }
-
 
   /// Set the image search engine.
   Future<void> setImageSearchEngine(ImageSearchEngine engine) async {
