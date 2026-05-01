@@ -54,6 +54,9 @@ class _FakeTtsService extends TtsService {
   Future<void> speakWithLanguage(String text, String languageCode) async {}
 
   @override
+  Future<void> warmUpDefaultEnglishAccent() async {}
+
+  @override
   Future<void> stop() async {}
 }
 

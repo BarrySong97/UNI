@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -214,11 +215,16 @@ class TtsService extends ChangeNotifier {
     String voiceKey, {
     int? speakerId,
   }) async {
+    final previous = _voiceMap[languageCode];
     final resolvedSpeakerId = speakerId ?? _defaultSpeakerIdForVoice(voiceKey);
     _voiceMap[languageCode] = VoiceSelection(
       voiceKey: voiceKey,
       speakerId: resolvedSpeakerId,
     );
+
+    if (previous != null && previous.voiceKey != voiceKey) {
+      _engine.invalidateEngine(previous.voiceKey);
+    }
 
     final prefs = await SharedPreferences.getInstance();
     await _saveVoiceMap(prefs);
@@ -227,7 +233,10 @@ class TtsService extends ChangeNotifier {
 
   /// Remove a language configuration.
   Future<void> removeLanguage(String languageCode) async {
-    _voiceMap.remove(languageCode);
+    final previous = _voiceMap.remove(languageCode);
+    if (previous != null) {
+      _engine.invalidateEngine(previous.voiceKey);
+    }
 
     final prefs = await SharedPreferences.getInstance();
     await _saveVoiceMap(prefs);
@@ -282,7 +291,28 @@ class TtsService extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_keySpeed, speed);
     await prefs.setDouble(_keyVolume, volume);
+    _engine.clearShortAudioCache();
     notifyListeners();
+  }
+
+  Future<void> warmUpLanguage(String languageCode) async {
+    final modelInfo = modelInfoForLanguage(languageCode);
+    if (modelInfo == null || !_modelManager.isReady(modelInfo)) {
+      return;
+    }
+    await _engine.warmUp(modelInfo);
+  }
+
+  Future<void> warmUpDefaultEnglishAccent() async {
+    await warmUpLanguage(_defaultEnglishAccent);
+  }
+
+  Future<void> releaseIdleResources() async {
+    await _engine.releaseIdleResources();
+  }
+
+  void handleMemoryPressure() {
+    unawaited(_engine.releaseIdleResources());
   }
 
   Future<void> _saveVoiceMap(SharedPreferences prefs) async {

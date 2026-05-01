@@ -177,6 +177,9 @@ class _FakeTtsService extends TtsService {
   }
 
   @override
+  Future<void> warmUpDefaultEnglishAccent() async {}
+
+  @override
   Future<void> stop() async {
     _isSpeaking = false;
     notifyListeners();

@@ -238,6 +238,9 @@ class _ReaderPageState extends State<ReaderPage>
       case AppLifecycleState.hidden:
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:
+        unawaited(
+          AppProvidersScope.of(context).ttsService.releaseIdleResources(),
+        );
         unawaited(_readingTimeTracker.onAppBackground());
         unawaited(_store.flushProgress());
         break;

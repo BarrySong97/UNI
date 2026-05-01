@@ -45,6 +45,9 @@ void main() {
               ...samples.length.toString().codeUnits,
             ]);
           },
+      waveBytesWriter:
+          ({required Float32List samples, required int sampleRate}) =>
+              Uint8List.fromList(<int>[1, 2, 3, samples.length]),
       synthesizerFactory: (_, _) => synthesizer,
     );
     await engine.initialize();
@@ -58,11 +61,19 @@ void main() {
   });
 
   test('speak uses a unique wav path for each utterance', () async {
-    await engine.speak(text: 'apple', model: model);
+    await engine.speak(
+      text:
+          'This long enough text uses the file playback path and deliberately exceeds eighty characters.',
+      model: model,
+    );
     final firstPath = audioPlayer.playedPaths.single;
 
     await engine.stop();
-    await engine.speak(text: 'apple', model: model);
+    await engine.speak(
+      text:
+          'This other long enough text uses the file playback path and deliberately exceeds eighty characters.',
+      model: model,
+    );
     final secondPath = audioPlayer.playedPaths.last;
 
     expect(secondPath, isNot(firstPath));
@@ -71,7 +82,11 @@ void main() {
   });
 
   test('stop deletes the active playback file', () async {
-    await engine.speak(text: 'apple', model: model);
+    await engine.speak(
+      text:
+          'This long enough text uses the file playback path and deliberately exceeds eighty characters.',
+      model: model,
+    );
     final activePath = audioPlayer.playedPaths.single;
 
     expect(File(activePath).existsSync(), isTrue);
@@ -85,7 +100,11 @@ void main() {
   });
 
   test('playback completion deletes the active playback file', () async {
-    await engine.speak(text: 'apple', model: model);
+    await engine.speak(
+      text:
+          'This long enough text uses the file playback path and deliberately exceeds eighty characters.',
+      model: model,
+    );
     final activePath = audioPlayer.playedPaths.single;
 
     expect(File(activePath).existsSync(), isTrue);
@@ -98,7 +117,11 @@ void main() {
   });
 
   test('dispose cleans up remaining engine owned files', () async {
-    await engine.speak(text: 'apple', model: model);
+    await engine.speak(
+      text:
+          'This long enough text uses the file playback path and deliberately exceeds eighty characters.',
+      model: model,
+    );
     final activePath = audioPlayer.playedPaths.single;
 
     expect(File(activePath).existsSync(), isTrue);
@@ -112,11 +135,19 @@ void main() {
   });
 
   test('repeated short utterances do not reuse filenames', () async {
-    await engine.speak(text: 'apple', model: model);
+    await engine.speak(
+      text:
+          'This long enough text uses the file playback path and deliberately exceeds eighty characters.',
+      model: model,
+    );
     final firstBasename = p.basename(audioPlayer.playedPaths.single);
 
     await engine.stop();
-    await engine.speak(text: 'book', model: model);
+    await engine.speak(
+      text:
+          'This other long enough text uses the file playback path and deliberately exceeds eighty characters.',
+      model: model,
+    );
     final secondBasename = p.basename(audioPlayer.playedPaths.last);
 
     expect(firstBasename, isNot(secondBasename));
@@ -131,7 +162,11 @@ void main() {
   });
 
   test('kokoro playback keeps generated audio unchanged', () async {
-    await engine.speak(text: 'attached', model: model);
+    await engine.speak(
+      text:
+          'This long enough text uses the file playback path and deliberately exceeds eighty characters.',
+      model: model,
+    );
 
     final writtenSamples = writtenSampleBatches.single;
     expect(writtenSamples.length, 3);
@@ -167,10 +202,56 @@ void main() {
     expect(synthesizer.generatedSpeeds.single, closeTo(1.0, 1e-6));
     expect(writtenSampleBatches.single.length, 3);
   });
+
+  test(
+    'short text uses in-memory playback and skips wav file writing',
+    () async {
+      await engine.speak(text: 'apple', model: model);
+
+      expect(audioPlayer.playedBytes.single, <int>[1, 2, 3, 3]);
+      expect(audioPlayer.playedPaths, isEmpty);
+      expect(writtenSampleBatches, isEmpty);
+      expect(synthesizer.generatedTexts.single, 'apple');
+    },
+  );
+
+  test('short text cache hit skips synthesis', () async {
+    await engine.speak(text: 'Apple', model: model, speed: 1.0, volume: 1.0);
+    await engine.stop();
+    await engine.speak(text: ' apple ', model: model, speed: 1.0, volume: 1.0);
+
+    expect(audioPlayer.playedBytes.length, 2);
+    expect(synthesizer.generatedTexts, <String>['Apple']);
+  });
+
+  test('short text cache separates speed', () async {
+    await engine.speak(text: 'apple', model: model, speed: 1.0, volume: 1.0);
+    await engine.stop();
+    await engine.speak(text: 'apple', model: model, speed: 1.2, volume: 1.0);
+
+    expect(synthesizer.generatedSpeeds, <double>[1.0, 1.2]);
+  });
+
+  test('releaseIdleResources frees engines and clears short cache', () async {
+    await engine.speak(text: 'apple', model: model);
+    await engine.releaseIdleResources();
+    await engine.speak(text: 'apple', model: model);
+
+    expect(synthesizer.freeCallCount, 1);
+    expect(synthesizer.generatedTexts, <String>['apple', 'apple']);
+  });
+
+  test('default sherpa config uses four threads', () {
+    final config = TtsEngine.buildSherpaConfig(model, FakeTtsModelManager());
+
+    expect(config.model.numThreads, TtsEngine.defaultNumThreads);
+    expect(config.model.numThreads, 4);
+  });
 }
 
 class FakeTtsAudioPlayer implements TtsAudioPlayer {
   final List<String> playedPaths = <String>[];
+  final List<Uint8List> playedBytes = <Uint8List>[];
   VoidCallback? _onComplete;
   int stopCallCount = 0;
   bool disposed = false;
@@ -178,6 +259,11 @@ class FakeTtsAudioPlayer implements TtsAudioPlayer {
   @override
   Future<void> playFile(String path, {required double volume}) async {
     playedPaths.add(path);
+  }
+
+  @override
+  Future<void> playBytes(Uint8List bytes, {required double volume}) async {
+    playedBytes.add(bytes);
   }
 
   @override
@@ -239,4 +325,13 @@ class FakeTtsModelManager extends TtsModelManager {
 
   @override
   String getDataDir(TtsModelInfo model) => '/tmp/espeak-ng-data';
+
+  @override
+  String? getVoicesPath(TtsModelInfo model) => '/tmp/voices.bin';
+
+  @override
+  List<String> getLexiconPaths(TtsModelInfo model) => const <String>[
+    '/tmp/lexicon-us-en.txt',
+    '/tmp/lexicon-zh.txt',
+  ];
 }

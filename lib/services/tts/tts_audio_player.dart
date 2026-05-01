@@ -6,6 +6,8 @@ import 'package:flutter/foundation.dart';
 abstract class TtsAudioPlayer {
   Future<void> playFile(String path, {required double volume});
 
+  Future<void> playBytes(Uint8List bytes, {required double volume});
+
   Future<void> stop();
 
   void setOnComplete(VoidCallback callback);
@@ -29,6 +31,12 @@ class DefaultTtsAudioPlayer implements TtsAudioPlayer {
   Future<void> playFile(String path, {required double volume}) async {
     await _player.setVolume(volume);
     await _player.play(DeviceFileSource(path));
+  }
+
+  @override
+  Future<void> playBytes(Uint8List bytes, {required double volume}) async {
+    await _player.setVolume(volume);
+    await _player.play(BytesSource(bytes, mimeType: 'audio/wav'));
   }
 
   @override

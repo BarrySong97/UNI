@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../pages/onboarding/onboarding_flow.dart';
@@ -22,8 +24,39 @@ class ImmersedApp extends StatefulWidget {
   State<ImmersedApp> createState() => _ImmersedAppState();
 }
 
-class _ImmersedAppState extends State<ImmersedApp> {
+class _ImmersedAppState extends State<ImmersedApp> with WidgetsBindingObserver {
   late bool _showOnboarding = widget.showOnboarding;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.resumed:
+        break;
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.paused:
+      case AppLifecycleState.detached:
+        unawaited(widget.providers.ttsService.releaseIdleResources());
+        break;
+    }
+  }
+
+  @override
+  void didHaveMemoryPressure() {
+    widget.providers.ttsService.handleMemoryPressure();
+  }
 
   void _onOnboardingComplete() {
     setState(() => _showOnboarding = false);
