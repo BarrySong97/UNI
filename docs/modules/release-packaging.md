@@ -40,6 +40,7 @@ Define a stable Android release packaging strategy that reduces install size whi
 ## Interaction & Exceptions
 
 - Offline TTS and phonetics must remain available.
+- AI phonetics fallback is cache-backed and optional; release packaging must preserve the offline `malsami` assets because the app still resolves phonetics locally before offering any AI fetch path.
 - If future requirements include 32-bit devices, `armeabi-v7a` support must be re-enabled explicitly.
 - If R8/proguard removes required classes from a plugin, add targeted keep-rules in `android/app/proguard-rules.pro`.
 

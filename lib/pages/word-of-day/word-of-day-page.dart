@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../../app/providers/app-providers.dart';
 import '../../entities/explain-history-entity.dart';
+import 'widgets/word_pronunciation_row.dart';
 import '../../services/db/app-database.dart';
 import '../../shared/constants/common-design-tokens.dart';
 import '../../shared/constants/shelf-design-tokens.dart';
+import '../../shared/utils/pronunciation_selection_text_utils.dart';
+import '../../shared/widgets/english_pronunciation_selection_area.dart';
 
 class WordsPage extends StatefulWidget {
   const WordsPage({this.database, super.key});
@@ -131,15 +134,13 @@ class _WordsPageState extends State<WordsPage> {
                     : ListView.separated(
                         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
                         itemCount: filteredItems.length,
-                        separatorBuilder: (_, __) =>
-                            const SizedBox(height: 12),
+                        separatorBuilder: (_, __) => const SizedBox(height: 12),
                         itemBuilder: (context, index) => _WordsHistoryCard(
                           item: filteredItems[index],
                           onTap: () => Navigator.of(context).push(
                             MaterialPageRoute<void>(
-                              builder: (_) => WordDetailPage(
-                                item: filteredItems[index],
-                              ),
+                              builder: (_) =>
+                                  WordDetailPage(item: filteredItems[index]),
                             ),
                           ),
                         ),
@@ -162,7 +163,102 @@ class WordDetailPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final structured = item.structuredData;
     final detailExplain = structured?.detailExplain ?? const <String>[];
+    final partOfSpeech = isPronunciationSingleWordSelection(item.selectedText)
+        ? structured?.partOfSpeech.trim() ?? ''
+        : '';
     final contextSentence = item.contextSentence.trim();
+    final providers = AppProvidersScope.maybeOf(context);
+    final longFormContent = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        if (contextSentence.isNotEmpty) ...[
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: CommonDesignTokens.pageBackground,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text.rich(
+              TextSpan(
+                style: const TextStyle(
+                  fontSize: 14,
+                  height: 1.55,
+                  fontStyle: FontStyle.italic,
+                  color: CommonDesignTokens.textSecondary,
+                ),
+                children: _buildContextSpans(
+                  contextSentence,
+                  item.selectedText.trim(),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+        ],
+        Text(
+          'MEANING',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: ShelfDesignTokens.statsLabelColor,
+            letterSpacing: 0.4,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          item.previewMeaning,
+          style: const TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w500,
+            height: 1.55,
+            color: CommonDesignTokens.textPrimary,
+          ),
+        ),
+        if (detailExplain.isNotEmpty) ...[
+          const SizedBox(height: 24),
+          Text(
+            'DETAILS & USAGE',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: ShelfDesignTokens.statsLabelColor,
+              letterSpacing: 0.4,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...detailExplain.map(
+            (detail) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  const Padding(
+                    padding: EdgeInsets.only(top: 7),
+                    child: Icon(
+                      Icons.circle,
+                      size: 6,
+                      color: CommonDesignTokens.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      detail,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        height: 1.5,
+                        color: CommonDesignTokens.textPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
 
     return Scaffold(
       backgroundColor: CommonDesignTokens.pageBackground,
@@ -226,96 +322,42 @@ class WordDetailPage extends StatelessWidget {
                   color: CommonDesignTokens.textPrimary,
                 ),
               ),
-              // Context sentence
-              if (contextSentence.isNotEmpty) ...[
-                const SizedBox(height: 14),
+              if (partOfSpeech.isNotEmpty) ...[
+                const SizedBox(height: 10),
                 Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(14),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
                   decoration: BoxDecoration(
                     color: CommonDesignTokens.pageBackground,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(999),
                   ),
-                  child: RichText(
-                    text: TextSpan(
-                      style: const TextStyle(
-                        fontSize: 14,
-                        height: 1.55,
-                        fontStyle: FontStyle.italic,
-                        color: CommonDesignTokens.textSecondary,
-                      ),
-                      children: _buildContextSpans(
-                        contextSentence,
-                        item.selectedText.trim(),
-                      ),
+                  child: Text(
+                    partOfSpeech,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: CommonDesignTokens.textSecondary,
                     ),
                   ),
                 ),
               ],
-              // Meaning
-              const SizedBox(height: 24),
-              Text(
-                'MEANING',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: ShelfDesignTokens.statsLabelColor,
-                  letterSpacing: 0.4,
+              if (providers != null)
+                WordPronunciationRow(
+                  selectedText: item.selectedText,
+                  phoneticsService: providers.phoneticsService,
+                  ttsService: providers.ttsService,
+                  padding: const EdgeInsets.only(top: 12, bottom: 14),
                 ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                item.previewMeaning,
-                style: const TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w500,
-                  height: 1.55,
-                  color: CommonDesignTokens.textPrimary,
-                ),
-              ),
-              // Details
-              if (detailExplain.isNotEmpty) ...[
-                const SizedBox(height: 24),
-                Text(
-                  'DETAILS & USAGE',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: ShelfDesignTokens.statsLabelColor,
-                    letterSpacing: 0.4,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                ...detailExplain.map(
-                  (detail) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        const Padding(
-                          padding: EdgeInsets.only(top: 7),
-                          child: Icon(
-                            Icons.circle,
-                            size: 6,
-                            color: CommonDesignTokens.textSecondary,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            detail,
-                            style: const TextStyle(
-                              fontSize: 15,
-                              height: 1.5,
-                              color: CommonDesignTokens.textPrimary,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+              if (providers != null)
+                EnglishPronunciationSelectionArea(
+                  phoneticsService: providers.phoneticsService,
+                  ttsService: providers.ttsService,
+                  child: longFormContent,
+                )
+              else
+                longFormContent,
             ],
           ),
         ),
@@ -534,7 +576,6 @@ class _WordsHistoryCard extends StatelessWidget {
     ];
   }
 }
-
 
 String _formatDate(DateTime value) {
   final year = value.year.toString().padLeft(4, '0');

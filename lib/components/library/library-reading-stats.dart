@@ -141,13 +141,17 @@ class LibraryReadingStats extends StatelessWidget {
         children: <Widget>[
           Row(
             children: <Widget>[
-              const Text(
-                'BOOKS READ',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: ShelfDesignTokens.statsBooksReadText,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.3,
+              const Expanded(
+                child: Text(
+                  'BOOKS READ',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: ShelfDesignTokens.statsBooksReadText,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.3,
+                  ),
                 ),
               ),
               const Spacer(),

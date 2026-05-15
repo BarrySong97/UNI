@@ -21,6 +21,7 @@ import '../../services/reader/annotation/selection_to_annotation_mapper.dart';
 import '../../services/reader/data/chapter_data_source.dart';
 import '../../services/reader/models/page_layout.dart';
 import '../../services/reader/models/reader_preferences.dart';
+import '../../services/reader/reader_navigation_target.dart';
 import '../../services/reader/reading_time_tracker.dart';
 import '../../services/reader/selection/cross_page_selection.dart';
 import '../../services/reader/selection/page_hit_test.dart';
@@ -29,6 +30,7 @@ import '../../shared/constants/reader-constants.dart';
 import '../../shared/layout/responsive_layout.dart';
 import 'quote_card/models/reader_quote_card_payload.dart';
 import 'quote_card/reader_quote_card_page.dart';
+import 'reader_modal_interaction_guard.dart';
 import '../../stores/annotation/annotation-store.dart';
 import '../../stores/reader/reader_store.dart';
 import '../../stores/reader/reader_store_manager.dart';
@@ -38,6 +40,7 @@ import 'widgets/reader_annotation_note_composer.dart';
 import 'widgets/reader_annotation_sheet.dart';
 import 'widgets/reader_controls_overlay.dart';
 import 'widgets/reader_explain_sheet.dart';
+import 'widgets/reader_focused_annotation_sheet.dart';
 import 'widgets/reader_mark_style_editor.dart';
 import 'widgets/reader_tooltip_actions_bar.dart';
 import 'widgets/reader_phonetics_sheet.dart';
@@ -52,11 +55,13 @@ class ReaderPage extends StatefulWidget {
     required this.book,
     required this.dataSource,
     required this.storeManager,
+    this.navigationTarget,
   });
 
   final BookEntity book;
   final ChapterDataSource dataSource;
   final ReaderStoreManager storeManager;
+  final ReaderNavigationTarget? navigationTarget;
 
   @override
   State<ReaderPage> createState() => _ReaderPageState();
@@ -68,6 +73,7 @@ class _ReaderPageState extends State<ReaderPage>
   late final AppDatabase _database;
   late final AnnotationStore _annotationStore;
   late final ReadingTimeTracker _readingTimeTracker;
+  late final ReaderModalInteractionGuard _modalInteractionGuard;
   final SelectionToAnnotationMapper _annotationMapper =
       const SelectionToAnnotationMapper();
   final ReaderAnnotationResolver _annotationResolver =
@@ -75,6 +81,7 @@ class _ReaderPageState extends State<ReaderPage>
   StreamSubscription<dynamic>? _androidKeyEventSub;
   final FocusNode _pageTurnFocusNode = FocusNode();
   bool _didInitDependencies = false;
+  bool _didApplyNavigationTarget = false;
 
   // -- Page swipe animation state --
   late final AnimationController _pageAnimController;
@@ -144,6 +151,8 @@ class _ReaderPageState extends State<ReaderPage>
     super.initState();
     _store = widget.storeManager.getStore(widget.book.id);
     _store.addListener(_onStoreChanged);
+    _modalInteractionGuard = ReaderModalInteractionGuard()
+      ..addListener(_onModalInteractionGuardChanged);
     WidgetsBinding.instance.addObserver(this);
     _initPageTurnListeners();
 
@@ -176,6 +185,7 @@ class _ReaderPageState extends State<ReaderPage>
     if (!mounted) return;
 
     final mq = MediaQuery.of(context);
+    final viewPadding = mq.viewPadding;
     _readingTimeTracker.onAppForeground();
     _readingTimeTracker.onInteraction();
     _pageTurnFocusNode.requestFocus();
@@ -187,16 +197,16 @@ class _ReaderPageState extends State<ReaderPage>
 
     // Record initial viewport so build() won't trigger a spurious update.
     _lastViewportSize = viewportSize;
-    _lastSafeAreaTop = mq.padding.top;
-    _lastSafeAreaBottom = mq.padding.bottom;
+    _lastSafeAreaTop = viewPadding.top;
+    _lastSafeAreaBottom = viewPadding.bottom;
     _lastIsDualPage = isDual;
 
     await _store.openBook(
       book: widget.book,
       dataSource: widget.dataSource,
       viewportSize: viewportSize,
-      safeAreaTop: mq.padding.top,
-      safeAreaBottom: mq.padding.bottom,
+      safeAreaTop: viewPadding.top,
+      safeAreaBottom: viewPadding.bottom,
       devicePixelRatio: mq.devicePixelRatio,
       isDualPage: isDual,
     );
@@ -206,7 +216,9 @@ class _ReaderPageState extends State<ReaderPage>
     setState(() {
       _annotationPaintBucketsByPageKey =
           _buildAnnotationPaintBucketsByPageKey();
+      _annotationTapTargetsByPageKey = _buildAnnotationTapTargetsByPageKey();
     });
+    await _applyInitialNavigationTarget();
   }
 
   @override
@@ -226,6 +238,9 @@ class _ReaderPageState extends State<ReaderPage>
       case AppLifecycleState.hidden:
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:
+        unawaited(
+          AppProvidersScope.of(context).ttsService.releaseIdleResources(),
+        );
         unawaited(_readingTimeTracker.onAppBackground());
         unawaited(_store.flushProgress());
         break;
@@ -290,12 +305,6 @@ class _ReaderPageState extends State<ReaderPage>
 
   void _openSelectionEditEditor(AnnotationEntity annotation) {
     _markEditorMode = _MarkEditorMode.editSelection;
-    _editingAnnotationId = annotation.id;
-    _setMarkEditorAppearance(color: annotation.color, style: annotation.style);
-  }
-
-  void _openFocusedMarkEditor(AnnotationEntity annotation) {
-    _markEditorMode = _MarkEditorMode.editFocused;
     _editingAnnotationId = annotation.id;
     _setMarkEditorAppearance(color: annotation.color, style: annotation.style);
   }
@@ -399,10 +408,13 @@ class _ReaderPageState extends State<ReaderPage>
     if (quoteText.trim().isEmpty) {
       return;
     }
-    final noteText = await ReaderAnnotationNoteComposer.show(
-      context: context,
-      quoteText: quoteText,
-      isTablet: _store.isDualPage,
+    final noteText = await _modalInteractionGuard.runWhileBlocked(
+      () => ReaderSelectionNoteSheet.show(
+        context: context,
+        quoteText: quoteText,
+        isTablet: _store.isDualPage,
+        selectionOnRightPage: _selectionOnRightPage,
+      ),
     );
     if (noteText == null || noteText.trim().isEmpty) {
       return;
@@ -417,10 +429,12 @@ class _ReaderPageState extends State<ReaderPage>
   Future<void> _openNoteComposerForAnnotation(
     AnnotationEntity annotation,
   ) async {
-    final noteText = await ReaderAnnotationNoteComposer.show(
-      context: context,
-      quoteText: annotation.quoteText,
-      isTablet: _store.isDualPage,
+    final noteText = await _modalInteractionGuard.runWhileBlocked(
+      () => ReaderAnnotationNoteComposer.show(
+        context: context,
+        quoteText: annotation.quoteText,
+        isTablet: _store.isDualPage,
+      ),
     );
     if (noteText == null || noteText.trim().isEmpty) {
       return;
@@ -505,27 +519,73 @@ class _ReaderPageState extends State<ReaderPage>
 
   List<ReaderAnnotationCardItem> _buildAnnotationCardItems() {
     return _annotationStore.state.items
-        .map((annotation) {
-          final notes =
-              _annotationStore.state.notesByAnnotationId[annotation.id] ??
-              const [];
-          final anchor = AnnotationAnchorV1.tryParse(annotation.anchorJson);
-          final chapterIdx = anchor?.jumpTarget.chapterIndex ?? -1;
-          final chapterTitle = anchor == null
-              ? 'Unknown chapter'
-              : _store.chapterTitleAt(chapterIdx);
-          final latestNote = notes.isEmpty ? null : notes.last.text;
-          return ReaderAnnotationCardItem(
-            annotation: annotation,
-            notes: notes,
-            chapterTitle: chapterTitle,
-            chapterIndex: chapterIdx,
-            latestNoteText: latestNote,
-            noteCount: notes.length,
-            activityTime: annotation.updatedAt,
-          );
-        })
+        .map((annotation) => _buildAnnotationCardItem(annotation.id))
+        .whereType<ReaderAnnotationCardItem>()
         .toList(growable: false);
+  }
+
+  ReaderAnnotationCardItem? _buildAnnotationCardItem(String annotationId) {
+    AnnotationEntity? annotation;
+    try {
+      annotation = _annotationStore.state.items.firstWhere(
+        (item) => item.id == annotationId,
+      );
+    } catch (_) {
+      return null;
+    }
+
+    final notes =
+        _annotationStore.state.notesByAnnotationId[annotation.id] ?? const [];
+    final anchor = AnnotationAnchorV1.tryParse(annotation.anchorJson);
+    final chapterIdx = anchor?.jumpTarget.chapterIndex ?? -1;
+    final chapterTitle = anchor == null
+        ? 'Unknown chapter'
+        : _store.chapterTitleAt(chapterIdx);
+    final latestNote = notes.isEmpty ? null : notes.last.text;
+    return ReaderAnnotationCardItem(
+      annotation: annotation,
+      notes: notes,
+      chapterTitle: chapterTitle,
+      chapterIndex: chapterIdx,
+      latestNoteText: latestNote,
+      noteCount: notes.length,
+      activityTime: annotation.updatedAt,
+    );
+  }
+
+  _AnnotationTapTarget? _annotationTapTargetAt(
+    PageLayout page,
+    Offset contentOffset,
+  ) {
+    final matches = _annotationTapTargetsForPage(
+      page,
+    ).where((target) => target.contains(contentOffset)).toList(growable: false);
+    if (matches.isEmpty) {
+      return null;
+    }
+    return matches.first;
+  }
+
+  String _formatAnnotationTimestamp(DateTime value) {
+    final now = DateTime.now();
+    final diff = now.difference(value);
+    if (diff.inMinutes < 60) {
+      final minutes = diff.inMinutes <= 0 ? 1 : diff.inMinutes;
+      return '$minutes min ago';
+    }
+    if (diff.inHours < 24) {
+      final hours = diff.inHours;
+      return hours == 1 ? '1 hour ago' : '$hours hours ago';
+    }
+    if (diff.inDays < 7) {
+      final days = diff.inDays;
+      return days == 1 ? '1 day ago' : '$days days ago';
+    }
+    final month = value.month.toString().padLeft(2, '0');
+    final day = value.day.toString().padLeft(2, '0');
+    final hour = value.hour.toString().padLeft(2, '0');
+    final minute = value.minute.toString().padLeft(2, '0');
+    return '${value.year}-$month-$day $hour:$minute';
   }
 
   void _recordInteraction() {
@@ -554,6 +614,13 @@ class _ReaderPageState extends State<ReaderPage>
 
     _annotationPaintBucketsByPageKey = _buildAnnotationPaintBucketsByPageKey();
     _annotationTapTargetsByPageKey = _buildAnnotationTapTargetsByPageKey();
+    setState(() {});
+  }
+
+  void _onModalInteractionGuardChanged() {
+    if (!mounted) {
+      return;
+    }
     setState(() {});
   }
 
@@ -593,12 +660,100 @@ class _ReaderPageState extends State<ReaderPage>
     });
   }
 
+  Future<void> _applyInitialNavigationTarget() async {
+    final target = widget.navigationTarget;
+    if (_didApplyNavigationTarget || target == null) {
+      return;
+    }
+    _didApplyNavigationTarget = true;
+
+    AnnotationEntity? targetAnnotation;
+    for (final annotation in _annotationStore.state.items) {
+      if (annotation.id == target.annotationId) {
+        targetAnnotation = annotation;
+        break;
+      }
+    }
+    if (targetAnnotation == null) {
+      return;
+    }
+
+    final anchor = AnnotationAnchorV1.tryParse(targetAnnotation.anchorJson);
+    if (anchor == null) {
+      return;
+    }
+
+    final pagination = await _store.ensureChapterPagination(
+      anchor.jumpTarget.chapterIndex,
+    );
+    if (!mounted || pagination == null) {
+      return;
+    }
+
+    final resolved = _annotationResolver.resolveChapterAnnotations(
+      pagination: pagination,
+      annotations: <AnnotationEntity>[targetAnnotation],
+    );
+    final targetPage = resolved.isNotEmpty
+        ? resolved.first.pageIndexInChapter
+        : 0;
+
+    await _store.goToLocation(
+      chapterIndex: pagination.chapterIndex,
+      pageIndexInChapter: targetPage,
+      persistProgress: false,
+    );
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _annotationPaintBucketsByPageKey =
+          _buildAnnotationPaintBucketsByPageKey();
+      _annotationTapTargetsByPageKey = _buildAnnotationTapTargetsByPageKey();
+      final focused = _findVisibleTapTarget(target.annotationId);
+      if (focused == null) {
+        _clearFocusedAnnotationOverlay();
+        return;
+      }
+      _focusAnnotationOverlay(
+        focused.tapTarget,
+        isRightPage: focused.isRightPage,
+      );
+    });
+  }
+
+  ({_AnnotationTapTarget tapTarget, bool isRightPage})? _findVisibleTapTarget(
+    String annotationId,
+  ) {
+    final currentPage = _store.currentPageLayout;
+    final currentTargets = _annotationTapTargetsForPage(currentPage);
+    for (final tapTarget in currentTargets) {
+      if (tapTarget.annotations.any((item) => item.id == annotationId)) {
+        return (tapTarget: tapTarget, isRightPage: false);
+      }
+    }
+
+    final secondPage = _store.secondPageLayout;
+    final secondTargets = _annotationTapTargetsForPage(secondPage);
+    for (final tapTarget in secondTargets) {
+      if (tapTarget.annotations.any((item) => item.id == annotationId)) {
+        return (tapTarget: tapTarget, isRightPage: true);
+      }
+    }
+
+    return null;
+  }
+
   @override
   void dispose() {
     _pageAnimController.dispose();
     _androidKeyEventSub?.cancel();
     _pageTurnFocusNode.dispose();
     _store.removeListener(_onStoreChanged);
+    _modalInteractionGuard
+      ..removeListener(_onModalInteractionGuardChanged)
+      ..dispose();
     WidgetsBinding.instance.removeObserver(this);
     if (_didInitDependencies) {
       _annotationStore.removeListener(_onAnnotationStoreChanged);
@@ -739,6 +894,33 @@ class _ReaderPageState extends State<ReaderPage>
     _hideMarkEditor();
   }
 
+  void _focusAnnotationOverlay(
+    _AnnotationTapTarget tappedAnnotation, {
+    required bool isRightPage,
+  }) {
+    final focusedAnnotation = tappedAnnotation.annotations.length == 1
+        ? tappedAnnotation.annotations.first
+        : null;
+    _focusedAnnotationOverlay = _FocusedAnnotationOverlay(
+      chapterIndex: tappedAnnotation.chapterIndex,
+      pageIndexInChapter: tappedAnnotation.pageIndexInChapter,
+      isRightPage: isRightPage,
+      annotations: List<AnnotationEntity>.unmodifiable(
+        tappedAnnotation.annotations,
+      ),
+      rects: List<Rect>.unmodifiable(tappedAnnotation.rects),
+    );
+    if (focusedAnnotation == null) {
+      _markEditorMode = _MarkEditorMode.hidden;
+      _editingAnnotationId = null;
+      return;
+    }
+    _markEditorMode = _MarkEditorMode.editFocused;
+    _editingAnnotationId = focusedAnnotation.id;
+    _markEditorColor = focusedAnnotation.color;
+    _markEditorStyle = focusedAnnotation.style;
+  }
+
   void _updateSelectionRects() {
     if (_crossSelection == null) {
       _selectionRects = const [];
@@ -776,6 +958,19 @@ class _ReaderPageState extends State<ReaderPage>
       details.globalPosition,
       isRightPage: isRight,
     );
+    final tappedAnnotation = _annotationTapTargetAt(page, contentOffset);
+    if (tappedAnnotation != null && tappedAnnotation.annotations.length == 1) {
+      final item = _buildAnnotationCardItem(
+        tappedAnnotation.annotations.first.id,
+      );
+      if (item != null) {
+        HapticFeedback.selectionClick();
+        unawaited(
+          _openFocusedAnnotationActionsSheet(item, isRightPage: isRight),
+        );
+      }
+      return;
+    }
     final hit = hitTestPage(page, contentOffset);
     if (hit == null) return;
 
@@ -1174,7 +1369,11 @@ class _ReaderPageState extends State<ReaderPage>
     return buffer.toString();
   }
 
-  Future<void> _openQuoteCard({required String selectedText}) async {
+  Future<void> _openQuoteCard({
+    required String selectedText,
+    String? chapterTitle,
+    String? pageLabel,
+  }) async {
     final trimmedText = selectedText.trim();
     if (trimmedText.isEmpty) {
       return;
@@ -1190,10 +1389,12 @@ class _ReaderPageState extends State<ReaderPage>
         readerFontFamily: _store.preferences.fontFamily,
         readerThemeName: _store.preferences.theme.name,
         coverDataUrl: widget.book.coverUrl,
-        chapterTitle: _store.currentChapterTitle,
-        pageLabel: _store.totalBookPages > 0
-            ? 'Page ${_store.currentBookPage}'
-            : 'Page ${_store.currentPageIndex + 1}',
+        chapterTitle: chapterTitle ?? _store.currentChapterTitle,
+        pageLabel:
+            pageLabel ??
+            (_store.totalBookPages > 0
+                ? 'Page ${_store.currentBookPage}'
+                : 'Page ${_store.currentPageIndex + 1}'),
         collectionLabel: null,
       ),
     );
@@ -1247,6 +1448,7 @@ class _ReaderPageState extends State<ReaderPage>
       languageConfig: languageConfig,
       bookTitle: widget.book.title,
       phoneticsService: providers.phoneticsService,
+      posService: providers.posService,
       ttsService: providers.ttsService,
       database: providers.database,
       bookId: widget.book.id,
@@ -1596,22 +1798,10 @@ class _ReaderPageState extends State<ReaderPage>
         : _toContentOffset(details.globalPosition, isRightPage: isRight);
 
     if (page != null && contentOffset != null) {
-      final tappedAnnotation = _annotationTapTargetsForPage(page)
-          .where((target) => target.contains(contentOffset))
-          .toList(growable: false);
-      if (tappedAnnotation.isNotEmpty) {
+      final tappedAnnotation = _annotationTapTargetAt(page, contentOffset);
+      if (tappedAnnotation != null) {
         setState(() {
-          _clearSelection();
-          _focusedAnnotationOverlay = _FocusedAnnotationOverlay(
-            chapterIndex: page.chapterIndex,
-            pageIndexInChapter: page.pageIndexInChapter,
-            isRightPage: isRight,
-            annotations: tappedAnnotation.first.annotations,
-            rects: tappedAnnotation.first.rects,
-          );
-          if (tappedAnnotation.first.annotations.length == 1) {
-            _openFocusedMarkEditor(tappedAnnotation.first.annotations.first);
-          }
+          _focusAnnotationOverlay(tappedAnnotation, isRightPage: isRight);
         });
         return;
       }
@@ -1834,20 +2024,68 @@ class _ReaderPageState extends State<ReaderPage>
 
   Future<void> _openAnnotationsPanel() async {
     _store.hideControls();
-    final selected = await ReaderAnnotationSheet.show(
-      context: context,
-      items: _buildAnnotationCardItems(),
-      isTablet: _store.isDualPage,
-      showOnLeft: _store.isDualPage,
+    final selected = await _modalInteractionGuard.runWhileBlocked(
+      () => ReaderAnnotationSheet.show(
+        context: context,
+        items: _buildAnnotationCardItems(),
+        onAddNote: _handleAnnotationSheetAddNote,
+        onShare: _shareAnnotationFromDetail,
+        onDelete: _deleteAnnotationFromDetail,
+        isTablet: _store.isDualPage,
+        showOnLeft: _store.isDualPage,
+      ),
     );
     if (selected == null || !mounted) {
       return;
     }
-    if (selected.type == ReaderAnnotationSheetActionType.addNote) {
-      await _openNoteComposerForAnnotation(selected.annotation);
-      return;
-    }
     await _jumpToAnnotationPreview(selected.annotation);
+  }
+
+  Future<ReaderAnnotationCardItem> _handleAnnotationSheetAddNote(
+    ReaderAnnotationCardItem item,
+    String noteText,
+  ) async {
+    await _handleAppendNote(item.annotation, noteText: noteText);
+    return _buildAnnotationCardItem(item.annotation.id) ?? item;
+  }
+
+  Future<void> _openFocusedAnnotationActionsSheet(
+    ReaderAnnotationCardItem item, {
+    required bool isRightPage,
+  }) async {
+    await _modalInteractionGuard.runWhileBlocked(
+      () => ReaderFocusedAnnotationSheet.show(
+        context: context,
+        item: item,
+        isTablet: _store.isDualPage,
+        showOnLeft: isRightPage,
+        formatTimestamp: _formatAnnotationTimestamp,
+        onAddNote: (noteText) async {
+          await _handleAppendNote(item.annotation, noteText: noteText);
+          return _buildAnnotationCardItem(item.annotation.id) ?? item;
+        },
+        onShare: () => _shareAnnotationFromDetail(item),
+        onDelete: () => _deleteAnnotationFromDetail(item),
+        onGoToLocation: () {
+          unawaited(_jumpToAnnotationPreview(item.annotation));
+        },
+      ),
+    );
+  }
+
+  Future<void> _shareAnnotationFromDetail(ReaderAnnotationCardItem item) async {
+    await _openQuoteCard(
+      selectedText: item.annotation.quoteText,
+      chapterTitle: item.chapterTitle,
+      pageLabel: null,
+    );
+  }
+
+  Future<bool> _deleteAnnotationFromDetail(
+    ReaderAnnotationCardItem item,
+  ) async {
+    await _handleRemoveMarks(<AnnotationEntity>[item.annotation]);
+    return true;
   }
 
   Future<void> _jumpToAnnotationPreview(AnnotationEntity annotation) async {
@@ -2034,6 +2272,7 @@ class _ReaderPageState extends State<ReaderPage>
   Widget build(BuildContext context) {
     final prefs = _store.preferences;
     final mq = MediaQuery.of(context);
+    final viewPadding = mq.viewPadding;
 
     // Detect viewport changes (split-screen, rotation) and trigger
     // re-pagination with block-anchor-based position preservation.
@@ -2043,19 +2282,19 @@ class _ReaderPageState extends State<ReaderPage>
         : mq.size;
     if (_lastViewportSize != null &&
         (viewportSize != _lastViewportSize ||
-            mq.padding.top != _lastSafeAreaTop ||
-            mq.padding.bottom != _lastSafeAreaBottom ||
+            viewPadding.top != _lastSafeAreaTop ||
+            viewPadding.bottom != _lastSafeAreaBottom ||
             isDual != _lastIsDualPage)) {
       _lastViewportSize = viewportSize;
-      _lastSafeAreaTop = mq.padding.top;
-      _lastSafeAreaBottom = mq.padding.bottom;
+      _lastSafeAreaTop = viewPadding.top;
+      _lastSafeAreaBottom = viewPadding.bottom;
       _lastIsDualPage = isDual;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         _store.updateViewport(
           viewportSize: viewportSize,
-          safeAreaTop: mq.padding.top,
-          safeAreaBottom: mq.padding.bottom,
+          safeAreaTop: viewPadding.top,
+          safeAreaBottom: viewPadding.bottom,
           isDualPage: isDual,
         );
       });
@@ -2067,12 +2306,12 @@ class _ReaderPageState extends State<ReaderPage>
             screenWidth: mq.size.width,
             horizontalPadding: prefs.pageHorizontalPaddingPx,
             verticalPadding: prefs.pageVerticalPaddingPx,
-            safeAreaTop: mq.padding.top,
+            safeAreaTop: viewPadding.top,
           )
         : SinglePageCoordinateHelper(
             horizontalPadding: prefs.pageHorizontalPaddingPx,
             verticalPadding: prefs.pageVerticalPaddingPx,
-            safeAreaTop: mq.padding.top,
+            safeAreaTop: viewPadding.top,
           );
 
     final hasActiveSwipeTransition = _isAnimating || _dragOffset != 0.0;
@@ -2089,6 +2328,7 @@ class _ReaderPageState extends State<ReaderPage>
             : SystemUiOverlayStyle.dark,
         child: Scaffold(
           backgroundColor: prefs.theme.backgroundColor,
+          resizeToAvoidBottomInset: false,
           body: Listener(
             behavior: HitTestBehavior.translucent,
             onPointerDown: (_) => _recordInteraction(),
@@ -2103,7 +2343,7 @@ class _ReaderPageState extends State<ReaderPage>
                 else
                   _buildReader(prefs),
                 if (_shouldShowPreviewReturnButton)
-                  _buildPreviewReturnButton(prefs, mq.padding.top),
+                  _buildPreviewReturnButton(prefs, viewPadding.top),
                 // Controls overlay — rendered above loading/content so it stays
                 // visible during chapter transitions triggered from the panel.
                 if (_store.showControls && _store.book != null)
@@ -2268,7 +2508,7 @@ class _ReaderPageState extends State<ReaderPage>
   }
 
   Widget _buildSinglePageReader(ReaderPreferences prefs, PageLayout page) {
-    final mediaPadding = MediaQuery.of(context).padding;
+    final mediaPadding = MediaQuery.of(context).viewPadding;
     final screenWidth = MediaQuery.of(context).size.width;
 
     // Use snapshotted adjacent pages to prevent mid-swipe content changes.
@@ -2329,31 +2569,34 @@ class _ReaderPageState extends State<ReaderPage>
 
         // Current page.
         Positioned.fill(
-          child: GestureDetector(
-            onTapUp: _onTapUp,
-            onHorizontalDragStart: _onDragStart,
-            onHorizontalDragUpdate: _onDragUpdate,
-            onHorizontalDragEnd: _onDragEnd,
-            onLongPressStart: _onLongPressStart,
-            onLongPressMoveUpdate: _onLongPressMoveUpdate,
-            onLongPressEnd: _onLongPressEnd,
-            child: Transform.translate(
-              offset: Offset(_dragOffset, 0),
-              child: RepaintBoundary(
-                child: CustomPaint(
-                  painter: ReaderCanvasPainter(
-                    page: displayPage,
-                    preferences: prefs,
-                    safeAreaTop: mediaPadding.top,
-                    safeAreaBottom: mediaPadding.bottom,
-                    annotationPaintBuckets: _annotationPaintBucketsForPage(
-                      displayPage,
+          child: IgnorePointer(
+            ignoring: _modalInteractionGuard.isBlocking,
+            child: GestureDetector(
+              onTapUp: _onTapUp,
+              onHorizontalDragStart: _onDragStart,
+              onHorizontalDragUpdate: _onDragUpdate,
+              onHorizontalDragEnd: _onDragEnd,
+              onLongPressStart: _onLongPressStart,
+              onLongPressMoveUpdate: _onLongPressMoveUpdate,
+              onLongPressEnd: _onLongPressEnd,
+              child: Transform.translate(
+                offset: Offset(_dragOffset, 0),
+                child: RepaintBoundary(
+                  child: CustomPaint(
+                    painter: ReaderCanvasPainter(
+                      page: displayPage,
+                      preferences: prefs,
+                      safeAreaTop: mediaPadding.top,
+                      safeAreaBottom: mediaPadding.bottom,
+                      annotationPaintBuckets: _annotationPaintBucketsForPage(
+                        displayPage,
+                      ),
+                      selectionRects: _selectionRects.isNotEmpty
+                          ? _selectionRects
+                          : null,
                     ),
-                    selectionRects: _selectionRects.isNotEmpty
-                        ? _selectionRects
-                        : null,
+                    size: Size.infinite,
                   ),
-                  size: Size.infinite,
                 ),
               ),
             ),
@@ -2417,7 +2660,7 @@ class _ReaderPageState extends State<ReaderPage>
   }
 
   Widget _buildDualPageReader(ReaderPreferences prefs, PageLayout leftPage) {
-    final mediaPadding = MediaQuery.of(context).padding;
+    final mediaPadding = MediaQuery.of(context).viewPadding;
     final screenWidth = MediaQuery.of(context).size.width;
     final rightPage = _store.secondPageLayout;
     final displayLeftPage = _dragOffset == 0.0
@@ -2536,24 +2779,27 @@ class _ReaderPageState extends State<ReaderPage>
 
         // Current spread (two pages side by side, or centered if image-only).
         Positioned.fill(
-          child: GestureDetector(
-            // Opaque so gestures are captured on the empty space flanking a
-            // centered image-only page (the Row only has a half-width child).
-            behavior: HitTestBehavior.opaque,
-            onTapUp: _onTapUp,
-            onHorizontalDragStart: _onDragStart,
-            onHorizontalDragUpdate: _onDragUpdate,
-            onHorizontalDragEnd: _onDragEnd,
-            onLongPressStart: _onLongPressStart,
-            onLongPressMoveUpdate: _onLongPressMoveUpdate,
-            onLongPressEnd: _onLongPressEnd,
-            child: Transform.translate(
-              offset: Offset(_dragOffset, 0),
-              child: buildSpread(
-                displayLeftPage,
-                displayRightPage,
-                leftSel: leftSelRects,
-                rightSel: rightSelRects,
+          child: IgnorePointer(
+            ignoring: _modalInteractionGuard.isBlocking,
+            child: GestureDetector(
+              // Opaque so gestures are captured on the empty space flanking a
+              // centered image-only page (the Row only has a half-width child).
+              behavior: HitTestBehavior.opaque,
+              onTapUp: _onTapUp,
+              onHorizontalDragStart: _onDragStart,
+              onHorizontalDragUpdate: _onDragUpdate,
+              onHorizontalDragEnd: _onDragEnd,
+              onLongPressStart: _onLongPressStart,
+              onLongPressMoveUpdate: _onLongPressMoveUpdate,
+              onLongPressEnd: _onLongPressEnd,
+              child: Transform.translate(
+                offset: Offset(_dragOffset, 0),
+                child: buildSpread(
+                  displayLeftPage,
+                  displayRightPage,
+                  leftSel: leftSelRects,
+                  rightSel: rightSelRects,
+                ),
               ),
             ),
           ),
@@ -2723,8 +2969,8 @@ class _ReaderPageState extends State<ReaderPage>
     return Positioned(
       left: isLeft ? 0 : null,
       right: isLeft ? null : 0,
-      top: mq.padding.top,
-      bottom: mq.padding.bottom,
+      top: mq.viewPadding.top,
+      bottom: mq.viewPadding.bottom,
       child: Container(width: 3, color: color.withValues(alpha: 0.5)),
     );
   }

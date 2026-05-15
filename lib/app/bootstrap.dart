@@ -16,7 +16,9 @@ import '../services/db/daos/chapters-dao.dart';
 import '../services/db/daos/highlights-dao.dart';
 import '../services/db/daos/progress-dao.dart';
 import '../services/ai/ai_settings_service.dart';
+import '../services/phonetics/ai_phonetics_service.dart';
 import '../services/phonetics/phonetics_service.dart';
+import '../services/pos/pos_service.dart';
 import '../services/tts/tts_service.dart';
 import '../services/library/book-profile-entry-service.dart';
 import '../services/parser/book-import-service.dart';
@@ -73,12 +75,22 @@ class AppBootstrap {
 
     final aiSettings = AiSettingsService();
     await aiSettings.initialize();
+    final aiPhoneticsService = AiPhoneticsService(settings: aiSettings);
 
     final ttsService = TtsService();
     await ttsService.initialize();
 
-    final phoneticsService = PhoneticsService();
+    final phoneticsService = PhoneticsService(
+      database: database,
+      aiPhoneticsService: aiPhoneticsService,
+      aiSettingsService: aiSettings,
+    );
     await phoneticsService.initialize();
+
+    final posService = PosService();
+    if (!kIsWeb) {
+      await posService.initialize();
+    }
 
     // Initialize Rust FFI via flutter_rust_bridge.
     await RustLib.init();
@@ -97,6 +109,7 @@ class AppBootstrap {
       aiSettingsService: aiSettings,
       ttsService: ttsService,
       phoneticsService: phoneticsService,
+      posService: posService,
       database: database,
     );
 

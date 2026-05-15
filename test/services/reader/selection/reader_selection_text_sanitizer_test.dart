@@ -18,10 +18,12 @@ void main() {
   });
 
   group('sanitizeReaderSelectionForReadAloud', () {
-    test('keeps sentence punctuation for real sentences', () {
+    test('strips boundary sentence punctuation for short selections', () {
+      // Boundary-only sentence terminators are treated as accidental
+      // over-selection, so normalized text is returned.
       expect(
         sanitizeReaderSelectionForReadAloud('  "I agree."  '),
-        '"I agree."',
+        'I agree',
       );
     });
 
@@ -41,21 +43,34 @@ void main() {
       );
     });
 
-    test('keeps multi-word sentence selections out of word mode', () {
+    test('treats multi-word selection with boundary period as phrase', () {
+      // Boundary-only sentence terminators are accidental over-selection.
       expect(
         isReaderWordOrPhraseSelection(
           rawSelectedText: 'I agree.',
           normalizedSelectedText: 'I agree',
         ),
-        isFalse,
+        isTrue,
       );
     });
 
-    test('keeps Chinese sentence selections out of word mode', () {
+    test('treats CJK selection with boundary period as phrase', () {
+      // Boundary-only CJK sentence terminators are accidental over-selection.
       expect(
         isReaderWordOrPhraseSelection(
-          rawSelectedText: '“这是一个句子。”',
+          rawSelectedText: '”这是一个句子。”',
           normalizedSelectedText: '这是一个句子',
+        ),
+        isTrue,
+      );
+    });
+
+    test('keeps multi-sentence selections out of word mode', () {
+      // Internal sentence terminators still trigger sentence mode.
+      expect(
+        isReaderWordOrPhraseSelection(
+          rawSelectedText: 'He said hello. She waved.',
+          normalizedSelectedText: 'He said hello. She waved',
         ),
         isFalse,
       );
@@ -69,6 +84,21 @@ void main() {
         ),
         isTrue,
       );
+    });
+  });
+
+  group('isReaderSingleWordSelection', () {
+    test('accepts a single normalized word', () {
+      expect(isReaderSingleWordSelection('clarity'), isTrue);
+      expect(isReaderSingleWordSelection('state-of-the-art'), isTrue);
+    });
+
+    test('rejects multi-word selections', () {
+      expect(isReaderSingleWordSelection('deep work'), isFalse);
+    });
+
+    test('rejects empty selections after sanitizing', () {
+      expect(isReaderSingleWordSelection('...'), isFalse);
     });
   });
 }

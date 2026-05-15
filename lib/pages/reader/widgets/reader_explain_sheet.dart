@@ -1,16 +1,20 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../entities/explain-history-entity.dart';
+import '../../../services/ai/explain_prompt_builder.dart';
 import '../../../services/ai/ai_settings_service.dart';
 import '../../../services/search/image_search_service.dart';
 import '../../../services/reader/selection/reader_selection_text_sanitizer.dart';
 import '../../../shared/constants/common-design-tokens.dart';
+import '../../../shared/widgets/pronunciation_selection_toolbar.dart';
 import '../../../services/ai/openai_llm_provider.dart';
 import '../../../services/db/app-database.dart';
 import '../../../services/phonetics/phonetics_service.dart';
+import '../../../services/pos/pos_service.dart';
 import '../../../services/tts/tts_service.dart';
 
 class ReaderExplainSheet extends StatefulWidget {
@@ -24,6 +28,7 @@ class ReaderExplainSheet extends StatefulWidget {
     required this.languageConfig,
     required this.bookTitle,
     required this.phoneticsService,
+    required this.posService,
     required this.ttsService,
     required this.database,
     required this.bookId,
@@ -44,6 +49,7 @@ class ReaderExplainSheet extends StatefulWidget {
   final AiLanguageConfig languageConfig;
   final String bookTitle;
   final PhoneticsService phoneticsService;
+  final PosService posService;
   final TtsService ttsService;
   final AppDatabase database;
   final String bookId;
@@ -60,6 +66,7 @@ class ReaderExplainSheet extends StatefulWidget {
     required AiLanguageConfig languageConfig,
     required String bookTitle,
     required PhoneticsService phoneticsService,
+    required PosService posService,
     required TtsService ttsService,
     required AppDatabase database,
     required String bookId,
@@ -77,6 +84,7 @@ class ReaderExplainSheet extends StatefulWidget {
       languageConfig: languageConfig,
       bookTitle: bookTitle,
       phoneticsService: phoneticsService,
+      posService: posService,
       ttsService: ttsService,
       database: database,
       bookId: bookId,
@@ -169,17 +177,33 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
   String? _error;
 
   late final bool _isWordOrPhrase;
+  late final bool _isSingleWord;
   late final String _containingSentence;
   late final bool _customPromptModeEnabled;
-  _StructuredExplainData? _structuredData;
+  ExplainStructuredData? _structuredData;
 
   // Phonetics state (word mode only).
   PhoneticsResult? _phonetics;
+  PhoneticsLookupOutcome? _phoneticsOutcome;
   String? _playingAccent;
+  bool _isPhoneticsAiLoading = false;
+
+  // Local POS lookup result (single-word mode only). Used to fill the
+  // partOfSpeech chip immediately while the AI response is still streaming.
+  PosResult? _localPos;
 
   // Image search state (word/phrase mode only).
   List<ImageSearchResult>? _imageSearchResults;
   bool _isImageSearching = false;
+
+  // Explain text inline selection state.
+  final Map<String, PhoneticsLookupOutcome> _inlineSelectionPhoneticsCache =
+      <String, PhoneticsLookupOutcome>{};
+  String _inlineSelectionRawText = '';
+  String _inlineSelectionText = '';
+  String? _inlineSelectionLookupKey;
+  bool _isInlineSelectionPhoneticsLoading = false;
+  bool _isInlineSelectionAiLoading = false;
 
   static final _sentenceEndPattern = RegExp(r'[.!?。！？\n]');
 
@@ -202,6 +226,8 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
       rawSelectedText: widget.rawSelectedText,
       normalizedSelectedText: selectedText,
     );
+    _isSingleWord =
+        _isWordOrPhrase && isReaderSingleWordSelection(selectedText);
 
     _containingSentence = _isWordOrPhrase
         ? _extractContainingSentence(widget.paragraphContext, selectedText)
@@ -213,53 +239,32 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
 
     final config = widget.languageConfig;
     _customPromptModeEnabled = config.customPromptModeEnabled;
-    final detailLine = AiSettingsService.detailInstruction(config.detail);
-    final langLine = AiSettingsService.languageInstruction(
-      config.explanationLanguage,
+    final resolvedLanguageCode = widget.aiSettings.resolveBookLanguage(
+      widget.bookLanguage,
     );
-
-    final promptTemplate =
-        _customPromptModeEnabled && config.customPrompt.isNotEmpty
-        ? config.customPrompt
-        : AiSettingsService.defaultPrompt;
-    final defaultPrompt = promptTemplate
-        .replaceAll('{bookTitle}', widget.bookTitle)
-        .replaceAll('{selectedText}', text)
-        .replaceAll('{context}', surroundingContext);
-
-    final structuredPrompt = _buildStructuredPrompt(
+    final systemPrompt = buildExplainSystemPrompt(
       bookTitle: widget.bookTitle,
       selectedText: text,
       context: surroundingContext,
-      detailLine: detailLine,
-      languageLine: langLine,
+      languageCode: resolvedLanguageCode,
+      config: config,
+      includePartOfSpeech: _isSingleWord,
     );
-    final customPromptSystem =
-        '$defaultPrompt\n\n$detailLine'
-        '${langLine.isNotEmpty ? '\n$langLine' : ''}';
-    final systemPrompt = _customPromptModeEnabled
-        ? customPromptSystem
-        : structuredPrompt;
 
     _aiService = ExplainAiService(
       settings: widget.aiSettings,
       systemPrompt: systemPrompt,
-      model: config.model,
+      model: widget.aiSettings.model,
     );
 
     if (_isWordOrPhrase) {
       _lookupPhonetics();
       _fetchImageSearchResults();
     }
-    _loadOrFetch();
-
-    // Auto read-aloud selected text when sheet opens (if enabled).
-    if (widget.aiSettings.autoReadAloud) {
-      widget.ttsService.speakForBookLanguage(
-        widget.selectedText,
-        widget.bookLanguage,
-      );
+    if (_isSingleWord) {
+      _lookupLocalPos();
     }
+    _loadOrFetch();
   }
 
   void _onTtsChanged() {
@@ -270,9 +275,69 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
 
   Future<void> _lookupPhonetics() async {
     try {
-      final result = await widget.phoneticsService.lookup(widget.selectedText);
-      if (mounted) setState(() => _phonetics = result);
+      final outcome = await widget.phoneticsService.lookupWithOutcome(
+        widget.selectedText,
+      );
+      if (mounted) {
+        setState(() {
+          _phoneticsOutcome = outcome;
+          _phonetics = outcome.result;
+        });
+      }
     } catch (_) {}
+  }
+
+  Future<void> _lookupLocalPos() async {
+    try {
+      final result = await widget.posService.lookup(widget.selectedText);
+      if (result == null || result.isEmpty) return;
+      if (mounted) {
+        setState(() => _localPos = result);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _lookupPhoneticsWithAi() async {
+    if (_isPhoneticsAiLoading) {
+      return;
+    }
+
+    setState(() => _isPhoneticsAiLoading = true);
+    try {
+      final result = await widget.phoneticsService.fetchWithAiAndCache(
+        widget.selectedText,
+      );
+      if (mounted) {
+        setState(() {
+          _phonetics = result;
+          _phoneticsOutcome = PhoneticsLookupOutcome(
+            result: result,
+            foundLocally: false,
+            foundInAiCache: true,
+            canTryAi: widget.phoneticsService.supportsAiLookup,
+          );
+        });
+      }
+    } on PhoneticsAiNotConfiguredException {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'AI phonetics is not configured. Set it up in Settings.',
+            ),
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('AI phonetics lookup failed.')),
+        );
+      }
+    }
+    if (mounted) {
+      setState(() => _isPhoneticsAiLoading = false);
+    }
   }
 
   Future<void> _fetchImageSearchResults() async {
@@ -331,6 +396,220 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
     );
   }
 
+  Future<void> _playInlineSelectionPronunciation(String text) async {
+    final languageCode = widget.ttsService.resolveBookLanguage(
+      widget.bookLanguage,
+    );
+    final model = widget.ttsService.modelInfoForLanguage(languageCode);
+    if (model == null || !widget.ttsService.modelManager.isReady(model)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'TTS model not downloaded. Please download it in Settings.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+    await widget.ttsService.speakWithLanguage(text, languageCode);
+  }
+
+  void _onInlineSelectionChanged(SelectedContent? content) {
+    final rawText = content?.plainText ?? '';
+    final normalizedText = sanitizeReaderSelectionText(rawText);
+    if (rawText == _inlineSelectionRawText &&
+        normalizedText == _inlineSelectionText) {
+      return;
+    }
+
+    final isWordOrPhrase = _isInlineSelectionWordOrPhrase(
+      rawText,
+      normalizedText,
+    );
+
+    setState(() {
+      _inlineSelectionRawText = rawText;
+      _inlineSelectionText = normalizedText;
+      if (!isWordOrPhrase) {
+        _inlineSelectionLookupKey = null;
+        _isInlineSelectionPhoneticsLoading = false;
+      }
+    });
+
+    if (isWordOrPhrase) {
+      _lookupInlineSelectionPhonetics(normalizedText);
+    }
+  }
+
+  bool _isInlineSelectionWordOrPhrase(String rawText, String normalizedText) {
+    if (normalizedText.isEmpty) return false;
+    return isReaderWordOrPhraseSelection(
+      rawSelectedText: rawText,
+      normalizedSelectedText: normalizedText,
+    );
+  }
+
+  Future<void> _lookupInlineSelectionPhonetics(String text) async {
+    if (_inlineSelectionPhoneticsCache.containsKey(text)) {
+      if (mounted && _isInlineSelectionPhoneticsLoading) {
+        setState(() => _isInlineSelectionPhoneticsLoading = false);
+      }
+      return;
+    }
+
+    _inlineSelectionLookupKey = text;
+    setState(() => _isInlineSelectionPhoneticsLoading = true);
+
+    try {
+      final result = await widget.phoneticsService.lookupWithOutcome(text);
+      _inlineSelectionPhoneticsCache[text] = result;
+    } catch (_) {
+      _inlineSelectionPhoneticsCache[text] = PhoneticsLookupOutcome.empty(
+        canTryAi: widget.phoneticsService.supportsAiLookup,
+      );
+    }
+
+    if (!mounted || _inlineSelectionLookupKey != text) {
+      return;
+    }
+
+    setState(() => _isInlineSelectionPhoneticsLoading = false);
+  }
+
+  Future<void> _lookupInlineSelectionPhoneticsWithAi() async {
+    final text = _inlineSelectionText;
+    if (text.isEmpty || _isInlineSelectionAiLoading) {
+      return;
+    }
+
+    setState(() => _isInlineSelectionAiLoading = true);
+    try {
+      final result = await widget.phoneticsService.fetchWithAiAndCache(text);
+      _inlineSelectionPhoneticsCache[text] = PhoneticsLookupOutcome(
+        result: result,
+        foundLocally: false,
+        foundInAiCache: true,
+        canTryAi: widget.phoneticsService.supportsAiLookup,
+      );
+    } on PhoneticsAiNotConfiguredException {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'AI phonetics is not configured. Set it up in Settings.',
+            ),
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('AI phonetics lookup failed.')),
+        );
+      }
+    }
+
+    if (!mounted || _inlineSelectionText != text) {
+      return;
+    }
+    setState(() => _isInlineSelectionAiLoading = false);
+  }
+
+  Widget _buildInlineSelectionContextMenu(
+    BuildContext context,
+    SelectableRegionState selectableRegionState,
+  ) {
+    if (!_isInlineSelectionWordOrPhrase(
+      _inlineSelectionRawText,
+      _inlineSelectionText,
+    )) {
+      return AdaptiveTextSelectionToolbar.selectableRegion(
+        selectableRegionState: selectableRegionState,
+      );
+    }
+
+    ContextMenuButtonItem? copyItem;
+    for (final item in selectableRegionState.contextMenuButtonItems) {
+      if (item.type == ContextMenuButtonType.copy) {
+        copyItem = item;
+        break;
+      }
+    }
+
+    return PronunciationSelectionToolbar(
+      anchors: selectableRegionState.contextMenuAnchors,
+      ipaLabel: _inlineSelectionIpaLabel,
+      aiButtonLabel: _showInlineSelectionAiButton ? 'AI' : null,
+      onAiPressed: _showInlineSelectionAiButton
+          ? _lookupInlineSelectionPhoneticsWithAi
+          : null,
+      isAiLoading: _isInlineSelectionAiLoading,
+      buttonItems: [
+        ContextMenuButtonItem(
+          label: 'Pronounce',
+          onPressed: () {
+            selectableRegionState.hideToolbar();
+            _playInlineSelectionPronunciation(_inlineSelectionText);
+          },
+        ),
+        ContextMenuButtonItem(
+          type: ContextMenuButtonType.copy,
+          onPressed:
+              copyItem?.onPressed ??
+              () {
+                Clipboard.setData(ClipboardData(text: _inlineSelectionText));
+                selectableRegionState.hideToolbar();
+              },
+        ),
+      ],
+    );
+  }
+
+  String? get _inlineSelectionIpaLabel {
+    if (_inlineSelectionText.isEmpty) {
+      return null;
+    }
+
+    final outcome = _inlineSelectionPhoneticsCache[_inlineSelectionText];
+    final phonetics = outcome?.result;
+    if (phonetics == null) {
+      return null;
+    }
+
+    final languageCode = widget.ttsService.resolveBookLanguage(
+      widget.bookLanguage,
+    );
+    final preferredIpa = switch (languageCode) {
+      'en_GB' => phonetics.uk,
+      'en_US' => phonetics.us,
+      _ => phonetics.us.isNotEmpty ? phonetics.us : phonetics.uk,
+    };
+
+    if (preferredIpa.isNotEmpty) {
+      return '/$preferredIpa/';
+    }
+
+    final fallbackIpa = phonetics.us.isNotEmpty ? phonetics.us : phonetics.uk;
+    if (fallbackIpa.isNotEmpty) {
+      return '/$fallbackIpa/';
+    }
+
+    return null;
+  }
+
+  bool get _showInlineSelectionAiButton {
+    if (_inlineSelectionText.isEmpty || _isInlineSelectionPhoneticsLoading) {
+      return false;
+    }
+    final outcome = _inlineSelectionPhoneticsCache[_inlineSelectionText];
+    if (outcome == null) {
+      return false;
+    }
+    return !outcome.result.hasAny && outcome.canTryAi;
+  }
+
   static String _extractContainingSentence(String fullText, String target) {
     final index = fullText.indexOf(target);
     if (index < 0) return fullText;
@@ -370,35 +649,6 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
     return result;
   }
 
-  String _buildStructuredPrompt({
-    required String bookTitle,
-    required String selectedText,
-    required String context,
-    required String detailLine,
-    required String languageLine,
-  }) {
-    final languageInstruction = languageLine.isNotEmpty
-        ? '\n- $languageLine'
-        : '';
-    return 'You are a reading assistant for "$bookTitle".\n'
-        'The user selected text: "$selectedText"\n'
-        'Context:\n---\n$context\n---\n\n'
-        'Goal: help the reader quickly understand the selected text in context.\n'
-        'Return ONLY a JSON object (no markdown, no code fence, no extra text) '
-        'with this exact schema:\n'
-        '{\n'
-        '  "meaningExplain": "string",\n'
-        '  "detailExplain": ["string", "string"]\n'
-        '}\n\n'
-        'Constraints:\n'
-        '- Keep each string concise and practical.\n'
-        '- Focus on this exact context, not generic dictionary entries.\n'
-        '- Use plain language for intermediate English learners.\n'
-        '- Keep detailExplain to 2-3 short bullets.\n'
-        '- $detailLine'
-        '$languageInstruction';
-  }
-
   @override
   void dispose() {
     widget.ttsService.removeListener(_onTtsChanged);
@@ -428,7 +678,7 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
           _aiResponse = cached;
           _structuredData = _customPromptModeEnabled
               ? null
-              : _StructuredExplainData.tryParse(cached);
+              : ExplainStructuredData.tryParse(cached);
           _isStreaming = false;
         });
         return;
@@ -463,7 +713,7 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
       }
       final parsed = _customPromptModeEnabled
           ? null
-          : _StructuredExplainData.tryParse(_aiResponse);
+          : ExplainStructuredData.tryParse(_aiResponse);
       // Save to cache after successful completion.
       if (_aiResponse.isNotEmpty) {
         widget.database.upsertExplainCache(
@@ -554,6 +804,14 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
   }
 
   Widget _buildWordHeader() {
+    final aiPartOfSpeech = _isSingleWord
+        ? _structuredData?.partOfSpeech.trim() ?? ''
+        : '';
+    // Fall back to the offline WordNet lookup so the chip appears immediately
+    // while the AI response is still streaming (or if AI fails entirely).
+    final partOfSpeech = aiPartOfSpeech.isNotEmpty
+        ? aiPartOfSpeech
+        : (_isSingleWord ? _localPos?.label ?? '' : '');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -585,17 +843,43 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
               ),
           ],
         ),
+        if (partOfSpeech.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          _buildPartOfSpeechChip(partOfSpeech),
+        ],
         // Phonetics row: IPA + play button (hidden when no IPA available).
         if (_phonetics != null &&
             (_phonetics!.us.isNotEmpty || _phonetics!.uk.isNotEmpty)) ...[
           const SizedBox(height: 12),
           _buildPhoneticsRow(),
+        ] else if (_phoneticsOutcome?.canTryAi == true) ...[
+          const SizedBox(height: 12),
+          _buildAiPhoneticsButton(),
         ],
         if (_containingSentence.isNotEmpty) ...[
           const SizedBox(height: 16),
           _buildSentenceWithBoldWord(_containingSentence, widget.selectedText),
         ],
       ],
+    );
+  }
+
+  Widget _buildPartOfSpeechChip(String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: CommonDesignTokens.pageBackground,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: CommonDesignTokens.textSecondary,
+          decoration: TextDecoration.none,
+        ),
+      ),
     );
   }
 
@@ -629,6 +913,23 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
         }
         return Row(children: [chips[0], const SizedBox(width: 16), chips[1]]);
       },
+    );
+  }
+
+  Widget _buildAiPhoneticsButton() {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: TextButton.icon(
+        onPressed: _isPhoneticsAiLoading ? null : _lookupPhoneticsWithAi,
+        icon: _isPhoneticsAiLoading
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.auto_awesome, size: 18),
+        label: const Text('AI'),
+      ),
     );
   }
 
@@ -779,8 +1080,8 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
 
   Widget _buildResponseArea() {
     // AI content part: skeleton while loading, structured or markdown once
-    // available.  Visual Reference is always appended below regardless of
-    // whether the AI response succeeded, failed, or is still streaming.
+    // available. Explain text is wrapped in a SelectionArea so long-pressing
+    // a word or phrase can surface IPA / Pronounce / Copy actions.
     Widget aiContent;
     if (_aiResponse.isEmpty && _isStreaming) {
       aiContent = _buildSkeleton();
@@ -789,7 +1090,7 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
     } else {
       aiContent = MarkdownBody(
         data: _aiResponse,
-        selectable: true,
+        selectable: false,
         styleSheet: MarkdownStyleSheet(
           p: const TextStyle(
             fontSize: 15,
@@ -807,7 +1108,11 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          aiContent,
+          SelectionArea(
+            onSelectionChanged: _onInlineSelectionChanged,
+            contextMenuBuilder: _buildInlineSelectionContextMenu,
+            child: aiContent,
+          ),
           if (_isWordOrPhrase) _buildVisualReferenceSection(),
         ],
       ),
@@ -819,7 +1124,7 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
     if (data == null) {
       return MarkdownBody(
         data: _aiResponse,
-        selectable: true,
+        selectable: false,
         styleSheet: MarkdownStyleSheet(
           p: const TextStyle(
             fontSize: 15,
@@ -1208,76 +1513,5 @@ class _ReaderExplainSheetState extends State<ReaderExplainSheet>
         ),
       ),
     );
-  }
-}
-
-class _StructuredExplainData {
-  const _StructuredExplainData({
-    required this.meaningExplain,
-    required this.detailExplain,
-  });
-
-  final String meaningExplain;
-  final List<String> detailExplain;
-
-  static _StructuredExplainData? tryParse(String raw) {
-    final jsonText = _extractJson(raw);
-    if (jsonText == null) return null;
-    try {
-      final decoded = jsonDecode(jsonText);
-      if (decoded is! Map<String, dynamic>) return null;
-      final meaningExplain = _readString(decoded['meaningExplain']).isNotEmpty
-          ? _readString(decoded['meaningExplain'])
-          : _readString(decoded['inThisSentence']);
-      if (meaningExplain.isEmpty) return null;
-
-      var detailExplain = _readStringList(decoded['detailExplain']);
-      if (detailExplain.isEmpty) {
-        final legacyWhy = _readStringList(decoded['whyThisMeaning']);
-        final legacyNotHere = _readString(decoded['notHere']);
-        final legacyAlternatives = _readStringList(
-          decoded['nearbyAlternatives'],
-        );
-        detailExplain = [
-          ...legacyWhy,
-          if (legacyNotHere.isNotEmpty) 'Not here: $legacyNotHere',
-          ...legacyAlternatives.map((item) => 'Alternative: $item'),
-        ];
-      }
-
-      return _StructuredExplainData(
-        meaningExplain: meaningExplain,
-        detailExplain: detailExplain,
-      );
-    } catch (_) {
-      return null;
-    }
-  }
-
-  static String? _extractJson(String raw) {
-    final trimmed = raw.trim();
-    if (trimmed.isEmpty) return null;
-    if (trimmed.startsWith('{') && trimmed.endsWith('}')) return trimmed;
-
-    final fenced = RegExp(
-      r'```(?:json)?\s*([\s\S]*?)\s*```',
-      multiLine: true,
-    ).firstMatch(trimmed);
-    if (fenced == null) return null;
-    return fenced.group(1)?.trim();
-  }
-
-  static String _readString(Object? value) {
-    if (value is String) return value.trim();
-    return '';
-  }
-
-  static List<String> _readStringList(Object? value) {
-    if (value is! List) return const [];
-    return value
-        .whereType<String>()
-        .map((item) => item.trim())
-        .where((item) => item.isNotEmpty)
-        .toList(growable: false);
   }
 }

@@ -6,6 +6,7 @@ import '../../app/providers/app-providers.dart';
 import '../../app/routes/route-names.dart';
 import '../../entities/book-entity.dart';
 import '../../stores/library/library-state.dart';
+import '../word-of-day/word-of-day-page.dart';
 import 'shelf-page-layout.dart';
 
 class ShelfPage extends StatefulWidget {
@@ -73,6 +74,13 @@ class _ShelfPageState extends State<ShelfPage> {
           wordsPreview: state.latestExplain,
           onWordsMoreTap: () =>
               Navigator.of(context).pushNamed(RouteNames.words),
+          onWordsCardTap: state.latestExplain == null
+              ? null
+              : () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => WordDetailPage(item: state.latestExplain!),
+                  ),
+                ),
           lastImportedBookId: lastImportedBookId,
         );
       },

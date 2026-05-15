@@ -158,6 +158,7 @@ void main() {
 
   testWidgets('shows words prompt card and handles more tap', (tester) async {
     var moreTapped = false;
+    var cardTapped = false;
     final book = BookEntity(
       id: 'book-1',
       title: 'Book One',
@@ -179,6 +180,7 @@ void main() {
             onImportTap: () {},
             nowReadingBook: book,
             onWordsMoreTap: () => moreTapped = true,
+            onWordsCardTap: () => cardTapped = true,
           ),
         ),
       ),
@@ -197,9 +199,15 @@ void main() {
     await tester.pump();
 
     expect(moreTapped, isTrue);
+    expect(
+      find.byKey(const ValueKey<String>('words-section-card-tap-target')),
+      findsNothing,
+    );
+    expect(cardTapped, isFalse);
   });
 
   testWidgets('shows latest explain preview in words card', (tester) async {
+    var cardTapped = false;
     final book = BookEntity(
       id: 'book-1',
       title: 'Book One',
@@ -230,17 +238,24 @@ void main() {
                   '{"meaningExplain":"very clear and strong","detailExplain":["Used here for a memory that stays bright."]}',
               createdAt: DateTime(2026, 3, 2),
             ),
+            onWordsCardTap: () => cardTapped = true,
           ),
         ),
       ),
     );
 
     expect(find.text('vivid'), findsOneWidget);
-    expect(find.text('very clear and strong'), findsNothing);
     expect(find.text('Book One'), findsWidgets);
     expect(
       find.byKey(const ValueKey<String>('words-preview-rich-text')),
       findsOneWidget,
     );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('words-section-card-tap-target')),
+    );
+    await tester.pump();
+
+    expect(cardTapped, isTrue);
   });
 }

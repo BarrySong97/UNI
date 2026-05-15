@@ -4,10 +4,15 @@ import 'package:path/path.dart' as p;
 import '../../app/providers/app-providers.dart';
 import '../../pages/reader/reader_page.dart';
 import 'data/cached_chapter_data_source.dart';
+import 'reader_navigation_target.dart';
 
 /// Entry point for opening books in the reader.
 class ReaderEntryService {
-  Future<void> openBook(BuildContext context, String bookId) async {
+  Future<void> openBook(
+    BuildContext context,
+    String bookId, {
+    ReaderNavigationTarget? navigationTarget,
+  }) async {
     final sw = Stopwatch()..start();
     if (!context.mounted) return;
 
@@ -89,6 +94,7 @@ class ReaderEntryService {
           book: book,
           dataSource: dataSource,
           storeManager: providers.readerStoreManager,
+          navigationTarget: navigationTarget,
         ),
       ),
     );

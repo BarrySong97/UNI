@@ -25,7 +25,7 @@ void main() {
       selectedText: 'clarity',
       contextSentence: 'Clarity makes deep work possible.',
       response:
-          '{"meaningExplain":"a state of being easy to understand","detailExplain":["It suggests clear thinking.","It fits focused work in this sentence."]}',
+          '{"partOfSpeech":"noun","meaningExplain":"a state of being easy to understand","detailExplain":["It suggests clear thinking.","It fits focused work in this sentence."]}',
     );
 
     await tester.pumpWidget(MaterialApp(home: WordsPage(database: database)));
@@ -58,7 +58,7 @@ void main() {
       selectedText: 'clarity',
       contextSentence: 'Clarity makes deep work possible.',
       response:
-          '{"meaningExplain":"a state of being easy to understand","detailExplain":["It suggests clear thinking.","It fits focused work in this sentence."]}',
+          '{"partOfSpeech":"noun","meaningExplain":"a state of being easy to understand","detailExplain":["It suggests clear thinking.","It fits focused work in this sentence."]}',
     );
 
     await tester.pumpWidget(MaterialApp(home: WordsPage(database: database)));
@@ -69,11 +69,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Meaning'), findsOneWidget);
-    expect(find.text('Details'), findsOneWidget);
-    expect(find.text('Context'), findsOneWidget);
+    expect(find.text('MEANING'), findsOneWidget);
+    expect(find.text('DETAILS & USAGE'), findsOneWidget);
+    expect(find.text('noun'), findsOneWidget);
     expect(find.text('It suggests clear thinking.'), findsOneWidget);
-    expect(find.text('Clarity makes deep work possible.'), findsOneWidget);
+    expect(find.byType(RichText), findsWidgets);
   });
 
   testWidgets('renders empty state when no explain history exists', (

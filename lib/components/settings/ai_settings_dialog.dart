@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 
+import '../../app/providers/app-providers.dart';
 import '../../services/ai/ai_settings_service.dart';
+import '../../services/ai/explain_prompt_builder.dart';
 import '../../services/ai/openai_llm_provider.dart';
 import '../../services/search/image_search_service.dart';
 import '../../services/tts/tts_service.dart';
@@ -10,6 +12,7 @@ import '../../shared/constants/common-design-tokens.dart';
 import '../../shared/constants/form-design-tokens.dart';
 import '../../shared/constants/settings-design-tokens.dart';
 import '../../shared/layout/responsive_layout.dart';
+import '../../shared/widgets/english_pronunciation_selection_area.dart';
 
 class AiSettingsPage extends StatefulWidget {
   const AiSettingsPage({
@@ -41,6 +44,8 @@ class AiSettingsPage extends StatefulWidget {
 class _AiSettingsPageState extends State<AiSettingsPage> {
   late final TextEditingController _baseUrlController;
   late final TextEditingController _apiKeyController;
+  late final TextEditingController _modelController;
+  late AiProviderKind _provider;
   bool _obscureApiKey = true;
 
   @override
@@ -48,6 +53,8 @@ class _AiSettingsPageState extends State<AiSettingsPage> {
     super.initState();
     _baseUrlController = TextEditingController(text: widget.aiSettings.baseUrl);
     _apiKeyController = TextEditingController(text: widget.aiSettings.apiKey);
+    _modelController = TextEditingController(text: widget.aiSettings.model);
+    _provider = widget.aiSettings.provider;
     widget.aiSettings.addListener(_onSettingsChange);
     widget.ttsService.addListener(_onTtsChange);
   }
@@ -58,6 +65,7 @@ class _AiSettingsPageState extends State<AiSettingsPage> {
     widget.ttsService.removeListener(_onTtsChange);
     _baseUrlController.dispose();
     _apiKeyController.dispose();
+    _modelController.dispose();
     super.dispose();
   }
 
@@ -150,6 +158,15 @@ class _AiSettingsPageState extends State<AiSettingsPage> {
                       ),
                     ),
                   ),
+                  _buildDivider(),
+                  _buildFieldRow(
+                    icon: Icons.smart_toy_outlined,
+                    label: 'Model',
+                    controller: _modelController,
+                    hintText: AiSettingsService.defaultModel,
+                  ),
+                  _buildDivider(),
+                  _buildProviderRow(),
                 ],
               ),
               const SizedBox(height: 28),
@@ -159,37 +176,6 @@ class _AiSettingsPageState extends State<AiSettingsPage> {
               const SizedBox(height: 12),
               _buildCard(
                 children: [
-                  ListenableBuilder(
-                    listenable: widget.aiSettings,
-                    builder: (context, _) {
-                      return SwitchListTile.adaptive(
-                        title: const Text(
-                          'Auto Read Aloud',
-                          style: TextStyle(
-                            fontSize: FormDesignTokens.fieldLabelSize,
-                            fontWeight: FontWeight.w600,
-                            color: CommonDesignTokens.textPrimary,
-                          ),
-                        ),
-                        subtitle: const Text(
-                          'Automatically read selected text aloud when explain sheet opens.',
-                          style: TextStyle(
-                            fontSize: FormDesignTokens.helperSize,
-                            color: CommonDesignTokens.textSecondary,
-                            height: FormDesignTokens.helperLineHeight,
-                          ),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                        ),
-                        value: widget.aiSettings.autoReadAloud,
-                        onChanged: (value) {
-                          widget.aiSettings.setAutoReadAloud(value);
-                        },
-                      );
-                    },
-                  ),
-                  _buildDivider(),
                   ListenableBuilder(
                     listenable: widget.aiSettings,
                     builder: (context, _) {
@@ -254,8 +240,9 @@ class _AiSettingsPageState extends State<AiSettingsPage> {
                                 ],
                                 onChanged: (engine) {
                                   if (engine != null) {
-                                    widget.aiSettings
-                                        .setImageSearchEngine(engine);
+                                    widget.aiSettings.setImageSearchEngine(
+                                      engine,
+                                    );
                                   }
                                 },
                               ),
@@ -348,7 +335,7 @@ class _AiSettingsPageState extends State<AiSettingsPage> {
     );
 
     final subtitle = hasCustomConfig
-        ? _configSummary(config)
+        ? _configSummary(config, languageCode: languageCode)
         : 'Default — tap to configure';
 
     return GestureDetector(
@@ -417,10 +404,20 @@ class _AiSettingsPageState extends State<AiSettingsPage> {
     );
   }
 
-  String _configSummary(AiLanguageConfig config) {
-    final parts = <String>[config.model];
+  String _configSummary(
+    AiLanguageConfig config, {
+    required String languageCode,
+  }) {
+    final parts = <String>[];
     parts.add(config.customPromptModeEnabled ? 'Custom Prompt' : 'Structured');
     parts.add(_detailLabel(config.detail));
+    final vocabularyLabel = _vocabularyLabel(
+      languageCode: languageCode,
+      levelId: config.vocabularyLevel,
+    );
+    if (vocabularyLabel != null) {
+      parts.add(vocabularyLabel);
+    }
     if (config.explanationLanguage.isNotEmpty) {
       parts.add(config.explanationLanguage);
     }
@@ -436,6 +433,18 @@ class _AiSettingsPageState extends State<AiSettingsPage> {
       case ExplanationDetail.detailed:
         return 'Detailed';
     }
+  }
+
+  static String? _vocabularyLabel({
+    required String languageCode,
+    required String levelId,
+  }) {
+    for (final option in AiSettingsService.vocabularyOptionsFor(languageCode)) {
+      if (option.id == levelId) {
+        return option.label;
+      }
+    }
+    return null;
   }
 
   // ---------------------------------------------------------------------------
@@ -576,8 +585,72 @@ class _AiSettingsPageState extends State<AiSettingsPage> {
     await widget.aiSettings.updateGlobal(
       baseUrl: _baseUrlController.text.trim(),
       apiKey: _apiKeyController.text.trim(),
+      model: _modelController.text.trim(),
+      provider: _provider,
     );
     if (mounted) Navigator.of(context).pop();
+  }
+
+  Widget _buildProviderRow() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: SizedBox(
+        height: FormDesignTokens.fieldRowHeight,
+        child: Row(
+          children: [
+            Container(
+              width: SettingsDesignTokens.settingsRowIconContainerSize,
+              height: SettingsDesignTokens.settingsRowIconContainerSize,
+              decoration: BoxDecoration(
+                color: SettingsDesignTokens.settingsRowIconContainerBg,
+                borderRadius: BorderRadius.circular(
+                  SettingsDesignTokens.settingsRowIconContainerRadius,
+                ),
+              ),
+              alignment: Alignment.center,
+              child: const Icon(
+                Icons.api_outlined,
+                size: 20,
+                color: CommonDesignTokens.headerLabelColor,
+              ),
+            ),
+            const SizedBox(width: FormDesignTokens.fieldIconGap),
+            const Text(
+              'Provider',
+              style: TextStyle(
+                fontSize: FormDesignTokens.fieldLabelSize,
+                fontWeight: FontWeight.w500,
+                color: CommonDesignTokens.textSecondary,
+              ),
+            ),
+            const Spacer(),
+            DropdownButton<AiProviderKind>(
+              value: _provider,
+              underline: const SizedBox.shrink(),
+              style: const TextStyle(
+                fontSize: FormDesignTokens.fieldValueSize,
+                color: CommonDesignTokens.textPrimary,
+              ),
+              items: const [
+                DropdownMenuItem(
+                  value: AiProviderKind.openAiCompatible,
+                  child: Text('OpenAI compatible'),
+                ),
+                DropdownMenuItem(
+                  value: AiProviderKind.anthropicCompatible,
+                  child: Text('Anthropic compatible'),
+                ),
+              ],
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() => _provider = value);
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -607,23 +680,24 @@ class _AiLanguageConfigSheet extends StatefulWidget {
 }
 
 class _AiLanguageConfigSheetState extends State<_AiLanguageConfigSheet> {
-  late final TextEditingController _modelController;
   late final TextEditingController _promptController;
   late ExplanationDetail _detail;
   late bool _customPromptModeEnabled;
+  late String _vocabularyLevel;
 
   @override
   void initState() {
     super.initState();
-    _modelController = TextEditingController(text: widget.config.model);
     _promptController = TextEditingController(text: widget.config.customPrompt);
     _detail = widget.config.detail;
     _customPromptModeEnabled = widget.config.customPromptModeEnabled;
+    _vocabularyLevel = widget.config.vocabularyLevel.isNotEmpty
+        ? widget.config.vocabularyLevel
+        : AiSettingsService.defaultVocabularyLevelFor(widget.languageCode);
   }
 
   @override
   void dispose() {
-    _modelController.dispose();
     _promptController.dispose();
     super.dispose();
   }
@@ -671,21 +745,6 @@ class _AiLanguageConfigSheetState extends State<_AiLanguageConfigSheet> {
                   vertical: 4,
                 ),
                 children: [
-                  // MODEL section
-                  const _SectionLabel(label: 'MODEL'),
-                  const SizedBox(height: 8),
-                  _buildCard(
-                    children: [
-                      _buildInlineFieldRow(
-                        icon: Icons.smart_toy_outlined,
-                        label: 'Model',
-                        controller: _modelController,
-                        hintText: AiSettingsService.defaultModel,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-
                   // DETAIL section
                   const _SectionLabel(label: 'DETAIL'),
                   const SizedBox(height: 8),
@@ -699,6 +758,34 @@ class _AiLanguageConfigSheetState extends State<_AiLanguageConfigSheet> {
                     ],
                   ),
                   const SizedBox(height: 24),
+
+                  if (_showVocabularyLevelSection) ...[
+                    const _SectionLabel(label: 'VOCABULARY LEVEL'),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: CommonDesignTokens.tabGap,
+                      runSpacing: CommonDesignTokens.tabGap,
+                      children: [
+                        for (final option in _vocabularyOptions)
+                          _buildVocabularyLevelTab(option),
+                      ],
+                    ),
+                    if (_selectedVocabularyOption != null) ...[
+                      const SizedBox(height: 8),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 2),
+                        child: Text(
+                          _selectedVocabularyOption!.description,
+                          style: const TextStyle(
+                            fontSize: FormDesignTokens.helperSize,
+                            color: CommonDesignTokens.textSecondary,
+                            height: FormDesignTokens.helperLineHeight,
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 24),
+                  ],
 
                   const _SectionLabel(label: 'EXPLAIN MODE'),
                   const SizedBox(height: 8),
@@ -901,70 +988,51 @@ class _AiLanguageConfigSheetState extends State<_AiLanguageConfigSheet> {
     }
   }
 
-  Widget _buildInlineFieldRow({
-    required IconData icon,
-    required String label,
-    required TextEditingController controller,
-    String? hintText,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 0),
-      child: SizedBox(
-        height: FormDesignTokens.fieldRowHeight,
-        child: Row(
-          children: [
-            Container(
-              width: SettingsDesignTokens.settingsRowIconContainerSize,
-              height: SettingsDesignTokens.settingsRowIconContainerSize,
-              decoration: BoxDecoration(
-                color: SettingsDesignTokens.settingsRowIconContainerBg,
-                borderRadius: BorderRadius.circular(
-                  SettingsDesignTokens.settingsRowIconContainerRadius,
-                ),
-              ),
-              alignment: Alignment.center,
-              child: Icon(
-                icon,
-                size: 20,
-                color: CommonDesignTokens.headerLabelColor,
-              ),
-            ),
-            const SizedBox(width: FormDesignTokens.fieldIconGap),
-            SizedBox(
-              width: FormDesignTokens.fieldLabelWidth,
-              child: Text(
-                label,
-                style: const TextStyle(
-                  fontSize: FormDesignTokens.fieldLabelSize,
-                  fontWeight: FontWeight.w500,
-                  color: CommonDesignTokens.textSecondary,
-                ),
-              ),
-            ),
-            const SizedBox(width: FormDesignTokens.fieldLabelGap),
-            Expanded(
-              child: TextField(
-                controller: controller,
-                textAlign: TextAlign.right,
-                style: const TextStyle(
-                  fontSize: FormDesignTokens.fieldValueSize,
-                  color: CommonDesignTokens.textPrimary,
-                ),
-                decoration: InputDecoration(
-                  hintText: hintText,
-                  hintStyle: TextStyle(
-                    fontSize: FormDesignTokens.fieldValueSize,
-                    color: CommonDesignTokens.textSecondary.withValues(
-                      alpha: FormDesignTokens.fieldHintOpacity,
-                    ),
-                  ),
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.zero,
-                  isDense: true,
-                ),
-              ),
-            ),
-          ],
+  bool get _showVocabularyLevelSection {
+    return AiSettingsService.isEnglishLanguageCode(widget.languageCode) &&
+        _vocabularyOptions.isNotEmpty;
+  }
+
+  List<VocabularyLevelOption> get _vocabularyOptions {
+    return AiSettingsService.vocabularyOptionsFor(widget.languageCode);
+  }
+
+  VocabularyLevelOption? get _selectedVocabularyOption {
+    for (final option in _vocabularyOptions) {
+      if (option.id == _vocabularyLevel) {
+        return option;
+      }
+    }
+    return _vocabularyOptions.isEmpty ? null : _vocabularyOptions.first;
+  }
+
+  Widget _buildVocabularyLevelTab(VocabularyLevelOption option) {
+    final selected = _vocabularyLevel == option.id;
+    return GestureDetector(
+      onTap: () => setState(() => _vocabularyLevel = option.id),
+      child: Container(
+        height: CommonDesignTokens.tabHeight,
+        padding: const EdgeInsets.symmetric(
+          horizontal: CommonDesignTokens.tabHorizontalPadding,
+        ),
+        decoration: BoxDecoration(
+          color: selected
+              ? CommonDesignTokens.tabActiveBg
+              : CommonDesignTokens.tabInactiveBg,
+          borderRadius: BorderRadius.circular(
+            CommonDesignTokens.tabBorderRadius,
+          ),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          option.label,
+          style: TextStyle(
+            fontSize: FormDesignTokens.fieldLabelSize,
+            fontWeight: FontWeight.w500,
+            color: selected
+                ? CommonDesignTokens.tabActiveText
+                : CommonDesignTokens.tabInactiveText,
+          ),
         ),
       ),
     );
@@ -972,12 +1040,13 @@ class _AiLanguageConfigSheetState extends State<_AiLanguageConfigSheet> {
 
   void _saveConfig() {
     final config = AiLanguageConfig(
-      model: _modelController.text.trim().isEmpty
-          ? AiSettingsService.defaultModel
-          : _modelController.text.trim(),
       detail: _detail,
+      explanationLanguage: widget.config.explanationLanguage,
       customPrompt: _promptController.text.trim(),
       customPromptModeEnabled: _customPromptModeEnabled,
+      vocabularyLevel: _showVocabularyLevelSection
+          ? _vocabularyLevel
+          : widget.config.vocabularyLevel,
     );
     widget.onSave(config);
   }
@@ -989,9 +1058,6 @@ class _AiLanguageConfigSheetState extends State<_AiLanguageConfigSheet> {
       );
       return;
     }
-    final model = _modelController.text.trim().isEmpty
-        ? AiSettingsService.defaultModel
-        : _modelController.text.trim();
 
     showModalBottomSheet<void>(
       context: context,
@@ -1002,9 +1068,16 @@ class _AiLanguageConfigSheetState extends State<_AiLanguageConfigSheet> {
       ),
       builder: (_) => _TestExplainSheet(
         aiSettings: widget.aiSettings,
-        model: model,
-        detail: _detail,
-        customPrompt: _promptController.text.trim(),
+        languageCode: widget.languageCode,
+        config: AiLanguageConfig(
+          detail: _detail,
+          explanationLanguage: widget.config.explanationLanguage,
+          customPrompt: _promptController.text.trim(),
+          customPromptModeEnabled: _customPromptModeEnabled,
+          vocabularyLevel: _showVocabularyLevelSection
+              ? _vocabularyLevel
+              : widget.config.vocabularyLevel,
+        ),
       ),
     );
   }
@@ -1017,15 +1090,13 @@ class _AiLanguageConfigSheetState extends State<_AiLanguageConfigSheet> {
 class _TestExplainSheet extends StatefulWidget {
   const _TestExplainSheet({
     required this.aiSettings,
-    required this.model,
-    required this.detail,
-    required this.customPrompt,
+    required this.languageCode,
+    required this.config,
   });
 
   final AiSettingsService aiSettings;
-  final String model;
-  final ExplanationDetail detail;
-  final String customPrompt;
+  final String languageCode;
+  final AiLanguageConfig config;
 
   static const _testBookTitle = 'The Great Gatsby';
   static const _testSelectedText = 'ephemeral';
@@ -1054,21 +1125,19 @@ class _TestExplainSheetState extends State<_TestExplainSheet>
       duration: const Duration(milliseconds: 1200),
     )..repeat();
 
-    final promptTemplate = widget.customPrompt.isNotEmpty
-        ? widget.customPrompt
-        : AiSettingsService.defaultPrompt;
-    final basePrompt = promptTemplate
-        .replaceAll('{bookTitle}', _TestExplainSheet._testBookTitle)
-        .replaceAll('{selectedText}', _TestExplainSheet._testSelectedText)
-        .replaceAll('{context}', _TestExplainSheet._testSentence);
-
-    final detailLine = AiSettingsService.detailInstruction(widget.detail);
-    final systemPrompt = '$basePrompt\n\n$detailLine';
+    final systemPrompt = buildExplainSystemPrompt(
+      bookTitle: _TestExplainSheet._testBookTitle,
+      selectedText: _TestExplainSheet._testSelectedText,
+      context: _TestExplainSheet._testSentence,
+      languageCode: widget.languageCode,
+      config: widget.config,
+      includePartOfSpeech: true,
+    );
 
     _aiService = ExplainAiService(
       settings: widget.aiSettings,
       systemPrompt: systemPrompt,
-      model: widget.model,
+      model: widget.aiSettings.model,
     );
 
     _fetchFromAi();
@@ -1257,21 +1326,41 @@ class _TestExplainSheetState extends State<_TestExplainSheet>
       );
     }
 
+    final providers = AppProvidersScope.maybeOf(context);
+    final markdownBody = MarkdownBody(
+      data: _aiResponse,
+      selectable: false,
+      styleSheet: MarkdownStyleSheet(
+        p: const TextStyle(
+          fontSize: 15,
+          height: 1.5,
+          color: Colors.black87,
+          decoration: TextDecoration.none,
+        ),
+      ),
+    );
+
     return SingleChildScrollView(
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: MarkdownBody(
-        data: _aiResponse,
-        selectable: true,
-        styleSheet: MarkdownStyleSheet(
-          p: const TextStyle(
-            fontSize: 15,
-            height: 1.5,
-            color: Colors.black87,
-            decoration: TextDecoration.none,
-          ),
-        ),
-      ),
+      child: providers != null
+          ? EnglishPronunciationSelectionArea(
+              phoneticsService: providers.phoneticsService,
+              ttsService: providers.ttsService,
+              child: markdownBody,
+            )
+          : MarkdownBody(
+              data: _aiResponse,
+              selectable: true,
+              styleSheet: MarkdownStyleSheet(
+                p: const TextStyle(
+                  fontSize: 15,
+                  height: 1.5,
+                  color: Colors.black87,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ),
     );
   }
 

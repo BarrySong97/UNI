@@ -48,3 +48,10 @@ flutter build apk --release
 
 flutter build ios --release
 ios-deploy --bundle build/ios/iphoneos/Runner.app
+
+## License
+
+This project is licensed under the PolyForm Noncommercial License 1.0.0.
+You may fork, use, modify, and redistribute it for noncommercial purposes,
+including free public releases. Commercial use is not permitted without
+separate permission from the copyright holder.

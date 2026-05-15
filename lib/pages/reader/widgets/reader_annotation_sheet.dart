@@ -7,7 +7,7 @@ import '../models/reader_annotation_card_item.dart';
 import 'reader_annotation_card.dart';
 import 'reader_annotation_notes_sheet.dart';
 
-enum ReaderAnnotationSheetActionType { openLocation, addNote }
+enum ReaderAnnotationSheetActionType { openLocation }
 
 enum ReaderAnnotationSortMode { recentActivity, newestMarks, oldestMarks }
 
@@ -36,17 +36,42 @@ class _ChapterGroup {
 }
 
 class ReaderAnnotationSheet extends StatefulWidget {
-  const ReaderAnnotationSheet({super.key, required this.items});
+  const ReaderAnnotationSheet({
+    super.key,
+    required this.items,
+    required this.onAddNote,
+    required this.onShare,
+    required this.onDelete,
+  });
 
   final List<ReaderAnnotationCardItem> items;
+  final Future<ReaderAnnotationCardItem> Function(
+    ReaderAnnotationCardItem item,
+    String noteText,
+  )
+  onAddNote;
+  final Future<void> Function(ReaderAnnotationCardItem item) onShare;
+  final Future<bool> Function(ReaderAnnotationCardItem item) onDelete;
 
   static Future<ReaderAnnotationSheetResult?> show({
     required BuildContext context,
     required List<ReaderAnnotationCardItem> items,
+    required Future<ReaderAnnotationCardItem> Function(
+      ReaderAnnotationCardItem item,
+      String noteText,
+    )
+    onAddNote,
+    required Future<void> Function(ReaderAnnotationCardItem item) onShare,
+    required Future<bool> Function(ReaderAnnotationCardItem item) onDelete,
     bool isTablet = false,
     bool showOnLeft = false,
   }) {
-    final sheet = ReaderAnnotationSheet(items: items);
+    final sheet = ReaderAnnotationSheet(
+      items: items,
+      onAddNote: onAddNote,
+      onShare: onShare,
+      onDelete: onDelete,
+    );
     final mediaQuery = MediaQuery.of(context);
 
     return showModalBottomSheet<ReaderAnnotationSheetResult>(
@@ -77,19 +102,30 @@ class ReaderAnnotationSheet extends StatefulWidget {
 class _ReaderAnnotationSheetState extends State<ReaderAnnotationSheet> {
   ReaderAnnotationSortMode _sortMode = ReaderAnnotationSortMode.recentActivity;
   String _searchQuery = '';
+  late final TextEditingController _searchController;
   late Set<int> _expandedChapters;
+  late List<ReaderAnnotationCardItem> _items;
   ReaderAnnotationCardItem? _selectedItem;
+  bool _isDetailComposerOpen = false;
+  int _detailComposerVersion = 0;
 
   @override
   void initState() {
     super.initState();
-    _expandedChapters =
-        widget.items.map((e) => e.chapterIndex).toSet();
+    _searchController = TextEditingController();
+    _items = List<ReaderAnnotationCardItem>.from(widget.items);
+    _expandedChapters = _items.map((e) => e.chapterIndex).toSet();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   List<ReaderAnnotationCardItem> get _filteredItems {
     final query = _searchQuery.trim().toLowerCase();
-    final filtered = widget.items
+    final filtered = _items
         .where((item) {
           if (query.isEmpty) return true;
           if (item.annotation.quoteText.toLowerCase().contains(query)) {
@@ -139,38 +175,95 @@ class _ReaderAnnotationSheetState extends State<ReaderAnnotationSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        _buildHeader(context),
-        _buildSearchField(),
-        Expanded(
-          child: _selectedItem == null
-              ? _buildGroupedListView(context)
-              : ReaderAnnotationNotesSheet(
-                  item: _selectedItem!,
-                  onBack: () => setState(() => _selectedItem = null),
-                  onAddNote: () => Navigator.of(context).pop(
-                    ReaderAnnotationSheetResult(
-                      type: ReaderAnnotationSheetActionType.addNote,
-                      annotation: _selectedItem!.annotation,
-                    ),
-                  ),
-                  onGoToLocation: () => Navigator.of(context).pop(
-                    ReaderAnnotationSheetResult(
-                      type: ReaderAnnotationSheetActionType.openLocation,
-                      annotation: _selectedItem!.annotation,
-                    ),
-                  ),
-                  formatTimestamp: _formatRelativeTime,
-                ),
+    if (_selectedItem == null) {
+      return Column(
+        children: [
+          _buildHeader(context),
+          _buildSearchField(),
+          Expanded(child: _buildGroupedListView(context)),
+        ],
+      );
+    }
+
+    return ReaderAnnotationNotesSheet(
+      item: _selectedItem!,
+      isComposing: _isDetailComposerOpen,
+      composerVersion: _detailComposerVersion,
+      onBack: () => setState(() {
+        _selectedItem = null;
+        _isDetailComposerOpen = false;
+      }),
+      onStartAddNote: () => setState(() {
+        _isDetailComposerOpen = true;
+        _detailComposerVersion += 1;
+      }),
+      onCancelAddNote: () => setState(() {
+        _isDetailComposerOpen = false;
+        _detailComposerVersion += 1;
+      }),
+      onAddNote: (noteText) async {
+        setState(() {
+          _isDetailComposerOpen = false;
+          _detailComposerVersion += 1;
+        });
+        final updated = await widget.onAddNote(_selectedItem!, noteText);
+        if (!mounted) {
+          return updated;
+        }
+        setState(() {
+          final index = _items.indexWhere(
+            (item) => item.annotation.id == updated.annotation.id,
+          );
+          if (index >= 0) {
+            _items[index] = updated;
+          }
+          _selectedItem = null;
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            _selectedItem = updated;
+          });
+        });
+        return updated;
+      },
+      onShare: () => widget.onShare(_selectedItem!),
+      onDelete: () async {
+        final selectedItem = _selectedItem;
+        if (selectedItem == null) {
+          return false;
+        }
+        final deleted = await widget.onDelete(selectedItem);
+        if (!context.mounted || !deleted) {
+          return deleted;
+        }
+        setState(() {
+          _items.removeWhere(
+            (item) => item.annotation.id == selectedItem.annotation.id,
+          );
+          _selectedItem = null;
+          _isDetailComposerOpen = false;
+        });
+        if (_items.isEmpty) {
+          Navigator.of(context).pop();
+        }
+        return true;
+      },
+      onGoToLocation: () => Navigator.of(context).pop(
+        ReaderAnnotationSheetResult(
+          type: ReaderAnnotationSheetActionType.openLocation,
+          annotation: _selectedItem!.annotation,
         ),
-      ],
+      ),
+      formatTimestamp: _formatRelativeTime,
     );
   }
 
   Widget _buildHeader(BuildContext context) {
     final title = _selectedItem == null ? 'Marks' : 'Mark Details';
-    final subtitle = _selectedItem == null ? '${widget.items.length}' : null;
+    final subtitle = _selectedItem == null ? '${_items.length}' : null;
     final topInset = MediaQuery.paddingOf(context).top;
 
     return Padding(
@@ -191,16 +284,16 @@ class _ReaderAnnotationSheetState extends State<ReaderAnnotationSheet> {
             children: [
               Text(
                 title,
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w700,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   color: CommonDesignTokens.textPrimary,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
               if (subtitle != null) ...[
                 const SizedBox(width: 8),
                 Text(
                   subtitle,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  style: const TextStyle(
                     color: CommonDesignTokens.headerLabelColor,
                     fontWeight: FontWeight.w600,
                   ),
@@ -230,6 +323,7 @@ class _ReaderAnnotationSheetState extends State<ReaderAnnotationSheet> {
       padding: const EdgeInsets.fromLTRB(18, 0, 18, 10),
       child: TextField(
         key: const ValueKey('marks-search-input'),
+        controller: _searchController,
         onChanged: (value) => setState(() => _searchQuery = value),
         decoration: InputDecoration(
           hintText: 'Search marks',
@@ -241,7 +335,10 @@ class _ReaderAnnotationSheetState extends State<ReaderAnnotationSheet> {
           suffixIcon: _searchQuery.isEmpty
               ? null
               : IconButton(
-                  onPressed: () => setState(() => _searchQuery = ''),
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() => _searchQuery = '');
+                  },
                   icon: const Icon(Icons.close_rounded),
                 ),
           filled: true,
@@ -256,7 +353,7 @@ class _ReaderAnnotationSheetState extends State<ReaderAnnotationSheet> {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
-            borderSide: BorderSide(
+            borderSide: const BorderSide(
               color: CommonDesignTokens.headerLabelColor,
             ),
           ),
@@ -321,9 +418,11 @@ class _ReaderAnnotationSheetState extends State<ReaderAnnotationSheet> {
                             timestampText: _formatRelativeTime(
                               group.items[i].activityTime,
                             ),
-                            onTap: () => setState(
-                              () => _selectedItem = group.items[i],
-                            ),
+                            onTap: () => setState(() {
+                              _selectedItem = group.items[i];
+                              _isDetailComposerOpen = false;
+                              _detailComposerVersion = 0;
+                            }),
                           ),
                         ],
                         const SizedBox(height: 16),

@@ -1,161 +1,116 @@
 import 'package:flutter/material.dart';
 
 import '../../../pages/reader/models/reader_annotation_card_item.dart';
-import '../../../services/reader/annotation/annotation_text_utils.dart';
-import '../../../shared/constants/common-design-tokens.dart';
-import '../../../shared/constants/shelf-design-tokens.dart';
+import 'reader_mark_detail_view.dart';
 
-class ReaderAnnotationNotesSheet extends StatelessWidget {
+class ReaderAnnotationNotesSheet extends StatefulWidget {
   const ReaderAnnotationNotesSheet({
     super.key,
     required this.item,
+    required this.isComposing,
+    required this.composerVersion,
     required this.onBack,
+    required this.onStartAddNote,
+    required this.onCancelAddNote,
     required this.onAddNote,
+    required this.onShare,
+    required this.onDelete,
     required this.onGoToLocation,
     required this.formatTimestamp,
   });
 
   final ReaderAnnotationCardItem item;
+  final bool isComposing;
+  final int composerVersion;
   final VoidCallback onBack;
-  final VoidCallback onAddNote;
+  final VoidCallback onStartAddNote;
+  final VoidCallback onCancelAddNote;
+  final Future<ReaderAnnotationCardItem> Function(String noteText) onAddNote;
+  final Future<void> Function() onShare;
+  final Future<bool> Function() onDelete;
   final VoidCallback onGoToLocation;
   final String Function(DateTime value) formatTimestamp;
 
   @override
-  Widget build(BuildContext context) {
-    final accent = annotationColorFromHex(item.annotation.color, alpha: 1);
-    final quoteBg = annotationColorFromHex(item.annotation.color, alpha: 0.18);
+  State<ReaderAnnotationNotesSheet> createState() =>
+      _ReaderAnnotationNotesSheetState();
+}
 
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 18, 16, 8),
-          child: Row(
-            children: [
-              IconButton(
-                onPressed: onBack,
-                icon: const Icon(Icons.arrow_back_ios_new_rounded),
-                color: CommonDesignTokens.textPrimary,
-              ),
-              Expanded(
-                child: Text(
-                  item.chapterTitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: CommonDesignTokens.textPrimary,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: quoteBg,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border(left: BorderSide(color: accent, width: 4)),
-                ),
-                child: Text(
-                  item.annotation.quoteText,
-                  style: const TextStyle(
-                    color: CommonDesignTokens.textPrimary,
-                    fontSize: 16,
-                    height: 1.55,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 18),
-              if (item.notes.isEmpty)
-                const Text(
-                  'No notes yet.',
-                  style: TextStyle(
-                    color: CommonDesignTokens.textSecondary,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                  ),
-                )
-              else
-                for (final note in item.notes) ...[
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: ShelfDesignTokens.statsCardBg,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: CommonDesignTokens.borderColor),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          note.text,
-                          style: const TextStyle(
-                            color: CommonDesignTokens.textPrimary,
-                            fontSize: 15,
-                            height: 1.45,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          formatTimestamp(note.createdAt),
-                          style: const TextStyle(
-                            color: CommonDesignTokens.headerLabelColor,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-            ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(18, 8, 18, 20),
-          child: Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: onAddNote,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: CommonDesignTokens.textPrimary,
-                    side: const BorderSide(color: CommonDesignTokens.borderColor),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  child: const Text('Add Note'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextButton(
-                  onPressed: onGoToLocation,
-                  style: TextButton.styleFrom(
-                    backgroundColor: ShelfDesignTokens.statsCardBg,
-                    foregroundColor: ShelfDesignTokens.statsNumberColor,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    textStyle: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  child: const Text('Go to location →'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
+class _ReaderAnnotationNotesSheetState
+    extends State<ReaderAnnotationNotesSheet> {
+  late ReaderAnnotationCardItem _item;
+  bool _isSubmitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _item = widget.item;
+  }
+
+  @override
+  void didUpdateWidget(covariant ReaderAnnotationNotesSheet oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.item.annotation.id != oldWidget.item.annotation.id ||
+        widget.item.annotation.updatedAt !=
+            oldWidget.item.annotation.updatedAt ||
+        widget.item.notes.length != oldWidget.item.notes.length) {
+      _item = widget.item;
+    }
+  }
+
+  Future<void> _handleAddNote(String noteText) async {
+    setState(() {
+      _isSubmitting = true;
+    });
+    try {
+      final updated = await widget.onAddNote(noteText);
+      if (!mounted) {
+        return;
+      }
+      FocusScope.of(context).unfocus();
+      setState(() {
+        _item = updated;
+        _isSubmitting = false;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isSubmitting = false;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Failed to save note.')));
+    }
+  }
+
+  Future<bool> _handleDelete() async {
+    final confirmed = await showMarkDeleteConfirmation(context);
+    if (!confirmed) {
+      return false;
+    }
+    return widget.onDelete();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ReaderMarkDetailView(
+      chapterTitle: _item.chapterTitle,
+      quoteText: _item.annotation.quoteText,
+      notes: _item.notes,
+      isComposing: widget.isComposing,
+      isSubmitting: _isSubmitting,
+      composerVersion: widget.composerVersion,
+      onBack: widget.onBack,
+      onStartAddNote: widget.onStartAddNote,
+      onCancelAddNote: widget.onCancelAddNote,
+      onSubmitNote: _handleAddNote,
+      onShare: widget.onShare,
+      onDelete: _handleDelete,
+      onGoToMark: widget.onGoToLocation,
+      formatTimestamp: widget.formatTimestamp,
+      noteInputKey: const ValueKey('mark-detail-note-input'),
     );
   }
 }

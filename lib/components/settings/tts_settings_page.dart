@@ -4,6 +4,7 @@ import '../../services/tts/tts_model_config.dart';
 import '../../services/tts/tts_model_manager.dart';
 import '../../services/tts/tts_service.dart';
 import '../../services/tts/tts_voice_catalog.dart';
+import '../../services/tts/tts_voice_types.dart';
 import '../../shared/constants/common-design-tokens.dart';
 import '../../shared/constants/form-design-tokens.dart';
 import '../../shared/constants/settings-design-tokens.dart';
@@ -834,7 +835,7 @@ class _VoicePickerSheetState extends State<_VoicePickerSheet> {
       await widget.ttsService.previewVoice(
         text: text,
         model: modelInfo,
-        speakerId: _selectedKey == voice.key ? _speakerId : 0,
+        speakerId: _resolvedSpeakerIdForVoice(voice),
       );
     } finally {
       _isStartingPreview = false;
@@ -844,6 +845,13 @@ class _VoicePickerSheetState extends State<_VoicePickerSheet> {
   List<TtsVoiceInfo> get _filteredVoices {
     if (_genderFilter == null) return widget.voices;
     return widget.voices.where((v) => v.gender == _genderFilter).toList();
+  }
+
+  int _resolvedSpeakerIdForVoice(TtsVoiceInfo voice) {
+    if (voice.numSpeakers > 1 && _selectedKey == voice.key) {
+      return _speakerId;
+    }
+    return voice.defaultSpeakerId;
   }
 
   @override
@@ -1053,8 +1061,18 @@ class _VoicePickerSheetState extends State<_VoicePickerSheet> {
                     // Select
                     FilledButton(
                       onPressed: _selectedKey != null
-                          ? () =>
-                              widget.onSelect(_selectedKey!, _speakerId)
+                          ? () {
+                              final selectedVoice = widget.voices
+                                  .where((voice) => voice.key == _selectedKey)
+                                  .firstOrNull;
+                              final selectedSpeakerId = selectedVoice == null
+                                  ? _speakerId
+                                  : _resolvedSpeakerIdForVoice(selectedVoice);
+                              widget.onSelect(
+                                _selectedKey!,
+                                selectedSpeakerId,
+                              );
+                            }
                           : null,
                       style: FilledButton.styleFrom(
                         backgroundColor: FormDesignTokens.buttonBg,
