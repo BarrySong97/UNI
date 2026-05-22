@@ -50,4 +50,16 @@ post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
   end
+
+  # Workaround for macOS 26 + Xcode 16: actool fails to spawn AssetCatalogSimulatorAgent
+  # via CoreSimulator. Delete the xcassets so actool has nothing to compile.
+  require 'fileutils'
+  pods_root = installer.sandbox.root
+  [
+    'DKPhotoGallery/DKPhotoGallery/Resource/Resources/Images.xcassets',
+    'DKImagePickerController/Sources/DKImagePickerController/Resource/Resources/Images.xcassets',
+  ].each do |rel_path|
+    full_path = File.join(pods_root, rel_path)
+    FileUtils.rm_rf(full_path) if File.exist?(full_path)
+  end
 end
