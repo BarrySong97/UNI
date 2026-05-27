@@ -40,5 +40,12 @@ if [ -f "$PROJECT_ROOT/tool/reader_render_diff/package.json" ]; then
     (cd "$PROJECT_ROOT/tool/reader_render_diff" && npm install)
 fi
 
+# 6. Next.js app dependencies (webs/)
+if [ -f "$PROJECT_ROOT/webs/package.json" ]; then
+    echo ""
+    echo "=> pnpm install (webs/)"
+    (cd "$PROJECT_ROOT/webs" && pnpm install)
+fi
+
 echo ""
 echo "Done! All dependencies installed."
