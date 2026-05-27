@@ -58,13 +58,20 @@ if [ -d "$PROJECT_ROOT/tool/reader_render_diff/node_modules" ]; then
     rm -rf "$PROJECT_ROOT/tool/reader_render_diff/node_modules"
 fi
 
-# 7. Remove generated Flutter plugin files
+# 7. Node modules (webs/)
+if [ -d "$PROJECT_ROOT/webs/node_modules" ]; then
+    echo ""
+    echo "=> Removing webs/node_modules/"
+    rm -rf "$PROJECT_ROOT/webs/node_modules"
+fi
+
+# 8. Remove generated Flutter plugin files
 echo ""
 echo "=> Removing generated Flutter plugin files"
 rm -f "$PROJECT_ROOT/.flutter-plugins"
 rm -f "$PROJECT_ROOT/.flutter-plugins-dependencies"
 
-# 8. Linux/Windows build artifacts
+# 9. Linux/Windows build artifacts
 rm -rf "$PROJECT_ROOT/linux/flutter/ephemeral"
 rm -rf "$PROJECT_ROOT/windows/flutter/ephemeral"
 
