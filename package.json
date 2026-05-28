@@ -1,0 +1,9 @@
+{
+  "private": true,
+  "scripts": {
+    "webs:dev": "pnpm --dir webs dev",
+    "webs:build": "pnpm --dir webs build",
+    "webs:start": "pnpm --dir webs start",
+    "webs:lint": "pnpm --dir webs lint"
+  }
+}
